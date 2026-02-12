@@ -1,0 +1,40 @@
+{
+    "nav": {
+        "dashboard": "Tableau de Bord",
+        "offers": "Offres",
+        "customers": "Clients",
+        "services": "Leistungen",
+        "settings": "Paramètres"
+    },
+    "common": {
+        "add": "Ajouter",
+        "edit": "Modifier",
+        "delete": "Supprimer",
+        "save": "Enregistrer",
+        "cancel": "Annuler",
+        "back": "Retour",
+        "print": "Imprimer"
+    },
+    "offer": {
+        "title": "Nouvelle Offre",
+        "customer": "Client",
+        "services": "Services",
+        "total": "Montant Total",
+        "subtotal": "Sous-total",
+        "vat": "TVA",
+        "discount": "Remise",
+        "status": "Statut",
+        "create": "Créer l'offre",
+        "duplicate": "Dupliquer",
+        "send_to_billit": "Envoyer à Billit"
+    },
+    "settings": {
+        "company_name": "Nom de l'entreprise",
+        "address": "Adresse",
+        "vat_number": "Numéro de TVA",
+        "logo": "Logo",
+        "email": "E-mail pour boîte aux lettres",
+        "currency": "Devise par défaut",
+        "payment_terms": "Conditions de paiement"
+    }
+}

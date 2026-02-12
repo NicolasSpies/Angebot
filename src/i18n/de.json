@@ -1,0 +1,44 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "offers": "Angebote",
+    "customers": "Kunden",
+    "services": "Leistungen",
+    "settings": "Einstellungen"
+  },
+  "common": {
+    "add": "Hinzufügen",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "confirm": "Bestätigen",
+    "view": "Ansehen",
+    "send": "Senden",
+    "link": "Link kopieren",
+    "back": "Zurück",
+    "print": "Drucken"
+  },
+  "offer": {
+    "title": "Neues Angebot",
+    "customer": "Kunde",
+    "services": "Leistungen",
+    "total": "Gesamtbetrag",
+    "subtotal": "Zwischensumme",
+    "vat": "MwSt.",
+    "discount": "Rabatt",
+    "status": "Status",
+    "create": "Angebot erstellen",
+    "duplicate": "Duplizieren",
+    "send_to_billit": "An Billit senden"
+  },
+  "settings": {
+    "company_name": "Unternehmensname",
+    "address": "Adresse",
+    "vat_number": "MwSt.-Nummer",
+    "logo": "Logo",
+    "email": "E-Mail für Postfach",
+    "currency": "Standardwährung",
+    "payment_terms": "Zahlungsbedingungen"
+  }
+}
