@@ -11,7 +11,7 @@ const TopBar = () => {
                 <select
                     value={locale}
                     onChange={(e) => setLocale(e.target.value)}
-                    style={{ padding: '0.25rem 0.5rem', borderRadius: '4px' }}
+                    style={{ padding: '0.35rem 0.6rem', borderRadius: '10px', border: '1px solid var(--border)' }}
                 >
                     <option value="de">Deutsch</option>
                     <option value="fr">Français</option>

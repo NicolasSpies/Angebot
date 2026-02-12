@@ -60,40 +60,132 @@ app.get('/api/settings', (req, res) => {
 });
 
 app.put('/api/settings', (req, res) => {
-    const { company_name, address, vat_number, logo_url, email, default_currency, default_vat_rules, default_payment_terms } = req.body;
+    const { company_name, address, vat_number, logo_url, email, default_currency, default_vat_rules, default_payment_terms, default_hourly_rate, work_categories, phone, website, default_validity_days } = req.body;
     db.prepare(`
         UPDATE settings SET 
             company_name = ?, address = ?, vat_number = ?, logo_url = ?, 
-            email = ?, default_currency = ?, default_vat_rules = ?, default_payment_terms = ? 
+            email = ?, default_currency = ?, default_vat_rules = ?, default_payment_terms = ?,
+            default_hourly_rate = ?, work_categories = ?, phone = ?, website = ?, default_validity_days = ?
         WHERE id = 1
-    `).run(company_name, address, vat_number, logo_url, email, default_currency, default_vat_rules, default_payment_terms);
+    `).run(company_name, address, vat_number, logo_url, email, default_currency, default_vat_rules, default_payment_terms, default_hourly_rate, work_categories, phone, website, default_validity_days);
     res.json({ success: true });
 });
 
 // --- SERVICES ---
 app.get('/api/services', (req, res) => {
     const services = db.prepare('SELECT * FROM services').all();
-    res.json(services);
+    const variants = db.prepare('SELECT * FROM service_variants').all();
+
+    const servicesWithVariants = services.map(s => ({
+        ...s,
+        variants: variants.filter(v => v.service_id === s.id)
+    }));
+
+    res.json(servicesWithVariants);
 });
 
 app.post('/api/services', (req, res) => {
-    const { category, name_de, name_fr, description_de, description_fr, price, unit_type, default_selected } = req.body;
-    const result = db.prepare(`
-        INSERT INTO services (category, name_de, name_fr, description_de, description_fr, price, unit_type, default_selected)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(category, name_de, name_fr, description_de, description_fr, price, unit_type, default_selected ? 1 : 0);
-    res.json({ id: result.lastInsertRowid });
+    const { category, name_de, name_fr, description_de, description_fr, price, unit_type, default_selected, billing_cycle, variants } = req.body;
+
+    const transaction = db.transaction(() => {
+        const result = db.prepare(`
+            INSERT INTO services (category, name_de, name_fr, description_de, description_fr, price, unit_type, default_selected, billing_cycle)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(category, name_de, name_fr, description_de, description_fr, price, unit_type, default_selected ? 1 : 0, billing_cycle || 'one_time');
+
+        const serviceId = result.lastInsertRowid;
+
+        if (variants && Array.isArray(variants)) {
+            const insertVariant = db.prepare(`
+                INSERT INTO service_variants (service_id, name, name_de, name_fr, price, description, cost_price, billing_cycle, is_default, active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            for (const v of variants) {
+                insertVariant.run(
+                    serviceId,
+                    v.name || '',
+                    v.name_de || v.name || '',
+                    v.name_fr || v.name || '',
+                    v.price || 0,
+                    v.description || '',
+                    v.cost_price || 0,
+                    v.billing_cycle || 'one_time',
+                    v.is_default ? 1 : 0,
+                    v.active !== undefined ? (v.active ? 1 : 0) : 1
+                );
+            }
+        }
+        return serviceId;
+    });
+
+    try {
+        const id = transaction();
+        res.json({ id });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.put('/api/services/:id', (req, res) => {
-    const { category, name_de, name_fr, description_de, description_fr, price, unit_type, default_selected, active } = req.body;
-    db.prepare(`
-        UPDATE services SET 
-            category = ?, name_de = ?, name_fr = ?, description_de = ?, description_fr = ?, 
-            price = ?, unit_type = ?, default_selected = ?, active = ?
-        WHERE id = ?
-    `).run(category, name_de, name_fr, description_de, description_fr, price, unit_type, default_selected ? 1 : 0, active ? 1 : 0, req.params.id);
-    res.json({ success: true });
+    const { category, name_de, name_fr, description_de, description_fr, price, unit_type, default_selected, active, billing_cycle, variants } = req.body;
+    const serviceId = req.params.id;
+
+    const transaction = db.transaction(() => {
+        db.prepare(`
+            UPDATE services SET 
+                category = ?, name_de = ?, name_fr = ?, description_de = ?, description_fr = ?, 
+                price = ?, unit_type = ?, default_selected = ?, active = ?, billing_cycle = ?
+            WHERE id = ?
+        `).run(category, name_de, name_fr, description_de, description_fr, price, unit_type, default_selected ? 1 : 0, active ? 1 : 0, billing_cycle || 'one_time', serviceId);
+
+        // Handle variants: Strategy -> Delete all and re-insert (easiest for now, assuming no FK issues from offer_items since we use snapshotting)
+        // If we wanted to be smarter we would update existing ones with IDs.
+        // For now, let's try to preserve IDs if they are passed, otherwise insert.
+        // Actually, simple Delete/Insert is safer for state consistency unless we need to keep history.
+        db.prepare('DELETE FROM service_variants WHERE service_id = ?').run(serviceId);
+
+        if (variants && Array.isArray(variants)) {
+            const insertVariant = db.prepare(`
+                INSERT INTO service_variants (service_id, name, name_de, name_fr, price, description, cost_price, billing_cycle, is_default, active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            for (const v of variants) {
+                insertVariant.run(
+                    serviceId,
+                    v.name || '',
+                    v.name_de || v.name || '',
+                    v.name_fr || v.name || '',
+                    v.price || 0,
+                    v.description || '',
+                    v.cost_price || 0,
+                    v.billing_cycle || 'one_time',
+                    v.is_default ? 1 : 0,
+                    v.active !== undefined ? (v.active ? 1 : 0) : 1
+                );
+            }
+        }
+    });
+
+    try {
+        transaction();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/services/:id', (req, res) => {
+    const serviceId = req.params.id;
+    const transaction = db.transaction(() => {
+        db.prepare('DELETE FROM service_variants WHERE service_id = ?').run(serviceId);
+        db.prepare('DELETE FROM services WHERE id = ?').run(serviceId);
+    });
+    try {
+        transaction();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // --- CUSTOMERS ---
@@ -196,7 +288,8 @@ app.get('/api/offers/:id', (req, res) => {
                c.address, 
                c.city, 
                c.postal_code, 
-               c.country as customer_country 
+               c.country as customer_country,
+               c.vat_number 
         FROM offers o 
         JOIN customers c ON o.customer_id = c.id 
         WHERE o.id = ?
@@ -204,7 +297,7 @@ app.get('/api/offers/:id', (req, res) => {
     if (!offer) return res.status(404).json({ error: 'Offer not found' });
 
     const items = db.prepare(`
-        SELECT oi.*, s.name_de, s.name_fr, s.description_de, s.description_fr 
+        SELECT oi.*, s.name_de, s.name_fr, s.description_de, s.description_fr, oi.billing_cycle 
         FROM offer_items oi 
         JOIN services s ON oi.service_id = s.id 
         WHERE oi.offer_id = ?
@@ -224,7 +317,8 @@ app.get('/api/offers/public/:token', (req, res) => {
                c.address, 
                c.city, 
                c.postal_code, 
-               c.country as customer_country 
+               c.country as customer_country,
+               c.vat_number 
         FROM offers o 
         JOIN customers c ON o.customer_id = c.id 
         WHERE o.token = ?
@@ -233,7 +327,7 @@ app.get('/api/offers/public/:token', (req, res) => {
     if (!offer) return res.status(404).json({ error: 'Offer not found' });
 
     const items = db.prepare(`
-        SELECT oi.*, s.name_de, s.name_fr, s.description_de, s.description_fr 
+        SELECT oi.*, s.name_de, s.name_fr, s.description_de, s.description_fr, oi.billing_cycle 
         FROM offer_items oi 
         JOIN services s ON oi.service_id = s.id 
         WHERE oi.offer_id = ?
@@ -274,24 +368,33 @@ app.post('/api/offers/public/:token/sign', (req, res) => {
 });
 
 app.post('/api/offers', (req, res) => {
-    const { customer_id, offer_name, language, status, subtotal, vat, total, items } = req.body;
+    const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date } = req.body;
 
     const transaction = db.transaction(() => {
         const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
         const offerResult = db.prepare(`
-            INSERT INTO offers (customer_id, offer_name, language, status, subtotal, vat, total, token)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(customer_id, offer_name, language, status || 'draft', subtotal, vat, total, token);
+            INSERT INTO offers (customer_id, offer_name, language, status, subtotal, vat, total, token, due_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(customer_id, offer_name, language, status || 'draft', subtotal, vat, total, token, due_date);
 
         const offerId = offerResult.lastInsertRowid;
 
         const insertItem = db.prepare(`
-            INSERT INTO offer_items (offer_id, service_id, quantity, unit_price, total_price)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO offer_items (offer_id, service_id, quantity, unit_price, total_price, billing_cycle, item_name, item_description)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         for (const item of items) {
-            insertItem.run(offerId, item.service_id, item.quantity, item.unit_price, item.total_price);
+            insertItem.run(
+                offerId,
+                item.service_id,
+                item.quantity,
+                item.unit_price,
+                item.total_price,
+                item.billing_cycle || 'one_time',
+                item.item_name || null,
+                item.item_description || null
+            );
         }
 
         return offerId;
@@ -321,12 +424,12 @@ app.post('/api/offers/:id/duplicate', (req, res) => {
 
         const newId = newOffer.lastInsertRowid;
         const insertItem = db.prepare(`
-            INSERT INTO offer_items (offer_id, service_id, quantity, unit_price, total_price)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO offer_items (offer_id, service_id, quantity, unit_price, total_price, billing_cycle)
+            VALUES (?, ?, ?, ?, ?, ?)
         `);
 
         for (const item of items) {
-            insertItem.run(newId, item.service_id, item.quantity, item.unit_price, item.total_price);
+            insertItem.run(newId, item.service_id, item.quantity, item.unit_price, item.total_price, item.billing_cycle || 'one_time');
         }
         return newId;
     });
@@ -356,27 +459,36 @@ app.delete('/api/offers/:id', (req, res) => {
 });
 
 app.put('/api/offers/:id', (req, res) => {
-    const { customer_id, offer_name, language, status, subtotal, vat, total, items } = req.body;
+    const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date } = req.body;
     const offerId = req.params.id;
 
     const transaction = db.transaction(() => {
         db.prepare(`
             UPDATE offers SET 
                 customer_id = ?, offer_name = ?, language = ?, status = ?, 
-                subtotal = ?, vat = ?, total = ?, updated_at = CURRENT_TIMESTAMP
+                subtotal = ?, vat = ?, total = ?, due_date = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-        `).run(customer_id, offer_name, language, status, subtotal, vat, total, offerId);
+        `).run(customer_id, offer_name, language, status, subtotal, vat, total, due_date, offerId);
 
         // Replace items
         db.prepare('DELETE FROM offer_items WHERE offer_id = ?').run(offerId);
 
         const insertItem = db.prepare(`
-            INSERT INTO offer_items (offer_id, service_id, quantity, unit_price, total_price)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO offer_items (offer_id, service_id, quantity, unit_price, total_price, billing_cycle, item_name, item_description)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         for (const item of items) {
-            insertItem.run(offerId, item.service_id, item.quantity, item.unit_price, item.total_price);
+            insertItem.run(
+                offerId,
+                item.service_id,
+                item.quantity,
+                item.unit_price,
+                item.total_price,
+                item.billing_cycle || 'one_time',
+                item.item_name || null,
+                item.item_description || null
+            );
         }
     });
 
@@ -386,6 +498,18 @@ app.put('/api/offers/:id', (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+app.put('/api/settings', (req, res) => {
+    const { company_name, address, vat_number, logo_url, email, phone, website, default_currency, default_vat_rules, default_payment_terms, default_hourly_rate, work_categories, default_validity_days } = req.body;
+    db.prepare(`
+        UPDATE settings SET 
+            company_name = ?, address = ?, vat_number = ?, logo_url = ?, 
+            email = ?, phone = ?, website = ?, default_currency = ?, default_vat_rules = ?, default_payment_terms = ?,
+            default_hourly_rate = ?, work_categories = ?, default_validity_days = ?
+        WHERE id = 1
+    `).run(company_name, address, vat_number, logo_url, email, phone, website, default_currency, default_vat_rules, default_payment_terms, default_hourly_rate, work_categories, default_validity_days);
+    res.json({ success: true });
 });
 
 app.post('/api/offers/:id/send', (req, res) => {
@@ -437,12 +561,29 @@ app.get('/api/dashboard/stats', (req, res) => {
         const signedThisMonthCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'signed' AND signed_at >= ?").get(startOfMonth).count;
         const avgOfferValueMonth = db.prepare("SELECT AVG(total) as avg FROM offers WHERE created_at >= ?").get(startOfMonth).avg || 0;
 
-        const expiringSoonCount = db.prepare(`
-            SELECT COUNT(*) as count FROM offers 
-            WHERE status = 'sent' 
-            AND created_at <= date('now', '-23 days') 
-            AND created_at > date('now', '-30 days')
-        `).get().count;
+        // Avg Monthly Income
+        // Calculate months since first signed offer or use 1 if none/recent
+        const firstSignedDate = db.prepare("SELECT MIN(signed_at) as date FROM offers WHERE status = 'signed'").get().date;
+        let monthsActive = 1;
+        if (firstSignedDate) {
+            const start = new Date(firstSignedDate);
+            const now = new Date();
+            monthsActive = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth()) + 1;
+            if (monthsActive < 1) monthsActive = 1;
+        }
+        const avgMonthlyIncome = signedRevenue / monthsActive;
+
+        const expiringOffers = db.prepare(`
+            SELECT o.id, o.offer_name, c.company_name, o.due_date, o.total
+            FROM offers o
+            JOIN customers c ON o.customer_id = c.id
+            WHERE o.status = 'sent' 
+            AND o.due_date IS NOT NULL
+            AND o.due_date <= date('now', '+7 days')
+            ORDER BY o.due_date ASC
+            LIMIT 5
+        `).all();
+        const expiringSoonCount = expiringOffers.length;
 
         // Top categories
         const topCategories = db.prepare(`
@@ -493,9 +634,9 @@ app.get('/api/dashboard/stats', (req, res) => {
 
         res.json({
             summary: { draftCount, pendingCount, signedCount },
-            financials: { totalOpenValue, forecastPending, profitEstimate },
-            performance: { monthlyPerformance, signedThisMonthCount, avgOfferValueMonth, avgLeadTime },
-            alerts: { expiringSoonCount, oldDraftsCount },
+            financials: { totalOpenValue, forecastPending, profitEstimate, signedRevenue },
+            performance: { monthlyPerformance, avgOfferValueMonth, signedThisMonthCount, avgMonthlyIncome },
+            alerts: { expiringSoonCount, oldDraftsCount: 0, expiringOffers }, // TODO: Implement old drafts
             analytics: { topCategories, topClients, recentActivity }
         });
     } catch (err) {

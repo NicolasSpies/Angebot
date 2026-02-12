@@ -17,7 +17,8 @@
     "send": "Senden",
     "link": "Link kopieren",
     "back": "Zurück",
-    "print": "Drucken"
+    "print": "Drucken",
+    "next": "Weiter"
   },
   "offer": {
     "title": "Neues Angebot",
@@ -30,7 +31,11 @@
     "status": "Status",
     "create": "Angebot erstellen",
     "duplicate": "Duplizieren",
-    "send_to_billit": "An Billit senden"
+    "send_to_billit": "An Billit senden",
+    "step_1": "Kunde & Details",
+    "step_2": "Leistungen",
+    "step_3": "Abschluss",
+    "language": "Sprache"
   },
   "settings": {
     "company_name": "Unternehmensname",

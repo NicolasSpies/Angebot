@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:3001/api';
+const API_URL = '/api';
 
 export const dataService = {
     // --- SETTINGS ---
@@ -112,6 +112,11 @@ export const dataService = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(service)
         });
+        return res.json();
+    },
+
+    deleteService: async (id) => {
+        const res = await fetch(`${API_URL}/services/${id}`, { method: 'DELETE' });
         return res.json();
     },
 

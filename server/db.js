@@ -106,7 +106,28 @@ const migrations = [
     'ALTER TABLE customers ADD COLUMN postal_code TEXT;',
     'ALTER TABLE settings ADD COLUMN phone TEXT;',
     'ALTER TABLE settings ADD COLUMN website TEXT;',
-    'ALTER TABLE offers ADD COLUMN offer_name TEXT;'
+    'ALTER TABLE offers ADD COLUMN offer_name TEXT;',
+    'ALTER TABLE offers ADD COLUMN due_date DATETIME;',
+    'ALTER TABLE settings ADD COLUMN default_validity_days INTEGER DEFAULT 14;',
+    // Service Variants
+    `CREATE TABLE IF NOT EXISTS service_variants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        service_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        name_de TEXT,
+        name_fr TEXT,
+        price REAL NOT NULL,
+        description TEXT,
+        cost_price REAL DEFAULT 0,
+        billing_cycle TEXT DEFAULT 'one_time',
+        is_default INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1,
+        FOREIGN KEY(service_id) REFERENCES services(id) ON DELETE CASCADE
+    );`,
+    // Offer Item Snapshotting
+    'ALTER TABLE offer_items ADD COLUMN item_name TEXT;',
+    'ALTER TABLE offer_items ADD COLUMN item_description TEXT;',
+    'ALTER TABLE offer_items ADD COLUMN billing_cycle TEXT;'
 ];
 
 migrations.forEach(sql => {

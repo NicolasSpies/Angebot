@@ -60,43 +60,79 @@ const OffersPage = () => {
 
     return (
         <div className="page-container">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                <h1 style={{ fontSize: '1.875rem', fontWeight: 700 }}>{t('nav.offers')}</h1>
+            <div className="page-header">
+                <h1 className="page-title">{t('nav.offers')}</h1>
                 <Link to="/offer/new" className="btn-primary" style={{ textDecoration: 'none' }}>+ {t('offer.create')}</Link>
             </div>
 
             <div className="card" style={{ padding: 0, overflow: 'visible' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <table className="data-table">
                     <thead>
-                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--border)' }}>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Offer #</th>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Customer</th>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Total</th>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Status</th>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Date</th>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Actions</th>
+                        <tr>
+                            <th>Offer Name / Project</th>
+                            <th>Customer</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {isLoading ? (
                             <tr><td colSpan="6" style={{ padding: '2rem', textAlign: 'center' }}>Loading offers...</td></tr>
                         ) : offers.length > 0 ? offers.map(o => (
-                            <tr key={o.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                <td style={{ padding: '1rem', fontWeight: 600 }}>OFFER-{o.id}</td>
-                                <td style={{ padding: '1rem' }}>{o.customer_name}</td>
-                                <td style={{ padding: '1rem', fontWeight: 700 }}>{formatCurrency(o.total)}</td>
-                                <td style={{ padding: '1rem' }}>
+                            <tr key={o.id}>
+                                <td style={{ fontWeight: 500 }}>
+                                    <Link to={`/offer/preview/${o.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                                        {o.offer_name || <i>Untitled Offer #{o.id}</i>}
+                                    </Link>
+                                </td>
+                                <td>{o.customer_name}</td>
+                                <td style={{ fontWeight: 600 }}>{formatCurrency(o.total)}</td>
+                                <td>
                                     <span className={`status-badge status-${o.status}`}>
                                         {o.status}
                                     </span>
                                 </td>
-                                <td style={{ padding: '1rem', fontSize: '0.85rem' }}>{new Date(o.created_at).toLocaleDateString()}</td>
-                                <td style={{ padding: '1rem' }}>
+                                <td>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                        <span style={{ fontSize: '0.85rem' }}>{new Date(o.created_at).toLocaleDateString()}</span>
+                                        {o.due_date && o.status !== 'signed' && o.status !== 'declined' && (
+                                            (() => {
+                                                const due = new Date(o.due_date);
+                                                const now = new Date();
+                                                const created = new Date(o.sent_at || o.created_at);
+                                                const totalWindow = Math.max(1, Math.ceil((due - created) / (1000 * 60 * 60 * 24)));
+                                                const elapsed = Math.ceil((now - created) / (1000 * 60 * 60 * 24));
+                                                const remaining = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
+                                                const pct = Math.max(0, Math.min(100, (elapsed / totalWindow) * 100));
+
+                                                let color = '#22c55e'; // Green
+                                                let text = `${remaining} days left`;
+
+                                                if (remaining <= 0) {
+                                                    color = '#ef4444'; // Red
+                                                    text = `Overdue by ${Math.abs(remaining)} days`;
+                                                } else if (remaining <= 3) {
+                                                    color = '#f97316'; // Orange
+                                                }
+
+                                                return (
+                                                    <div style={{ width: '100px', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden', position: 'relative' }} title={text}>
+                                                        <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 0.3s ease' }} />
+                                                    </div>
+                                                );
+                                            })()
+                                        )}
+                                    </div>
+                                </td>
+                                <td>
                                     <DropdownMenu
                                         actions={[
                                             { label: t('common.view'), onClick: () => navigate(`/offer/preview/${o.id}`) },
                                             { label: t('common.edit'), onClick: () => navigate(`/offer/edit/${o.id}`) },
-                                            ...(o.status === 'draft' || o.status === 'declined' ? [{ label: t('common.send'), onClick: () => handleSend(o.id) }] : []),
+                                            // Add the Send action unconditionally, but it will be disabled/hidden based on status
+                                            { label: t('common.send'), onClick: () => handleSend(o.id), disabled: !(o.status === 'draft' || o.status === 'declined') },
                                             ...((o.status === 'sent' || o.status === 'signed' || o.status === 'declined') && o.token ? [{ label: t('common.link'), onClick: () => copyLink(o.token) }] : []),
                                             { label: t('common.delete'), onClick: () => handleDeleteClick(o.id), isDestructive: true }
                                         ]}
@@ -119,7 +155,7 @@ const OffersPage = () => {
                 confirmText={t('common.delete')}
                 isDestructive={true}
             />
-        </div>
+        </div >
     );
 };
 

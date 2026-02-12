@@ -23,6 +23,12 @@ const OfferWizardPage = () => {
     const [selectedCustomer, setSelectedCustomer] = useState(null);
     const [offerName, setOfferName] = useState('');
     const [offerLanguage, setOfferLanguage] = useState(locale);
+    // Default due date: 14 days from now
+    const [dueDate, setDueDate] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 14);
+        return d.toISOString().split('T')[0];
+    });
     const [selectedPackage, setSelectedPackage] = useState('custom');
     const [selectedServices, setSelectedServices] = useState([]);
     const [discountPercent, setDiscountPercent] = useState(0);
@@ -31,47 +37,110 @@ const OfferWizardPage = () => {
 
     const loadData = useCallback(async () => {
         // setIsLoading(true);
-        const [cData, sData] = await Promise.all([
-            dataService.getCustomers(),
-            dataService.getServices()
-        ]);
-        setCustomers(cData);
-        setServicesList(sData);
+        try {
+            const [cData, sData, settingsData] = await Promise.all([
+                dataService.getCustomers(),
+                dataService.getServices(),
+                dataService.getSettings()
+            ]);
+            setCustomers(cData);
+            setServicesList(sData);
 
-        if (editId) {
-            const existingOffer = await dataService.getOffer(editId);
-            if (existingOffer) {
-                setSelectedCustomer(cData.find(c => c.id === existingOffer.customer_id));
-                setOfferName(existingOffer.offer_name || '');
-                setOfferLanguage(existingOffer.language);
-                setDiscountPercent(existingOffer.discount_percent || 0);
+            if (editId) {
+                const existingOffer = await dataService.getOffer(editId);
+                if (existingOffer) {
+                    // Find customer in the loaded list. Note: c.id and existingOffer.customer_id are numbers.
+                    const customer = cData.find(c => c.id === existingOffer.customer_id);
+                    setSelectedCustomer(customer);
 
-                // Map items to selectedServices
-                const mappedItems = existingOffer.items.map(item => {
-                    const originalService = sData.find(s => s.id === item.service_id);
-                    return {
-                        ...originalService,
-                        quantity: item.quantity,
-                        unit_price: item.unit_price
-                    };
-                });
-                setSelectedServices(mappedItems);
-                setSelectedPackage('custom');
+                    setOfferName(existingOffer.offer_name || '');
+                    setOfferLanguage(existingOffer.language);
+                    if (existingOffer.due_date) {
+                        setDueDate(existingOffer.due_date.split('T')[0]);
+                    }
+                    setDiscountPercent(existingOffer.discount_percent || 0);
+
+                    // Map items to selectedServices
+                    const mappedItems = existingOffer.items.map(item => {
+                        const originalService = sData.find(s => s.id === item.service_id);
+                        return {
+                            ...originalService,
+                            quantity: item.quantity,
+                            unit_price: item.unit_price
+                        };
+                    });
+                    setSelectedServices(mappedItems);
+                    setSelectedPackage('custom');
+                }
+            } else {
+                const defaults = sData
+                    .filter(s => s.default_selected)
+                    .map(s => ({ ...s, quantity: 1, unit_price: s.price }));
+                setSelectedServices(defaults);
+
+                // Set default due date based on settings
+                if (settingsData && settingsData.default_validity_days) {
+                    const d = new Date();
+                    d.setDate(d.getDate() + settingsData.default_validity_days);
+                    setDueDate(d.toISOString().split('T')[0]);
+                }
             }
-        } else {
-            // Initial defaults if not editing
-            const defaults = sData
-                .filter(s => s.default_selected)
-                .map(s => ({ ...s, quantity: 1, unit_price: s.price }));
-            setSelectedServices(defaults);
+        } catch (error) {
+            console.error("Failed to load data:", error);
+        } finally {
+            setIsLoading(false);
         }
-        setIsLoading(false);
     }, [editId]);
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         loadData();
     }, [loadData]);
+
+    const handleSave = async (e) => {
+        // e might be undefined if called directly, but usually called from button click
+        if (e) e.preventDefault();
+        setIsSaving(true);
+
+        const totals = calculateTotals(selectedServices, discountPercent); // Note: country arg missing here in original handleSave but present in render? 
+        // Logic below at 230 includes country. Let's use that if possible or just rely on global? 
+        // Actually, let's stick to the handleSave implementation from top block (lines 79-113) 
+        // but wait, calculateTotals usually needs country for VAT? 
+        // In line 230 it was `calculateTotals(selectedServices, discountPercent, selectedCustomer?.country || 'DE');`
+        // In line 83 it was `const totals = calculateTotals(selectedServices, discountPercent);`
+        // I should probably use the more complete one.
+
+        const currentTotals = calculateTotals(selectedServices, discountPercent, selectedCustomer?.country || 'DE');
+
+        const offerData = {
+            customer_id: selectedCustomer.id,
+            offer_name: offerName,
+            language: offerLanguage,
+            due_date: dueDate,
+            items: selectedServices.map(s => ({
+                service_id: s.id,
+                quantity: s.quantity,
+                unit_price: s.unit_price,
+                total_price: s.quantity * s.unit_price,
+                billing_cycle: s.billing_cycle || 'one_time'
+            })),
+            ...currentTotals
+        };
+
+        try {
+            if (editId) {
+                await dataService.updateOffer(editId, offerData);
+                navigate(`/offer/preview/${editId}`);
+            } else {
+                const res = await dataService.saveOffer(offerData);
+                navigate(`/offer/preview/${res.id}`);
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Error saving offer');
+        }
+        setIsSaving(false);
+    };
 
     const handlePackageChange = (pkgId) => {
         setSelectedPackage(pkgId);
@@ -110,7 +179,39 @@ const OfferWizardPage = () => {
         setSelectedServices(prev => {
             const exists = prev.find(s => s.id === service.id);
             if (exists) return prev.filter(s => s.id !== service.id);
+
+            // Handle variants
+            if (service.variants && service.variants.length > 0) {
+                // Select default or first variant
+                const v = service.variants.find(v => v.is_default) || service.variants[0];
+                return [...prev, {
+                    ...service,
+                    variant_id: v.id,
+                    quantity: 1,
+                    unit_price: v.price,
+                    item_name: `${offerLanguage === 'de' ? service.name_de : service.name_fr}: ${v.name}`,
+                    billing_cycle: v.billing_cycle,
+                    item_description: v.description
+                }];
+            }
+
             return [...prev, { ...service, quantity: 1, unit_price: service.price }];
+        });
+    };
+
+    const selectVariant = (service, variant) => {
+        setSelectedServices(prev => {
+            const existing = prev.find(s => s.id === service.id);
+            const others = prev.filter(s => s.id !== service.id);
+            return [...others, {
+                ...service,
+                variant_id: variant.id,
+                quantity: existing ? existing.quantity : 1,
+                unit_price: variant.price,
+                item_name: `${offerLanguage === 'de' ? service.name_de : service.name_fr}: ${variant.name}`,
+                billing_cycle: variant.billing_cycle,
+                item_description: variant.description
+            }].sort((a, b) => a.id - b.id); // Keep order roughly? Or just append. sorting by ID is safer for UI stability
         });
     };
 
@@ -121,36 +222,6 @@ const OfferWizardPage = () => {
     };
 
     const totals = calculateTotals(selectedServices, discountPercent, selectedCustomer?.country || 'DE');
-
-    const handleSave = async () => {
-        setIsSaving(true);
-
-        const offerData = {
-            customer_id: selectedCustomer.id,
-            offer_name: offerName,
-            language: offerLanguage,
-            subtotal: totals.subtotal,
-            vat: totals.vat,
-            total: totals.total,
-            status: editId ? undefined : 'draft', // Backend handles status updates or keeps existing on PUT
-            discount_percent: discountPercent,
-            items: selectedServices.map(s => ({
-                service_id: s.id,
-                quantity: s.quantity,
-                unit_price: s.unit_price,
-                total_price: s.quantity * s.unit_price
-            }))
-        };
-
-        if (editId) {
-            await dataService.updateOffer(editId, offerData);
-        } else {
-            await dataService.saveOffer(offerData);
-        }
-
-        setIsSaving(false);
-        navigate('/offers');
-    };
 
     if (isLoading) return <div className="page-container">Loading...</div>;
 
@@ -183,7 +254,17 @@ const OfferWizardPage = () => {
                             <h2 style={{ marginBottom: '1.5rem' }}>Customer & Basic Info</h2>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                                 <div>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>{t('offer.customer')}</label>
+                                    <label className="form-label">Offer Name / Project</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Website Redesign Summer 2026"
+                                        style={{ width: '100%', padding: '0.75rem' }}
+                                        value={offerName}
+                                        onChange={(e) => setOfferName(e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="form-label">{t('offer.customer')}</label>
                                     <select
                                         style={{ width: '100%', padding: '0.75rem' }}
                                         value={selectedCustomer?.id || ''}
@@ -195,7 +276,7 @@ const OfferWizardPage = () => {
                                 </div>
                                 <div className="grid grid-2">
                                     <div>
-                                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>{t('offer.language')}</label>
+                                        <label className="form-label">{t('offer.language')}</label>
                                         <select
                                             style={{ width: '100%', padding: '0.75rem' }}
                                             value={offerLanguage}
@@ -206,7 +287,7 @@ const OfferWizardPage = () => {
                                         </select>
                                     </div>
                                     <div>
-                                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Preset Package</label>
+                                        <label className="form-label">Preset Package</label>
                                         <select
                                             style={{ width: '100%', padding: '0.75rem' }}
                                             value={selectedPackage}
@@ -214,6 +295,15 @@ const OfferWizardPage = () => {
                                         >
                                             {packages.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                         </select>
+                                    </div>
+                                    <div>
+                                        <label className="form-label">{t('offer.due_date') || 'Valid Until'}</label>
+                                        <input
+                                            type="date"
+                                            style={{ width: '100%', padding: '0.75rem' }}
+                                            value={dueDate}
+                                            onChange={(e) => setDueDate(e.target.value)}
+                                        />
                                     </div>
                                 </div>
                             </div>
@@ -239,35 +329,79 @@ const OfferWizardPage = () => {
                             )}
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                {servicesList.map(s => (
-                                    <div key={s.id} style={{
-                                        display: 'flex', alignItems: 'center', gap: '1rem',
-                                        padding: '1rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
-                                        background: selectedServices.find(ss => ss.id === s.id) ? '#eff6ff' : 'transparent'
-                                    }}>
-                                        <input
-                                            type="checkbox"
-                                            style={{ width: 22, height: 22 }}
-                                            checked={!!selectedServices.find(ss => ss.id === s.id)}
-                                            onChange={() => toggleService(s)}
-                                        />
-                                        <div style={{ flex: 1 }}>
-                                            <p style={{ fontWeight: 600, margin: 0 }}>{offerLanguage === 'de' ? s.name_de : s.name_fr}</p>
-                                            <small style={{ color: 'var(--text-muted)' }}>{s.category} • € {s.price} / {s.unit_type}</small>
-                                        </div>
-                                        {selectedServices.find(ss => ss.id === s.id) && (
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {servicesList.map(s => {
+                                    const isSelected = !!selectedServices.find(ss => ss.id === s.id);
+                                    const selectedVariantId = isSelected ? selectedServices.find(ss => ss.id === s.id).variant_id : null;
+                                    const hasVariants = s.variants && s.variants.length > 0;
+
+                                    return (
+                                        <div key={s.id} style={{
+                                            padding: '1rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+                                            background: isSelected ? '#eff6ff' : 'transparent',
+                                            display: 'flex', flexDirection: 'column', gap: '0.5rem'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                                                 <input
-                                                    type="number"
-                                                    min="1"
-                                                    style={{ width: 60, padding: '0.4rem' }}
-                                                    value={selectedServices.find(ss => ss.id === s.id).quantity}
-                                                    onChange={(e) => updateQuantity(s.id, e.target.value)}
+                                                    type="checkbox"
+                                                    style={{ width: 22, height: 22 }}
+                                                    checked={isSelected}
+                                                    onChange={() => toggleService(s)}
                                                 />
+                                                <div style={{ flex: 1 }}>
+                                                    <p style={{ fontWeight: 600, margin: 0 }}>{offerLanguage === 'de' ? s.name_de : s.name_fr}</p>
+                                                    {!hasVariants && <small style={{ color: 'var(--text-muted)' }}>{s.category} • € {s.price} / {s.unit_type}</small>}
+                                                    {hasVariants && <small style={{ color: 'var(--text-muted)' }}>{s.category}</small>}
+                                                </div>
+                                                {isSelected && !hasVariants && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            style={{ width: 60, padding: '0.4rem' }}
+                                                            value={selectedServices.find(ss => ss.id === s.id).quantity}
+                                                            onChange={(e) => updateQuantity(s.id, e.target.value)}
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
-                                ))}
+
+                                            {/* Variants List */}
+                                            {hasVariants && (
+                                                <div style={{ marginLeft: '2.5rem', marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                    {s.variants.map(v => (
+                                                        <label key={v.id} style={{
+                                                            display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer',
+                                                            opacity: isSelected ? 1 : 0.6
+                                                        }}>
+                                                            <input
+                                                                type="radio"
+                                                                name={`service-${s.id}`}
+                                                                checked={isSelected && selectedVariantId === v.id}
+                                                                onChange={() => selectVariant(s, v)}
+                                                                disabled={!isSelected}
+                                                            />
+                                                            <span style={{ fontSize: '0.9rem' }}>
+                                                                {v.name} - {formatCurrency(v.price)} <span style={{ color: '#64748b' }}>({v.billing_cycle})</span>
+                                                            </span>
+                                                        </label>
+                                                    ))}
+                                                    {isSelected && (
+                                                        <div style={{ marginTop: '0.5rem' }}>
+                                                            <label style={{ fontSize: '0.85rem', marginRight: '0.5rem' }}>Quantity:</label>
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                style={{ width: 60, padding: '0.3rem' }}
+                                                                value={selectedServices.find(ss => ss.id === s.id).quantity}
+                                                                onChange={(e) => updateQuantity(s.id, e.target.value)}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
@@ -277,7 +411,7 @@ const OfferWizardPage = () => {
                             <h2 style={{ marginBottom: '1.5rem' }}>Finalize</h2>
                             <div className="grid grid-2" style={{ marginBottom: '1.5rem' }}>
                                 <div>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Rabatt (%)</label>
+                                    <label className="form-label">Rabatt (%)</label>
                                     <input
                                         type="number"
                                         max="100"
@@ -301,7 +435,7 @@ const OfferWizardPage = () => {
                         {step > 1 && <button className="btn-secondary" onClick={() => setStep(step - 1)}>{t('common.back')}</button>}
                         <div style={{ flex: 1 }} />
                         {step < 3 ? (
-                            <button className="btn-primary" onClick={() => setStep(step + 1)} disabled={step === 1 && !selectedCustomer}>
+                            <button className="btn-primary" onClick={() => setStep(step + 1)} disabled={step === 1 && (!selectedCustomer || !offerName)}>
                                 {t('common.next')}
                             </button>
                         ) : (
@@ -311,7 +445,7 @@ const OfferWizardPage = () => {
                         )}
                     </div>
                 </div>
-            </div>
+            </div >
 
             <div className="sticky-panel">
                 <div className="card" style={{ position: 'sticky', top: '2rem', border: '2px solid var(--primary)' }}>
@@ -332,7 +466,7 @@ const OfferWizardPage = () => {
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 

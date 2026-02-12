@@ -43,8 +43,8 @@ const CustomersPage = () => {
 
     return (
         <div className="page-container">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                <h1 style={{ fontSize: '1.875rem', fontWeight: 700 }}>{t('nav.customers')}</h1>
+            <div className="page-header">
+                <h1 className="page-title">{t('nav.customers')}</h1>
                 <button
                     className="btn-primary"
                     onClick={() => {
@@ -55,33 +55,33 @@ const CustomersPage = () => {
             </div>
 
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <table className="data-table">
                     <thead>
-                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--border)' }}>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Name</th>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Address</th>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>VAT</th>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Actions</th>
+                        <tr>
+                            <th>Name</th>
+                            <th>Address</th>
+                            <th>VAT</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {isLoading ? (
                             <tr><td colSpan="4" style={{ padding: '2rem', textAlign: 'center' }}>Loading...</td></tr>
                         ) : customers.length > 0 ? customers.map(customer => (
-                            <tr key={customer.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                <td style={{ padding: '1rem', fontWeight: 500 }}>
+                            <tr key={customer.id}>
+                                <td style={{ fontWeight: 500 }}>
                                     <Link to={`/customers/${customer.id}`} style={{ color: 'var(--primary)', textDecoration: 'none' }}>
                                         {customer.company_name}
                                     </Link>
                                 </td>
-                                <td style={{ padding: '1rem' }}>{customer.country}</td>
-                                <td style={{ padding: '1rem' }}>{customer.vat_number}</td>
-                                <td style={{ padding: '1rem' }}>
+                                <td>{customer.country}</td>
+                                <td>{customer.vat_number}</td>
+                                <td>
                                     <button
                                         onClick={() => handleEdit(customer)}
-                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                                        className="btn-icon"
                                     >
-                                        <Pencil size={18} />
+                                        <Pencil size={16} />
                                     </button>
                                 </td>
                             </tr>

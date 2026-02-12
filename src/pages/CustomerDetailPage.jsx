@@ -70,7 +70,7 @@ const CustomerDetailPage = () => {
                     <ChevronLeft size={24} />
                 </Link>
                 <div style={{ flex: 1 }}>
-                    <h1 style={{ fontSize: '1.875rem', fontWeight: 700, margin: 0 }}>{customer.company_name}</h1>
+                    <h1 className="page-title" style={{ margin: 0 }}>{customer.company_name}</h1>
                     <div style={{ display: 'flex', gap: '1.5rem', color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
                         <span>{customer.country}</span>
                         <span>{customer.vat_number}</span>
@@ -79,10 +79,10 @@ const CustomerDetailPage = () => {
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                     <button className="btn-secondary" onClick={() => setIsEditModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Pencil size={18} /> Edit Profile
+                        <Pencil size={16} /> Edit Profile
                     </button>
                     <button className="btn-primary" onClick={() => navigate('/offer/new', { state: { customerId: customer.id } })} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Plus size={18} /> New Offer
+                        <Plus size={16} /> New Offer
                     </button>
                 </div>
             </div>
@@ -101,43 +101,42 @@ const CustomerDetailPage = () => {
                 <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h3 style={{ margin: 0 }}>Offer History</h3>
                     <button
-                        className="btn-secondary"
-                        style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem' }}
+                        className="btn-secondary btn-sm"
                         onClick={() => offers.length > 0 && handleDuplicateOffer(offers[0].id)}
                         disabled={offers.length === 0}
                     >
                         <Copy size={14} style={{ marginRight: '0.5rem' }} /> Duplicate Last
                     </button>
                 </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <table className="data-table">
                     <thead>
-                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--border)' }}>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Offer #</th>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Date Created</th>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Total Amount</th>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Status</th>
-                            <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>Actions</th>
+                        <tr>
+                            <th>Offer #</th>
+                            <th>Date Created</th>
+                            <th>Total Amount</th>
+                            <th>Status</th>
+                            <th style={{ textAlign: 'right' }}>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {offers.length > 0 ? offers.map(offer => (
-                            <tr key={offer.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                <td style={{ padding: '1rem', fontWeight: 600 }}>ANB-{offer.id}</td>
-                                <td style={{ padding: '1rem' }}>{new Date(offer.created_at).toLocaleDateString()}</td>
-                                <td style={{ padding: '1rem' }}>{formatCurrency(offer.total)}</td>
-                                <td style={{ padding: '1rem' }}>
+                            <tr key={offer.id}>
+                                <td style={{ fontWeight: 500 }}>ANB-{offer.id}</td>
+                                <td>{new Date(offer.created_at).toLocaleDateString()}</td>
+                                <td>{formatCurrency(offer.total)}</td>
+                                <td>
                                     <span style={{
                                         padding: '0.25rem 0.75rem',
                                         borderRadius: '1rem',
                                         fontSize: '0.75rem',
-                                        fontWeight: 600,
+                                        fontWeight: 500,
                                         background: `${getStatusColor(offer.status)}20`,
                                         color: getStatusColor(offer.status)
                                     }}>
                                         {offer.status.toUpperCase()}
                                     </span>
                                 </td>
-                                <td style={{ padding: '1rem', textAlign: 'right', position: 'relative' }}>
+                                <td style={{ textAlign: 'right', position: 'relative' }}>
                                     <button
                                         className="btn-icon"
                                         onClick={() => setActiveDropdown(activeDropdown === offer.id ? null : offer.id)}

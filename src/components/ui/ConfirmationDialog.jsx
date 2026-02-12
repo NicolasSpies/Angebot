@@ -16,7 +16,6 @@ const ConfirmationDialog = ({ isOpen, onClose, onConfirm, title, message, confir
                 <button
                     onClick={onClose}
                     className="btn-secondary"
-                    style={{ background: '#e2e8f0', padding: '0.6rem 1.25rem' }}
                 >
                     {cancelText || t('common.cancel')}
                 </button>

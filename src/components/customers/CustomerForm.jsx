@@ -180,7 +180,7 @@ const CustomerForm = ({ customer, onSave, onDelete, onCancel }) => {
                     </button>
                 )}
                 <div style={{ display: 'flex', gap: '1rem', marginLeft: 'auto' }}>
-                    <button type="button" onClick={onCancel} className="btn-secondary" style={{ background: '#e2e8f0', padding: '0.6rem 1.25rem' }}>
+                    <button type="button" onClick={onCancel} className="btn-secondary">
                         {t('common.cancel')}
                     </button>
                     <button type="submit" className="btn-primary">

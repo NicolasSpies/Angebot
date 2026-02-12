@@ -34,8 +34,8 @@ const DashboardPage = () => {
 
     return (
         <div className="page-container" style={{ maxWidth: '1400px', margin: '0 auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <h1 style={{ fontSize: '1.75rem', fontWeight: 700 }}>{t('nav.dashboard')}</h1>
+            <div className="page-header">
+                <h1 className="page-title">{t('nav.dashboard')}</h1>
                 <Link to="/offer/new" className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}>
                     <Plus size={18} /> Quick Create Offer
                 </Link>
@@ -43,8 +43,8 @@ const DashboardPage = () => {
 
             {/* TOP ROW: Summary Status */}
             <div className="grid grid-3" style={{ marginBottom: '1.5rem', gap: '1rem' }}>
-                <div className="card" style={{ padding: '1rem', borderLeft: '4px solid #94a3b8', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{ background: '#f1f5f9', p: '0.75rem', borderRadius: '12px', color: '#64748b', display: 'flex', padding: '0.75rem' }}>
+                <div className="card" style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ background: '#F0EBFF', borderRadius: '14px', color: '#6C3CFE', display: 'flex', padding: '0.75rem' }}>
                         <FileText size={20} />
                     </div>
                     <div>
@@ -52,8 +52,8 @@ const DashboardPage = () => {
                         <h2 style={{ fontSize: '1.5rem', margin: 0 }}>{summary.draftCount}</h2>
                     </div>
                 </div>
-                <div className="card" style={{ padding: '1rem', borderLeft: '4px solid #3b82f6', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{ background: '#eff6ff', p: '0.75rem', borderRadius: '12px', color: '#2563eb', display: 'flex', padding: '0.75rem' }}>
+                <div className="card" style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ background: '#FFF6E5', borderRadius: '14px', color: '#FFB547', display: 'flex', padding: '0.75rem' }}>
                         <Clock size={20} />
                     </div>
                     <div>
@@ -61,8 +61,8 @@ const DashboardPage = () => {
                         <h2 style={{ fontSize: '1.5rem', margin: 0 }}>{summary.pendingCount}</h2>
                     </div>
                 </div>
-                <div className="card" style={{ padding: '1rem', borderLeft: '4px solid #10b981', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{ background: '#ecfdf5', p: '0.75rem', borderRadius: '12px', color: '#059669', display: 'flex', padding: '0.75rem' }}>
+                <div className="card" style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ background: '#E6FBF3', borderRadius: '14px', color: '#05CD99', display: 'flex', padding: '0.75rem' }}>
                         <CheckCircle size={20} />
                     </div>
                     <div>
@@ -86,7 +86,7 @@ const DashboardPage = () => {
                                 <XAxis dataKey="month" />
                                 <YAxis />
                                 <Tooltip formatter={(value) => formatCurrency(value)} />
-                                <Bar dataKey="total" name="Revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="total" name="Revenue" fill="var(--primary)" radius={[8, 8, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
@@ -100,7 +100,7 @@ const DashboardPage = () => {
                     </div>
                     <div className="card" style={{ padding: '1rem' }}>
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.5rem' }}>Revenue Forecast</p>
-                        <h4 style={{ fontSize: '1.1rem', margin: 0, color: '#2563eb' }}>{formatCurrency(financials.forecastPending)}</h4>
+                        <h4 style={{ fontSize: '1.1rem', margin: 0, color: '#6C3CFE' }}>{formatCurrency(financials.forecastPending)}</h4>
                     </div>
                     <div className="card" style={{ padding: '1rem' }}>
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.5rem' }}>Avg Offer Value</p>
@@ -112,11 +112,11 @@ const DashboardPage = () => {
                     </div>
                     <div className="card" style={{ padding: '1rem' }}>
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.5rem' }}>Profit Estimate</p>
-                        <h4 style={{ fontSize: '1.1rem', margin: 0, color: '#059669' }}>{formatCurrency(financials.profitEstimate)}</h4>
+                        <h4 style={{ fontSize: '1.1rem', margin: 0, color: '#05CD99' }}>{formatCurrency(financials.profitEstimate)}</h4>
                     </div>
                     <div className="card" style={{ padding: '1rem' }}>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.5rem' }}>Lead Time (Avg)</p>
-                        <h4 style={{ fontSize: '1.1rem', margin: 0 }}>{Math.round(performance.avgLeadTime)} Days</h4>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.5rem' }}>Avg Monthly Income</p>
+                        <h4 style={{ fontSize: '1.1rem', margin: 0 }}>{formatCurrency(performance.avgMonthlyIncome)}</h4>
                     </div>
                 </div>
             </div>
@@ -130,10 +130,20 @@ const DashboardPage = () => {
                     </h4>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                         <div style={{ p: '0.75rem', borderRadius: '8px', background: '#fef2f2', border: '1px solid #fee2e2', padding: '0.75rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: alerts.expiringOffers?.length > 0 ? '0.5rem' : 0 }}>
                                 <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>Expiring within 7 days</span>
                                 <span style={{ fontWeight: 700, color: '#b91c1c' }}>{alerts.expiringSoonCount}</span>
                             </div>
+                            {alerts.expiringOffers?.length > 0 && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    {alerts.expiringOffers.map(o => (
+                                        <Link key={o.id} to={`/offer/preview/${o.id}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', textDecoration: 'none', color: '#7f1d1d', background: 'rgba(255,255,255,0.5)', padding: '4px 8px', borderRadius: '4px' }}>
+                                            <span>{o.company_name}</span>
+                                            <span style={{ fontWeight: 600 }}>{new Date(o.due_date).toLocaleDateString()}</span>
+                                        </Link>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                         <div style={{ p: '0.75rem', borderRadius: '8px', background: '#fffbeb', border: '1px solid #fef3c7', padding: '0.75rem' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

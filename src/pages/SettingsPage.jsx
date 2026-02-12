@@ -14,7 +14,10 @@ const SettingsPage = () => {
         website: '',
         default_currency: 'EUR',
         default_vat_rules: '',
-        default_payment_terms: ''
+        default_payment_terms: '',
+        default_hourly_rate: 0,
+        work_categories: '["Web Development", "Design", "Marketing", "Hosting"]',
+        default_validity_days: 14
     });
     const [isSaving, setIsSaving] = useState(false);
     const [msg, setMsg] = useState('');
@@ -50,7 +53,7 @@ const SettingsPage = () => {
             <div className="card" style={{ maxWidth: '800px' }}>
                 <form onSubmit={handleSave} className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                     <div style={{ gridColumn: '1 / -1' }}>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>{t('settings.company_name')}</label>
+                        <label className="form-label">{t('settings.company_name')}</label>
                         <input
                             type="text"
                             style={{ width: '100%' }}
@@ -60,7 +63,7 @@ const SettingsPage = () => {
                     </div>
 
                     <div style={{ gridColumn: '1 / -1' }}>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>{t('settings.address')}</label>
+                        <label className="form-label">{t('settings.address')}</label>
                         <textarea
                             rows="3"
                             style={{ width: '100%' }}
@@ -70,7 +73,7 @@ const SettingsPage = () => {
                     </div>
 
                     <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>{t('settings.vat_number')}</label>
+                        <label className="form-label">{t('settings.vat_number')}</label>
                         <input
                             type="text"
                             style={{ width: '100%' }}
@@ -80,7 +83,7 @@ const SettingsPage = () => {
                     </div>
 
                     <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>{t('settings.email')}</label>
+                        <label className="form-label">{t('settings.email')}</label>
                         <input
                             type="email"
                             style={{ width: '100%' }}
@@ -90,28 +93,29 @@ const SettingsPage = () => {
                     </div>
 
                     <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Phone</label>
+                        <label className="form-label">Phone</label>
                         <input
-                            type="tel"
+                            type="text"
                             style={{ width: '100%' }}
                             value={settings.phone || ''}
                             onChange={e => setSettings({ ...settings, phone: e.target.value })}
+                            placeholder="+1 234 567 890"
                         />
                     </div>
 
                     <div style={{ gridColumn: '1 / -1' }}>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Website</label>
+                        <label className="form-label">Website</label>
                         <input
-                            type="url"
+                            type="text"
                             style={{ width: '100%' }}
                             value={settings.website || ''}
                             onChange={e => setSettings({ ...settings, website: e.target.value })}
-                            placeholder="https://example.com"
+                            placeholder="example.com"
                         />
                     </div>
 
                     <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>{t('settings.currency')}</label>
+                        <label className="form-label">{t('settings.currency')}</label>
                         <input
                             type="text"
                             style={{ width: '100%' }}
@@ -121,13 +125,96 @@ const SettingsPage = () => {
                     </div>
 
                     <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>{t('settings.payment_terms')}</label>
+                        <label className="form-label">{t('settings.payment_terms')}</label>
                         <input
                             type="text"
                             style={{ width: '100%' }}
                             value={settings.default_payment_terms}
                             onChange={e => setSettings({ ...settings, default_payment_terms: e.target.value })}
                         />
+                    </div>
+
+                    <div>
+                        <label className="form-label">Default Hourly Rate (€)</label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            style={{ width: '100%' }}
+                            value={settings.default_hourly_rate}
+                            onChange={e => setSettings({ ...settings, default_hourly_rate: e.target.value })}
+                        />
+                    </div>
+
+                    <div>
+                        <label className="form-label">Default Validity (Days)</label>
+                        <input
+                            type="number"
+                            style={{ width: '100%' }}
+                            value={settings.default_validity_days}
+                            onChange={e => setSettings({ ...settings, default_validity_days: parseInt(e.target.value) || 14 })}
+                        />
+                    </div>
+
+                    <div style={{ gridColumn: '1 / -1' }}>
+                        <label className="form-label">Work Categories</label>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                            <input
+                                type="text"
+                                placeholder="New Category"
+                                id="new-category"
+                                style={{ flex: 1 }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        const val = e.target.value.trim();
+                                        if (val) {
+                                            const currentcats = settings.work_categories ? JSON.parse(settings.work_categories) : [];
+                                            if (!currentcats.includes(val)) {
+                                                const newCats = [...currentcats, val];
+                                                setSettings({ ...settings, work_categories: JSON.stringify(newCats) });
+                                                e.target.value = '';
+                                            }
+                                        }
+                                    }
+                                }}
+                            />
+                            <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() => {
+                                    const input = document.getElementById('new-category');
+                                    const val = input.value.trim();
+                                    if (val) {
+                                        const currentcats = settings.work_categories ? JSON.parse(settings.work_categories) : [];
+                                        if (!currentcats.includes(val)) {
+                                            const newCats = [...currentcats, val];
+                                            setSettings({ ...settings, work_categories: JSON.stringify(newCats) });
+                                            input.value = '';
+                                        }
+                                    }
+                                }}
+                            >
+                                Add
+                            </button>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            {(settings.work_categories ? JSON.parse(settings.work_categories) : []).map(cat => (
+                                <span key={cat} style={{ background: '#f1f5f9', padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    {cat}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const currentcats = settings.work_categories ? JSON.parse(settings.work_categories) : [];
+                                            const newCats = currentcats.filter(c => c !== cat);
+                                            setSettings({ ...settings, work_categories: JSON.stringify(newCats) });
+                                        }}
+                                        className="btn-icon" style={{ color: '#ef4444' }}
+                                    >
+                                        ×
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
                     </div>
 
                     <div style={{ gridColumn: '1 / -1' }}>
@@ -160,7 +247,7 @@ const SettingsPage = () => {
                                         formData.append('logo', file);
 
                                         try {
-                                            const res = await fetch('http://localhost:3001/api/upload', {
+                                            const res = await fetch('/api/upload', {
                                                 method: 'POST',
                                                 body: formData
                                             });
@@ -182,7 +269,7 @@ const SettingsPage = () => {
                                 <button
                                     type="button"
                                     onClick={() => setSettings({ ...settings, logo_url: '' })}
-                                    style={{ color: 'var(--destructive)', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                                    className="btn-ghost" style={{ color: 'var(--danger)' }}
                                 >
                                     Remove Logo
                                 </button>

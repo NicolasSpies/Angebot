@@ -3,6 +3,7 @@ import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import Modal from '../components/ui/Modal';
 import ServiceForm from '../components/services/ServiceForm';
+import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 
 const ServicesPage = () => {
     const { t, locale } = useI18n();
@@ -10,9 +11,10 @@ const ServicesPage = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingService, setEditingService] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [deleteTarget, setDeleteTarget] = useState(null);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
     const loadServices = useCallback(async () => {
-        // setIsLoading(true);
         const data = await dataService.getServices();
         setServices(data);
         setIsLoading(false);
@@ -36,10 +38,23 @@ const ServicesPage = () => {
         setIsModalOpen(true);
     };
 
+    const handleDeleteClick = (service) => {
+        setDeleteTarget(service);
+        setIsDeleteDialogOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteTarget) return;
+        setIsLoading(true);
+        await dataService.deleteService(deleteTarget.id);
+        setDeleteTarget(null);
+        loadServices();
+    };
+
     return (
         <div className="page-container">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                <h1 style={{ fontSize: '1.875rem', fontWeight: 700 }}>{t('nav.services')}</h1>
+            <div className="page-header">
+                <h1 className="page-title">{t('nav.services')}</h1>
                 <button
                     className="btn-primary"
                     onClick={() => {
@@ -65,11 +80,24 @@ const ServicesPage = () => {
                             </p>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
-                            <span style={{ fontWeight: 700, fontSize: '1.1rem' }}>{service.price} €</span>
-                            <button
-                                onClick={() => handleEdit(service)}
-                                style={{ background: 'transparent', color: 'var(--primary)', fontWeight: 600 }}
-                            >{t('common.edit')}</button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ fontWeight: 700, fontSize: '1.1rem' }}>{service.price} €</span>
+                                {service.billing_cycle && service.billing_cycle !== 'one_time' && (
+                                    <span className="status-badge" style={{ background: '#e0f2fe', color: '#0369a1' }}>
+                                        {service.billing_cycle}
+                                    </span>
+                                )}
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button
+                                    onClick={() => handleEdit(service)}
+                                    className="btn-ghost" style={{ color: 'var(--primary)' }}
+                                >{t('common.edit')}</button>
+                                <button
+                                    onClick={() => handleDeleteClick(service)}
+                                    className="btn-ghost" style={{ color: '#ef4444' }}
+                                >🗑</button>
+                            </div>
                         </div>
                     </div>
                 )) : (
@@ -88,6 +116,16 @@ const ServicesPage = () => {
                     onCancel={() => setIsModalOpen(false)}
                 />
             </Modal>
+
+            <ConfirmationDialog
+                isOpen={isDeleteDialogOpen}
+                onClose={() => setIsDeleteDialogOpen(false)}
+                onConfirm={confirmDelete}
+                title="Delete Service"
+                message={`Are you sure you want to delete "${deleteTarget?.name_de || deleteTarget?.name_fr}"? This cannot be undone.`}
+                confirmText={t('common.delete')}
+                isDestructive={true}
+            />
         </div>
     );
 };

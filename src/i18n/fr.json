@@ -13,7 +13,8 @@
         "save": "Enregistrer",
         "cancel": "Annuler",
         "back": "Retour",
-        "print": "Imprimer"
+        "print": "Imprimer",
+        "next": "Suivant"
     },
     "offer": {
         "title": "Nouvelle Offre",
@@ -26,7 +27,11 @@
         "status": "Statut",
         "create": "Créer l'offre",
         "duplicate": "Dupliquer",
-        "send_to_billit": "Envoyer à Billit"
+        "send_to_billit": "Envoyer à Billit",
+        "step_1": "Client & Détails",
+        "step_2": "Services",
+        "step_3": "Finalisation",
+        "language": "Langue"
     },
     "settings": {
         "company_name": "Nom de l'entreprise",
