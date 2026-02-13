@@ -10,6 +10,8 @@ import OfferPreviewPage from './pages/OfferPreviewPage';
 import PublicOfferPage from './pages/PublicOfferPage';
 import CustomerDetailPage from './pages/CustomerDetailPage';
 import SettingsPage from './pages/SettingsPage';
+import ProjectsPage from './pages/ProjectsPage';
+import ProjectDetailView from './pages/ProjectDetailPage';
 import { I18nProvider } from './i18n/I18nContext';
 
 function App() {
@@ -21,6 +23,8 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="offers" element={<OffersPage />} />
+            <Route path="projects" element={<ProjectsPage />} />
+            <Route path="projects/:id" element={<ProjectDetailView />} />
             <Route path="customers" element={<CustomersPage />} />
             <Route path="customers/:id" element={<CustomerDetailPage />} />
             <Route path="services" element={<ServicesPage />} />

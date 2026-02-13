@@ -176,15 +176,18 @@ app.put('/api/services/:id', (req, res) => {
 
 app.delete('/api/services/:id', (req, res) => {
     const serviceId = req.params.id;
-    const transaction = db.transaction(() => {
+    try {
         db.prepare('DELETE FROM service_variants WHERE service_id = ?').run(serviceId);
         db.prepare('DELETE FROM services WHERE id = ?').run(serviceId);
-    });
-    try {
-        transaction();
         res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        if (err.message.includes('FOREIGN KEY constraint failed')) {
+            // Soft delete if used in offers
+            db.prepare('UPDATE services SET active = 0 WHERE id = ?').run(serviceId);
+            res.json({ success: true, message: 'Service set to inactive (used in offers)' });
+        } else {
+            res.status(500).json({ error: err.message });
+        }
     }
 });
 
@@ -347,6 +350,8 @@ app.post('/api/offers/public/:token/decline', (req, res) => {
     db.transaction(() => {
         db.prepare("UPDATE offers SET status = 'declined', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(offer.id);
         db.prepare("INSERT INTO offer_events (offer_id, event_type, comment, ip_address) VALUES (?, 'declined', ?, ?)").run(offer.id, comment, ip);
+        // Sync project status
+        db.prepare("UPDATE projects SET status = 'cancelled' WHERE offer_id = ?").run(offer.id);
     })();
 
     res.json({ success: true });
@@ -362,20 +367,22 @@ app.post('/api/offers/public/:token/sign', (req, res) => {
     db.transaction(() => {
         db.prepare("UPDATE offers SET status = 'signed', signed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(offer.id);
         db.prepare("INSERT INTO offer_events (offer_id, event_type, ip_address) VALUES (?, 'signed', ?)").run(offer.id, ip);
+        // Sync project status
+        db.prepare("UPDATE projects SET status = 'todo' WHERE offer_id = ?").run(offer.id);
     })();
 
     res.json({ success: true });
 });
 
 app.post('/api/offers', (req, res) => {
-    const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date } = req.body;
+    const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date, internal_notes, linked_project_id } = req.body;
 
     const transaction = db.transaction(() => {
         const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
         const offerResult = db.prepare(`
-            INSERT INTO offers (customer_id, offer_name, language, status, subtotal, vat, total, token, due_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(customer_id, offer_name, language, status || 'draft', subtotal, vat, total, token, due_date);
+            INSERT INTO offers (customer_id, offer_name, language, status, subtotal, vat, total, token, due_date, internal_notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(customer_id, offer_name, language, status || 'draft', subtotal, vat, total, token, due_date, internal_notes || null);
 
         const offerId = offerResult.lastInsertRowid;
 
@@ -395,6 +402,24 @@ app.post('/api/offers', (req, res) => {
                 item.item_name || null,
                 item.item_description || null
             );
+        }
+
+        // Project Synchronization Logic
+        if (linked_project_id) {
+            // Link to EXISTING project and update it
+            const projectStatus = status === 'signed' ? 'todo' : 'pending';
+            db.prepare(`
+                UPDATE projects 
+                SET offer_id = ?, status = ?, name = COALESCE(?, name), deadline = COALESCE(?, deadline), internal_notes = COALESCE(?, internal_notes)
+                WHERE id = ?
+            `).run(offerId, projectStatus, offer_name, due_date || null, internal_notes || null, linked_project_id);
+        } else {
+            // Auto-create NEW Pending Project (Synced with Offer)
+            const projectStatus = status === 'signed' ? 'todo' : 'pending';
+            db.prepare(`
+                INSERT INTO projects (offer_id, customer_id, name, status, deadline, internal_notes)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `).run(offerId, customer_id, offer_name || 'Untitled Project', projectStatus, due_date || null, internal_notes || null);
         }
 
         return offerId;
@@ -459,16 +484,16 @@ app.delete('/api/offers/:id', (req, res) => {
 });
 
 app.put('/api/offers/:id', (req, res) => {
-    const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date } = req.body;
+    const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date, internal_notes } = req.body;
     const offerId = req.params.id;
 
     const transaction = db.transaction(() => {
         db.prepare(`
             UPDATE offers SET 
                 customer_id = ?, offer_name = ?, language = ?, status = ?, 
-                subtotal = ?, vat = ?, total = ?, due_date = ?, updated_at = CURRENT_TIMESTAMP
+                subtotal = ?, vat = ?, total = ?, due_date = ?, internal_notes = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-        `).run(customer_id, offer_name, language, status, subtotal, vat, total, due_date, offerId);
+        `).run(customer_id, offer_name, language, status, subtotal, vat, total, due_date, internal_notes || null, offerId);
 
         // Replace items
         db.prepare('DELETE FROM offer_items WHERE offer_id = ?').run(offerId);
@@ -490,7 +515,22 @@ app.put('/api/offers/:id', (req, res) => {
                 item.item_description || null
             );
         }
+
+        // Sync project name/deadline if exists
+        db.prepare(`UPDATE projects SET name = ?, deadline = ? WHERE offer_id = ?`).run(offer_name, due_date || null, offerId);
     });
+
+    // Check if we need to create a project (if status is sent/signed and no project exists)
+    if (status === 'sent' || status === 'signed' || status === 'pending') {
+        const existingProject = db.prepare('SELECT id FROM projects WHERE offer_id = ?').get(offerId);
+        if (!existingProject) {
+            const projectStatus = status === 'signed' ? 'todo' : 'pending';
+            db.prepare(`
+                INSERT INTO projects (offer_id, customer_id, name, status, deadline, internal_notes)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `).run(offerId, customer_id, offer_name || 'Untitled Project', projectStatus, due_date || null, internal_notes || null);
+        }
+    }
 
     try {
         transaction();
@@ -500,24 +540,189 @@ app.put('/api/offers/:id', (req, res) => {
     }
 });
 
-app.put('/api/settings', (req, res) => {
-    const { company_name, address, vat_number, logo_url, email, phone, website, default_currency, default_vat_rules, default_payment_terms, default_hourly_rate, work_categories, default_validity_days } = req.body;
-    db.prepare(`
-        UPDATE settings SET 
-            company_name = ?, address = ?, vat_number = ?, logo_url = ?, 
-            email = ?, phone = ?, website = ?, default_currency = ?, default_vat_rules = ?, default_payment_terms = ?,
-            default_hourly_rate = ?, work_categories = ?, default_validity_days = ?
-        WHERE id = 1
-    `).run(company_name, address, vat_number, logo_url, email, phone, website, default_currency, default_vat_rules, default_payment_terms, default_hourly_rate, work_categories, default_validity_days);
-    res.json({ success: true });
-});
+
 
 app.post('/api/offers/:id/send', (req, res) => {
     db.prepare(`
         UPDATE offers SET status = 'sent', sent_at = CURRENT_TIMESTAMP 
         WHERE id = ?
     `).run(req.params.id);
+
+    // Auto-create project if not exists
+    const offerId = req.params.id;
+    const existingProject = db.prepare('SELECT id FROM projects WHERE offer_id = ?').get(offerId);
+    if (!existingProject) {
+        const offer = db.prepare('SELECT * FROM offers WHERE id = ?').get(offerId);
+        if (offer) {
+            db.prepare(`
+                INSERT INTO projects (offer_id, customer_id, name, status, deadline, internal_notes)
+                VALUES (?, ?, ?, 'pending', ?, ?)
+            `).run(offer.id, offer.customer_id, offer.offer_name || 'Untitled Project', offer.due_date || null, offer.internal_notes || null);
+        }
+    }
     res.json({ success: true });
+});
+
+// Manual status update endpoint
+app.put('/api/offers/:id/status', (req, res) => {
+    const { status } = req.body;
+    const offerId = req.params.id;
+
+    // Update offer status
+    db.prepare('UPDATE offers SET status = ? WHERE id = ?').run(status, offerId);
+
+    // If status is 'sent', update sent_at if null
+    if (status === 'sent') {
+        db.prepare("UPDATE offers SET sent_at = COALESCE(sent_at, CURRENT_TIMESTAMP) WHERE id = ?").run(offerId);
+    }
+    // If status is 'signed', update signed_at if null
+    if (status === 'signed') {
+        db.prepare("UPDATE offers SET signed_at = COALESCE(signed_at, CURRENT_TIMESTAMP) WHERE id = ?").run(offerId);
+    }
+
+    // Sync Project Logic
+    if (status === 'sent' || status === 'signed' || status === 'pending') {
+        const existingProject = db.prepare('SELECT id FROM projects WHERE offer_id = ?').get(offerId);
+        if (!existingProject) {
+            const offer = db.prepare('SELECT * FROM offers WHERE id = ?').get(offerId);
+            if (offer) {
+                const projectStatus = status === 'signed' ? 'todo' : 'pending';
+                db.prepare(`
+                    INSERT INTO projects (offer_id, customer_id, name, status, deadline, internal_notes)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                `).run(offer.id, offer.customer_id, offer.offer_name || 'Untitled Project', projectStatus, offer.due_date || null, offer.internal_notes || null);
+            }
+        } else if (status === 'signed') {
+            // If project exists but offer becomes signed, ensure project is active
+            db.prepare("UPDATE projects SET status = 'todo' WHERE id = ? AND status = 'pending'").run(existingProject.id);
+        }
+    } else if (status === 'declined') {
+        // If declined, cancel project
+        db.prepare("UPDATE projects SET status = 'cancelled' WHERE offer_id = ?").run(offerId);
+    }
+
+    res.json({ success: true });
+});
+
+// --- PROJECTS ---
+app.post('/api/projects', (req, res) => {
+    const { name, customer_id, deadline, status, internal_notes } = req.body;
+    try {
+        const result = db.prepare(`
+            INSERT INTO projects (customer_id, name, status, deadline, internal_notes)
+            VALUES (?, ?, ?, ?, ?)
+        `).run(customer_id || null, name || 'New Project', status || 'todo', deadline || null, internal_notes || null);
+        res.json({ id: result.lastInsertRowid });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/projects', (req, res) => {
+    try {
+        const projects = db.prepare(`
+            SELECT p.*, c.company_name as customer_name, o.offer_name, o.total as offer_total, o.status as offer_status
+            FROM projects p
+            LEFT JOIN customers c ON p.customer_id = c.id
+            LEFT JOIN offers o ON p.offer_id = o.id
+            ORDER BY p.created_at DESC
+        `).all();
+        res.json(projects);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/projects/:id', (req, res) => {
+    try {
+        const project = db.prepare(`
+            SELECT p.*, c.company_name as customer_name, o.offer_name, o.total as offer_total, o.status as offer_status, o.id as offer_id
+            FROM projects p
+            LEFT JOIN customers c ON p.customer_id = c.id
+            LEFT JOIN offers o ON p.offer_id = o.id
+            WHERE p.id = ?
+        `).get(req.params.id);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const tasks = db.prepare('SELECT * FROM tasks WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC').all(req.params.id);
+        res.json({ ...project, tasks });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/projects/:id', (req, res) => {
+    const { name, status, deadline, internal_notes, customer_id, offer_id } = req.body;
+    try {
+        db.prepare(`
+            UPDATE projects SET name = ?, status = ?, deadline = ?, internal_notes = ?, customer_id = ?, offer_id = ? WHERE id = ?
+        `).run(name, status, deadline || null, internal_notes || null, customer_id || null, offer_id || null, req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/projects/:id', (req, res) => {
+    try {
+        db.transaction(() => {
+            db.prepare('DELETE FROM tasks WHERE project_id = ?').run(req.params.id);
+            db.prepare('DELETE FROM projects WHERE id = ?').run(req.params.id);
+        })();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- TASKS ---
+app.post('/api/projects/:id/tasks', (req, res) => {
+    const { title, description, status, due_date, priority } = req.body;
+    const projectId = req.params.id;
+    try {
+        const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM tasks WHERE project_id = ?').get(projectId).max || 0;
+        const result = db.prepare(`
+            INSERT INTO tasks (project_id, title, description, status, due_date, priority, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(projectId, title, description || null, status || 'todo', due_date || null, priority || 'medium', maxOrder + 1);
+        res.json({ id: result.lastInsertRowid });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/tasks/:id', (req, res) => {
+    const { title, description, status, due_date, priority, completed } = req.body;
+    try {
+        db.prepare(`
+            UPDATE tasks SET title = ?, description = ?, status = ?, due_date = ?, priority = ?, completed = ? WHERE id = ?
+        `).run(title, description || null, status || 'todo', due_date || null, priority || 'medium', completed ? 1 : 0, req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/tasks/:id', (req, res) => {
+    try {
+        db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/projects/:id/tasks/reorder', (req, res) => {
+    const { taskIds } = req.body;
+    try {
+        const updateOrder = db.prepare('UPDATE tasks SET sort_order = ? WHERE id = ?');
+        db.transaction(() => {
+            taskIds.forEach((id, index) => updateOrder.run(index, id));
+        })();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // --- DASHBOARD ---
@@ -632,15 +837,98 @@ app.get('/api/dashboard/stats', (req, res) => {
             LIMIT 10
         `).all();
 
+        // Project stats
+        const activeProjectCount = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status IN ('todo', 'in_progress', 'feedback')").get().count;
+        const overdueProjectCount = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status IN ('todo', 'in_progress', 'feedback') AND deadline IS NOT NULL AND deadline < date('now')").get().count;
+        const projectsByStatus = db.prepare("SELECT status, COUNT(*) as count FROM projects GROUP BY status").all();
+
         res.json({
             summary: { draftCount, pendingCount, signedCount },
             financials: { totalOpenValue, forecastPending, profitEstimate, signedRevenue },
             performance: { monthlyPerformance, avgOfferValueMonth, signedThisMonthCount, avgMonthlyIncome },
-            alerts: { expiringSoonCount, oldDraftsCount: 0, expiringOffers }, // TODO: Implement old drafts
-            analytics: { topCategories, topClients, recentActivity }
+            alerts: { expiringSoonCount, oldDraftsCount, expiringOffers },
+            analytics: { topCategories, topClients, recentActivity },
+            projects: { activeProjectCount, overdueProjectCount, projectsByStatus }
         });
     } catch (err) {
         console.error('Dashboard Stats Error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- PACKAGES ---
+app.get('/api/packages', (req, res) => {
+    try {
+        const packages = db.prepare('SELECT * FROM packages').all();
+        const items = db.prepare('SELECT * FROM package_items').all();
+
+        const packagesWithItems = packages.map(p => ({
+            ...p,
+            items: items.filter(it => it.package_id === p.id).map(it => it.service_id)
+        }));
+
+        res.json(packagesWithItems);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/packages', (req, res) => {
+    const { name, description, items } = req.body;
+    try {
+        const transaction = db.transaction(() => {
+            const result = db.prepare(`
+                INSERT INTO packages (name, description)
+                VALUES (?, ?)
+            `).run(name, description || '');
+
+            const packageId = result.lastInsertRowid;
+
+            if (items && Array.isArray(items)) {
+                const insertItem = db.prepare('INSERT INTO package_items (package_id, service_id) VALUES (?, ?)');
+                for (const serviceId of items) {
+                    insertItem.run(packageId, serviceId);
+                }
+            }
+            return packageId;
+        });
+
+        const id = transaction();
+        res.json({ id });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/packages/:id', (req, res) => {
+    const { name, description, items } = req.body;
+    const packageId = req.params.id;
+    try {
+        db.transaction(() => {
+            db.prepare('UPDATE packages SET name = ?, description = ? WHERE id = ?').run(name, description || '', packageId);
+            db.prepare('DELETE FROM package_items WHERE package_id = ?').run(packageId);
+
+            if (items && Array.isArray(items)) {
+                const insertItem = db.prepare('INSERT INTO package_items (package_id, service_id) VALUES (?, ?)');
+                for (const serviceId of items) {
+                    insertItem.run(packageId, serviceId);
+                }
+            }
+        })();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/packages/:id', (req, res) => {
+    try {
+        db.transaction(() => {
+            db.prepare('DELETE FROM package_items WHERE package_id = ?').run(req.params.id);
+            db.prepare('DELETE FROM packages WHERE id = ?').run(req.params.id);
+        })();
+        res.json({ success: true });
+    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });

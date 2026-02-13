@@ -90,6 +90,33 @@ db.exec(`
         FOREIGN KEY (offer_id) REFERENCES offers(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS projects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        offer_id INTEGER UNIQUE,
+        customer_id INTEGER,
+        name TEXT,
+        status TEXT DEFAULT 'todo',
+        deadline DATETIME,
+        internal_notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (offer_id) REFERENCES offers(id),
+        FOREIGN KEY (customer_id) REFERENCES customers(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        title TEXT,
+        description TEXT,
+        status TEXT DEFAULT 'todo',
+        due_date DATETIME,
+        priority TEXT DEFAULT 'medium',
+        completed INTEGER DEFAULT 0,
+        sort_order INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+
     -- Seed settings if not exists
     INSERT OR IGNORE INTO settings (id, company_name) VALUES (1, 'My Agency');
 `);
@@ -127,7 +154,23 @@ const migrations = [
     // Offer Item Snapshotting
     'ALTER TABLE offer_items ADD COLUMN item_name TEXT;',
     'ALTER TABLE offer_items ADD COLUMN item_description TEXT;',
-    'ALTER TABLE offer_items ADD COLUMN billing_cycle TEXT;'
+    'ALTER TABLE offer_items ADD COLUMN billing_cycle TEXT;',
+    // Projects & Tasks
+    'ALTER TABLE offers ADD COLUMN internal_notes TEXT;',
+    // Custom Packages
+    `CREATE TABLE IF NOT EXISTS packages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );`,
+    `CREATE TABLE IF NOT EXISTS package_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        package_id INTEGER NOT NULL,
+        service_id INTEGER NOT NULL,
+        FOREIGN KEY (package_id) REFERENCES packages (id) ON DELETE CASCADE,
+        FOREIGN KEY (service_id) REFERENCES services (id) ON DELETE CASCADE
+    );`
 ];
 
 migrations.forEach(sql => {

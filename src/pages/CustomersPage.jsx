@@ -4,7 +4,10 @@ import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import Modal from '../components/ui/Modal';
 import CustomerForm from '../components/customers/CustomerForm';
-import { Pencil } from 'lucide-react';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import Table from '../components/ui/Table';
+import { Plus, Search, User } from 'lucide-react';
 
 const CustomersPage = () => {
     const { t } = useI18n();
@@ -12,6 +15,7 @@ const CustomersPage = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         loadCustomers();
@@ -41,61 +45,68 @@ const CustomersPage = () => {
         setIsModalOpen(true);
     };
 
+    const filteredCustomers = customers.filter(c =>
+        c.company_name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     return (
         <div className="page-container">
-            <div className="page-header">
-                <h1 className="page-title">{t('nav.customers')}</h1>
-                <button
-                    className="btn-primary"
+            <div className="flex justify-between items-center mb-4">
+                <h1 className="page-title" style={{ marginBottom: 0 }}>{t('nav.customers')}</h1>
+                <Button
                     onClick={() => {
                         setEditingCustomer(null);
                         setIsModalOpen(true);
                     }}
-                >+ {t('common.add')}</button>
+                >
+                    <Plus size={18} style={{ marginRight: '0.5rem' }} /> {t('common.add')}
+                </Button>
             </div>
 
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                <table className="data-table">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Address</th>
-                            <th>VAT</th>
-                            <th>Actions</th>
+            <Card className="mb-4" padding="1rem">
+                <div style={{ position: 'relative', maxWidth: '400px' }}>
+                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--text-muted)' }} />
+                    <input
+                        placeholder="Search customers..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        style={{ paddingLeft: '2.5rem' }}
+                    />
+                </div>
+            </Card>
+
+            <Card padding="0">
+                <Table headers={['Customer Name', 'Location', 'VAT ID', 'Actions']}>
+                    {isLoading ? (
+                        <tr><td colSpan="4" style={{ padding: '4rem', textAlign: 'center' }}>Loading customers...</td></tr>
+                    ) : filteredCustomers.length > 0 ? filteredCustomers.map(customer => (
+                        <tr key={customer.id}>
+                            <td className="font-bold">
+                                <Link to={`/customers/${customer.id}`} style={{ color: 'var(--primary)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <div style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '6px', borderRadius: '8px' }}>
+                                        <User size={16} />
+                                    </div>
+                                    {customer.company_name}
+                                </Link>
+                            </td>
+                            <td className="text-secondary">{customer.country}</td>
+                            <td className="text-muted">{customer.vat_number || 'N/A'}</td>
+                            <td>
+                                <Button variant="ghost" size="sm" onClick={() => handleEdit(customer)} className="text-primary">
+                                    Edit
+                                </Button>
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        {isLoading ? (
-                            <tr><td colSpan="4" style={{ padding: '2rem', textAlign: 'center' }}>Loading...</td></tr>
-                        ) : customers.length > 0 ? customers.map(customer => (
-                            <tr key={customer.id}>
-                                <td style={{ fontWeight: 500 }}>
-                                    <Link to={`/customers/${customer.id}`} style={{ color: 'var(--primary)', textDecoration: 'none' }}>
-                                        {customer.company_name}
-                                    </Link>
-                                </td>
-                                <td>{customer.country}</td>
-                                <td>{customer.vat_number}</td>
-                                <td>
-                                    <button
-                                        onClick={() => handleEdit(customer)}
-                                        className="btn-icon"
-                                    >
-                                        <Pencil size={16} />
-                                    </button>
-                                </td>
-                            </tr>
-                        )) : (
-                            <tr><td colSpan="4" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No customers found.</td></tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                    )) : (
+                        <tr><td colSpan="4" style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>No customers found.</td></tr>
+                    )}
+                </Table>
+            </Card>
 
             <Modal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                title={editingCustomer ? t('common.edit') : t('common.add')}
+                title={editingCustomer ? 'Edit Customer' : 'Add New Customer'}
             >
                 <CustomerForm
                     customer={editingCustomer}

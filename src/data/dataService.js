@@ -71,6 +71,15 @@ export const dataService = {
         return res.json();
     },
 
+    updateOfferStatus: async (id, status) => {
+        const res = await fetch(`${API_URL}/offers/${id}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status })
+        });
+        return res.json();
+    },
+
     deleteOffer: async (id) => {
         const res = await fetch(`${API_URL}/offers/${id}`, { method: 'DELETE' });
         return res.json();
@@ -127,6 +136,95 @@ export const dataService = {
 
     signOffer: async (token) => {
         const res = await fetch(`${API_URL}/offers/public/${token}/sign`, { method: 'POST' });
+        return res.json();
+    },
+
+    // --- PROJECTS ---
+    getProjects: async () => {
+        const res = await fetch(`${API_URL}/projects`);
+        return res.json();
+    },
+
+    getProject: async (id) => {
+        const res = await fetch(`${API_URL}/projects/${id}`);
+        return res.json();
+    },
+
+    createProject: async (project) => {
+        const res = await fetch(`${API_URL}/projects`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(project)
+        });
+        return res.json();
+    },
+
+    updateProject: async (id, data) => {
+        const res = await fetch(`${API_URL}/projects/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        return res.json();
+    },
+
+    deleteProject: async (id) => {
+        const res = await fetch(`${API_URL}/projects/${id}`, { method: 'DELETE' });
+        return res.json();
+    },
+
+    // --- TASKS ---
+    createTask: async (projectId, task) => {
+        const res = await fetch(`${API_URL}/projects/${projectId}/tasks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(task)
+        });
+        return res.json();
+    },
+
+    updateTask: async (id, task) => {
+        const res = await fetch(`${API_URL}/tasks/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(task)
+        });
+        return res.json();
+    },
+
+    deleteTask: async (id) => {
+        const res = await fetch(`${API_URL}/tasks/${id}`, { method: 'DELETE' });
+        return res.json();
+    },
+
+    reorderTasks: async (projectId, taskIds) => {
+        const res = await fetch(`${API_URL}/projects/${projectId}/tasks/reorder`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskIds })
+        });
+        return res.json();
+    },
+
+    // --- PACKAGES ---
+    getPackages: async () => {
+        const res = await fetch(`${API_URL}/packages`);
+        return res.json();
+    },
+
+    savePackage: async (pkg) => {
+        const method = pkg.id ? 'PUT' : 'POST';
+        const url = pkg.id ? `${API_URL}/packages/${pkg.id}` : `${API_URL}/packages`;
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pkg)
+        });
+        return res.json();
+    },
+
+    deletePackage: async (id) => {
+        const res = await fetch(`${API_URL}/packages/${id}`, { method: 'DELETE' });
         return res.json();
     }
 };

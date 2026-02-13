@@ -5,11 +5,16 @@ import { useI18n } from '../i18n/I18nContext';
 import { formatCurrency } from '../utils/pricingEngine';
 import {
     Briefcase, Clock, CheckCircle, FileText, AlertTriangle,
-    TrendingUp, Plus, Copy, Pencil, MoreVertical, ExternalLink,
-    ChevronLeft
+    TrendingUp, Plus, Copy, Pencil, ExternalLink,
+    ChevronLeft, Globe, Mail, Phone, MapPin
 } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import CustomerForm from '../components/customers/CustomerForm';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import Table from '../components/ui/Table';
+import Badge from '../components/ui/Badge';
+import DropdownMenu from '../components/ui/DropdownMenu';
 
 const CustomerDetailPage = () => {
     const { id } = useParams();
@@ -18,7 +23,6 @@ const CustomerDetailPage = () => {
     const [data, setData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [activeDropdown, setActiveDropdown] = useState(null);
 
     const loadData = useCallback(async () => {
         setIsLoading(true);
@@ -31,9 +35,7 @@ const CustomerDetailPage = () => {
         setIsLoading(false);
     }, [id]);
 
-    useEffect(() => {
-        loadData();
-    }, [loadData]);
+    useEffect(() => { loadData(); }, [loadData]);
 
     const handleEditCustomer = async (customerData) => {
         await dataService.saveCustomer(customerData);
@@ -48,145 +50,121 @@ const CustomerDetailPage = () => {
         }
     };
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'signed': return '#10b981';
-            case 'sent': return '#3b82f6';
-            case 'declined': return '#ef4444';
-            case 'draft': return '#94a3b8';
-            default: return 'var(--text-muted)';
-        }
-    };
-
-    if (isLoading || !data) return <div className="page-container">Loading...</div>;
+    if (isLoading || !data) return <div className="page-container">Loading customer...</div>;
 
     const { customer, offers, stats } = data;
 
     return (
-        <div className="page-container" style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        <div className="page-container" style={{ maxWidth: '1100px' }}>
             {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-                <Link to="/customers" style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                    <ChevronLeft size={24} />
+            <div className="mb-6">
+                <Link to="/customers" className="flex items-center gap-1 text-sm text-muted mb-2" style={{ textDecoration: 'none' }}>
+                    <ChevronLeft size={16} /> Back to Customers
                 </Link>
-                <div style={{ flex: 1 }}>
-                    <h1 className="page-title" style={{ margin: 0 }}>{customer.company_name}</h1>
-                    <div style={{ display: 'flex', gap: '1.5rem', color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
-                        <span>{customer.country}</span>
-                        <span>{customer.vat_number}</span>
-                        <span>{customer.language === 'de' ? 'German' : 'French'}</span>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <h1 className="page-title" style={{ marginBottom: '0.25rem' }}>{customer.company_name}</h1>
+                        <div className="flex items-center gap-4 text-xs text-muted">
+                            <span className="flex items-center gap-1"><MapPin size={14} /> {customer.country}</span>
+                            <span className="flex items-center gap-1"><FileText size={14} /> {customer.vat_number || 'No VAT'}</span>
+                            <span className="flex items-center gap-1"><Globe size={14} /> {customer.language === 'de' ? 'German' : 'French'}</span>
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="ghost" onClick={() => setIsEditModalOpen(true)}>
+                            <Pencil size={18} style={{ marginRight: '0.5rem' }} /> Edit Profile
+                        </Button>
+                        <Button onClick={() => navigate('/offer/new', { state: { customerId: customer.id } })}>
+                            <Plus size={18} style={{ marginRight: '0.5rem' }} /> New Offer
+                        </Button>
                     </div>
                 </div>
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                    <button className="btn-secondary" onClick={() => setIsEditModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Pencil size={16} /> Edit Profile
-                    </button>
-                    <button className="btn-primary" onClick={() => navigate('/offer/new', { state: { customerId: customer.id } })} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Plus size={16} /> New Offer
-                    </button>
-                </div>
             </div>
 
-            {/* Stats Row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                <StatCard label="Total Revenue" value={formatCurrency(stats.totalRevenue)} icon={<TrendingUp size={20} color="#10b981" />} />
-                <StatCard label="Total Offers" value={stats.totalOffers} icon={<FileText size={20} color="#3b82f6" />} />
-                <StatCard label="Avg Offer Value" value={formatCurrency(stats.avgOfferValue)} icon={<Briefcase size={20} color="#8b5cf6" />} />
-                <StatCard label="Signed / Pending" value={`${stats.signedCount} / ${stats.pendingCount}`} icon={<CheckCircle size={20} color="#10b981" />} />
-                <StatCard label="Declined" value={stats.declinedCount} icon={<AlertTriangle size={20} color="#ef4444" />} />
+            {/* Stats Overview */}
+            <div className="grid grid-4 mb-6">
+                <Card padding="1.25rem" className="flex items-center gap-4">
+                    <div style={{ background: 'var(--success-light)', color: 'var(--success)', padding: '10px', borderRadius: '10px' }}>
+                        <TrendingUp size={20} />
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-muted uppercase">Revenue</p>
+                        <h2 style={{ fontSize: '1.25rem', margin: 0 }}>{formatCurrency(stats.totalRevenue)}</h2>
+                    </div>
+                </Card>
+                <Card padding="1.25rem" className="flex items-center gap-4">
+                    <div style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '10px', borderRadius: '10px' }}>
+                        <FileText size={20} />
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-muted uppercase">Total Offers</p>
+                        <h2 style={{ fontSize: '1.25rem', margin: 0 }}>{stats.totalOffers}</h2>
+                    </div>
+                </Card>
+                <Card padding="1.25rem" className="flex items-center gap-4">
+                    <div style={{ background: 'var(--warning-light)', color: 'var(--warning)', padding: '10px', borderRadius: '10px' }}>
+                        <CheckCircle size={20} />
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-muted uppercase">Signed</p>
+                        <h2 style={{ fontSize: '1.25rem', margin: 0 }}>{stats.signedCount}</h2>
+                    </div>
+                </Card>
+                <Card padding="1.25rem" className="flex items-center gap-4">
+                    <div style={{ background: 'var(--danger-light)', color: 'var(--danger)', padding: '10px', borderRadius: '10px' }}>
+                        <AlertTriangle size={20} />
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-muted uppercase">Declined</p>
+                        <h2 style={{ fontSize: '1.25rem', margin: 0 }}>{stats.declinedCount}</h2>
+                    </div>
+                </Card>
             </div>
 
-            {/* Offers Table */}
-            <div className="card" style={{ padding: 0, overflow: 'visible' }}>
+            {/* Offer History */}
+            <Card padding="0">
                 <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 style={{ margin: 0 }}>Offer History</h3>
-                    <button
-                        className="btn-secondary btn-sm"
+                    <h3 className="text-sm font-bold uppercase text-muted">Offer History</h3>
+                    <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => offers.length > 0 && handleDuplicateOffer(offers[0].id)}
                         disabled={offers.length === 0}
+                        className="text-primary font-bold"
                     >
-                        <Copy size={14} style={{ marginRight: '0.5rem' }} /> Duplicate Last
-                    </button>
+                        <Copy size={14} style={{ marginRight: '0.4rem' }} /> Duplicate Last
+                    </Button>
                 </div>
-                <table className="data-table">
-                    <thead>
-                        <tr>
-                            <th>Offer #</th>
-                            <th>Date Created</th>
-                            <th>Total Amount</th>
-                            <th>Status</th>
-                            <th style={{ textAlign: 'right' }}>Actions</th>
+                <Table headers={['Reference', 'Date', 'Amount', 'Status', 'Actions']}>
+                    {offers.length > 0 ? offers.map(offer => (
+                        <tr key={offer.id}>
+                            <td className="font-bold">ANB-{offer.id}</td>
+                            <td className="text-secondary">{new Date(offer.created_at).toLocaleDateString()}</td>
+                            <td className="font-bold">{formatCurrency(offer.total)}</td>
+                            <td>
+                                <Badge variant={
+                                    offer.status === 'signed' ? 'success' :
+                                        offer.status === 'sent' ? 'info' :
+                                            offer.status === 'declined' ? 'danger' : 'neutral'
+                                }>
+                                    {offer.status.toUpperCase()}
+                                </Badge>
+                            </td>
+                            <td>
+                                <DropdownMenu
+                                    actions={[
+                                        { label: 'View Offer', onClick: () => navigate(`/offer/preview/${offer.id}`) },
+                                        { label: 'Edit Offer', onClick: () => navigate(`/offer/edit/${offer.id}`) },
+                                        { label: 'Duplicate', onClick: () => handleDuplicateOffer(offer.id) }
+                                    ]}
+                                />
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        {offers.length > 0 ? offers.map(offer => (
-                            <tr key={offer.id}>
-                                <td style={{ fontWeight: 500 }}>ANB-{offer.id}</td>
-                                <td>{new Date(offer.created_at).toLocaleDateString()}</td>
-                                <td>{formatCurrency(offer.total)}</td>
-                                <td>
-                                    <span style={{
-                                        padding: '0.25rem 0.75rem',
-                                        borderRadius: '1rem',
-                                        fontSize: '0.75rem',
-                                        fontWeight: 500,
-                                        background: `${getStatusColor(offer.status)}20`,
-                                        color: getStatusColor(offer.status)
-                                    }}>
-                                        {offer.status.toUpperCase()}
-                                    </span>
-                                </td>
-                                <td style={{ textAlign: 'right', position: 'relative' }}>
-                                    <button
-                                        className="btn-icon"
-                                        onClick={() => setActiveDropdown(activeDropdown === offer.id ? null : offer.id)}
-                                    >
-                                        <MoreVertical size={18} />
-                                    </button>
-
-                                    {activeDropdown === offer.id && (
-                                        <div style={{
-                                            position: 'absolute',
-                                            top: '80%',
-                                            right: '1rem',
-                                            background: 'white',
-                                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                                            borderRadius: 'var(--radius-md)',
-                                            zIndex: 100,
-                                            minWidth: '160px',
-                                            border: '1px solid var(--border)',
-                                            padding: '0.5rem 0',
-                                            textAlign: 'left'
-                                        }}>
-                                            <Link to={`/offer/preview/${offer.id}`} className="dropdown-item" style={dropdownItemStyle}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                    <ExternalLink size={14} /> View
-                                                </div>
-                                            </Link>
-                                            <Link to={`/offer/edit/${offer.id}`} className="dropdown-item" style={dropdownItemStyle}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                    <Pencil size={14} /> Edit
-                                                </div>
-                                            </Link>
-                                            <div
-                                                className="dropdown-item"
-                                                style={dropdownItemStyle}
-                                                onClick={() => handleDuplicateOffer(offer.id)}
-                                            >
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                    <Copy size={14} /> Duplicate
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </td>
-                            </tr>
-                        )) : (
-                            <tr><td colSpan="5" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No offers found for this customer.</td></tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                    )) : (
+                        <tr><td colSpan="5" style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>No offers found for this customer.</td></tr>
+                    )}
+                </Table>
+            </Card>
 
             <Modal
                 isOpen={isEditModalOpen}
@@ -201,29 +179,6 @@ const CustomerDetailPage = () => {
             </Modal>
         </div>
     );
-};
-
-const StatCard = ({ label, value, icon }) => (
-    <div className="card" style={{ padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <div style={{ background: '#f1f5f9', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-            {icon}
-        </div>
-        <div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 500, margin: 0 }}>{label}</p>
-            <p style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>{value}</p>
-        </div>
-    </div>
-);
-
-const dropdownItemStyle = {
-    padding: '0.6rem 1rem',
-    display: 'block',
-    textDecoration: 'none',
-    color: 'var(--text)',
-    fontSize: '0.9rem',
-    cursor: 'pointer',
-    borderBottom: 'none',
-    transition: 'background 0.2s'
 };
 
 export default CustomerDetailPage;

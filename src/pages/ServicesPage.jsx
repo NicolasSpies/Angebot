@@ -4,6 +4,10 @@ import { dataService } from '../data/dataService';
 import Modal from '../components/ui/Modal';
 import ServiceForm from '../components/services/ServiceForm';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import Badge from '../components/ui/Badge';
+import { Plus, Edit2, Trash2, Zap } from 'lucide-react';
 
 const ServicesPage = () => {
     const { t, locale } = useI18n();
@@ -20,17 +24,19 @@ const ServicesPage = () => {
         setIsLoading(false);
     }, []);
 
-    useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        loadServices();
-    }, [loadServices]);
+    useEffect(() => { loadServices(); }, [loadServices]);
 
     const handleSave = async (serviceData) => {
         setIsLoading(true);
-        await dataService.saveService(serviceData);
-        loadServices();
-        setIsModalOpen(false);
-        setEditingService(null);
+        try {
+            await dataService.saveService(serviceData);
+            loadServices();
+            setIsModalOpen(false);
+            setEditingService(null);
+        } catch (error) {
+            console.error('Failed to save service', error);
+            setIsLoading(false);
+        }
     };
 
     const handleEdit = (service) => {
@@ -46,74 +52,91 @@ const ServicesPage = () => {
     const confirmDelete = async () => {
         if (!deleteTarget) return;
         setIsLoading(true);
-        await dataService.deleteService(deleteTarget.id);
-        setDeleteTarget(null);
-        loadServices();
+        try {
+            await dataService.deleteService(deleteTarget.id);
+            setDeleteTarget(null);
+            loadServices();
+        } catch (error) {
+            console.error('Failed to delete service', error);
+            setIsLoading(false);
+        }
+        setIsDeleteDialogOpen(false);
     };
 
     return (
         <div className="page-container">
-            <div className="page-header">
-                <h1 className="page-title">{t('nav.services')}</h1>
-                <button
-                    className="btn-primary"
+            <div className="flex justify-between items-center mb-4">
+                <h1 className="page-title" style={{ marginBottom: 0 }}>{t('nav.services')}</h1>
+                <Button
                     onClick={() => {
                         setEditingService(null);
                         setIsModalOpen(true);
                     }}
-                >+ {t('common.add')}</button>
+                >
+                    <Plus size={18} style={{ marginRight: '0.5rem' }} /> {t('common.add')}
+                </Button>
             </div>
 
             <div className="grid grid-3">
                 {isLoading ? (
-                    <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem' }}>Loading services...</div>
+                    <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '4rem' }}>Loading services...</div>
                 ) : services.length > 0 ? services.map(service => (
-                    <div key={service.id} className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <Card key={service.id} className="flex flex-column justify-between h-full">
                         <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase' }}>{service.category}</span>
-                                {!service.active && <span className="status-badge" style={{ background: '#fee2e2', color: '#dc2626' }}>Inactive</span>}
+                            <div className="flex justify-between items-center mb-3">
+                                <Badge variant="primary" style={{ textTransform: 'uppercase', fontSize: '0.65rem' }}>{service.category}</Badge>
+                                {!service.active && <Badge variant="danger">Inactive</Badge>}
                             </div>
-                            <h3 style={{ marginBottom: '0.5rem' }}>{locale === 'de' ? service.name_de : service.name_fr}</h3>
-                            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+                            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+                                {locale === 'de' ? service.name_de : service.name_fr}
+                            </h3>
+                            <p className="text-secondary text-sm mb-4" style={{ minHeight: '3em' }}>
                                 {locale === 'de' ? service.description_de : service.description_fr}
                             </p>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <span style={{ fontWeight: 700, fontSize: '1.1rem' }}>{service.price} €</span>
+
+                        <div className="flex justify-between items-center mt-auto pt-4" style={{ borderTop: '1px solid var(--border)' }}>
+                            <div className="flex items-center gap-2">
+                                <span style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--text-main)' }}>{service.price}€</span>
                                 {service.billing_cycle && service.billing_cycle !== 'one_time' && (
-                                    <span className="status-badge" style={{ background: '#e0f2fe', color: '#0369a1' }}>
+                                    <Badge variant="info" style={{ fontSize: '0.65rem' }}>
                                         {service.billing_cycle}
-                                    </span>
+                                    </Badge>
                                 )}
                             </div>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <button
-                                    onClick={() => handleEdit(service)}
-                                    className="btn-ghost" style={{ color: 'var(--primary)' }}
-                                >{t('common.edit')}</button>
-                                <button
-                                    onClick={() => handleDeleteClick(service)}
-                                    className="btn-ghost" style={{ color: '#ef4444' }}
-                                >🗑</button>
+                            <div className="flex gap-1">
+                                <Button variant="ghost" size="sm" onClick={() => handleEdit(service)} className="text-primary p-2">
+                                    <Edit2 size={16} />
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDeleteClick(service)} className="text-danger p-2">
+                                    <Trash2 size={16} />
+                                </Button>
                             </div>
                         </div>
-                    </div>
+                    </Card>
                 )) : (
-                    <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No services found.</div>
+                    <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>
+                        <Zap size={48} style={{ margin: '0 auto 1rem', opacity: 0.2 }} />
+                        <p>No services found. Start by adding your first service!</p>
+                    </div>
                 )}
             </div>
 
             <Modal
                 isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                title={editingService ? t('common.edit') : t('common.add')}
+                onClose={() => {
+                    setIsModalOpen(false);
+                    setEditingService(null);
+                }}
+                title={editingService ? 'Edit Service' : 'Add New Service'}
             >
                 <ServiceForm
                     initialData={editingService}
                     onSave={handleSave}
-                    onCancel={() => setIsModalOpen(false)}
+                    onCancel={() => {
+                        setIsModalOpen(false);
+                        setEditingService(null);
+                    }}
                 />
             </Modal>
 
@@ -122,7 +145,7 @@ const ServicesPage = () => {
                 onClose={() => setIsDeleteDialogOpen(false)}
                 onConfirm={confirmDelete}
                 title="Delete Service"
-                message={`Are you sure you want to delete "${deleteTarget?.name_de || deleteTarget?.name_fr}"? This cannot be undone.`}
+                message={`Are you sure you want to delete "${deleteTarget ? (locale === 'de' ? deleteTarget.name_de : deleteTarget.name_fr) : ''}"? This cannot be undone.`}
                 confirmText={t('common.delete')}
                 isDestructive={true}
             />
