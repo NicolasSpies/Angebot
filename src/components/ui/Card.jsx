@@ -1,14 +1,11 @@
 import React from 'react';
 
-const Card = ({ children, className = '', padding, noBorder = false, ...props }) => {
+const Card = ({ children, className = '', padding = 'var(--space-6)', noBorder = false, ...props }) => {
     return (
         <div
-            className={`card ${className}`}
+            className={`bg-[var(--bg-surface)] rounded-[var(--radius-xl)] ${!noBorder ? 'border border-[var(--border-subtle)] shadow-[var(--shadow-sm)]' : ''} ${className}`}
             style={{
-                padding: padding || '1.5rem',
-                border: noBorder ? 'none' : undefined,
-                boxShadow: noBorder ? 'none' : 'var(--shadow-md)',
-                borderRadius: 'var(--radius-lg)',
+                padding,
                 ...props.style
             }}
             {...props}

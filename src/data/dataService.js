@@ -226,5 +226,48 @@ export const dataService = {
     deletePackage: async (id) => {
         const res = await fetch(`${API_URL}/packages/${id}`, { method: 'DELETE' });
         return res.json();
+    },
+
+    // --- TRASH ---
+    getTrash: async () => {
+        const res = await fetch(`${API_URL}/trash`);
+        return res.json();
+    },
+    restoreItem: async (type, id) => {
+        const res = await fetch(`${API_URL}/${type}/${id}/restore`, { method: 'POST' });
+        return res.json();
+    },
+    deletePermanentItem: async (type, id) => {
+        const res = await fetch(`${API_URL}/${type}/${id}/permanent`, { method: 'DELETE' });
+        return res.json();
+    },
+    emptyTrash: async () => {
+        const res = await fetch(`${API_URL}/trash/empty`, { method: 'DELETE' });
+        return res.json();
+    },
+    search: async (query) => {
+        const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
+        return res.json();
+    },
+    getNotifications: async () => {
+        const res = await fetch(`${API_URL}/notifications`);
+        return res.json();
+    },
+    markNotificationAsRead: async (id) => {
+        const res = await fetch(`${API_URL}/notifications/${id}/read`, { method: 'PUT' });
+        return res.json();
+    },
+    markAllNotificationsRead: async () => {
+        const res = await fetch(`${API_URL}/notifications/read-all`, { method: 'PUT' });
+        return res.json();
+    },
+    checkExpiringNotifications: async () => {
+        try {
+            const res = await fetch(`${API_URL}/notifications/check-expiring`);
+            return res.json();
+        } catch (err) {
+            console.error('Check expiring failed:', err);
+            return { checked: 0 };
+        }
     }
 };

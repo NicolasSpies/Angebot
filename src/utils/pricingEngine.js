@@ -1,6 +1,6 @@
 export const calculateTotals = (services, discountPercent, country) => {
-    const subtotal = services.reduce((acc, s) => acc + (s.price * s.quantity), 0);
-    const totalCost = services.reduce((acc, s) => acc + ((s.cost_price || 0) * s.quantity), 0);
+    const subtotal = services.reduce((acc, s) => acc + ((s.unit_price || s.price || 0) * (s.quantity || 0)), 0);
+    const totalCost = services.reduce((acc, s) => acc + ((s.cost_price || 0) * (s.quantity || 0)), 0);
 
     const discountAmount = subtotal * (discountPercent / 100);
     const discountedSubtotal = subtotal - discountAmount;

@@ -1,0 +1,27 @@
+* Host localhost:3001 was resolved.
+* IPv6: ::1
+* IPv4: 127.0.0.1
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying [::1]:3001...
+* Connected to localhost (::1) port 3001
+> GET /api/projects HTTP/1.1
+> Host: localhost:3001
+> User-Agent: curl/8.7.1
+> Accept: */*
+> 
+* Request completely sent off
+< HTTP/1.1 200 OK
+< X-Powered-By: Express
+< Access-Control-Allow-Origin: *
+< Content-Type: application/json; charset=utf-8
+< Content-Length: 1215
+< ETag: W/"4bf-e4NFjyXp0S+s+BfkPlik57tO+i0"
+< Date: Fri, 13 Feb 2026 19:20:08 GMT
+< Connection: keep-alive
+< Keep-Alive: timeout=5
+< 
+{ [1215 bytes data]
+100  1215  100  1215    0     0  1004k      0 --:--:-- --:--:-- --:--:-- 1186k
+* Connection #0 to host localhost left intact
+[{"id":5,"offer_id":null,"customer_id":null,"name":null,"status":"in_progress","deadline":null,"internal_notes":null,"created_at":"2026-02-13 10:07:56","deleted_at":null,"customer_name":null,"offer_name":null,"offer_total":null,"offer_status":null},{"id":4,"offer_id":null,"customer_id":null,"name":null,"status":"todo","deadline":null,"internal_notes":null,"created_at":"2026-02-13 10:02:42","deleted_at":null,"customer_name":null,"offer_name":null,"offer_total":null,"offer_status":null},{"id":3,"offer_id":null,"customer_id":null,"name":null,"status":null,"deadline":"2026-02-24","internal_notes":null,"created_at":"2026-02-13 09:30:34","deleted_at":null,"customer_name":null,"offer_name":null,"offer_total":null,"offer_status":null},{"id":2,"offer_id":null,"customer_id":null,"name":"","status":null,"deadline":null,"internal_notes":null,"created_at":"2026-02-13 08:30:41","deleted_at":null,"customer_name":null,"offer_name":null,"offer_total":null,"offer_status":null},{"id":1,"offer_id":null,"customer_id":null,"name":null,"status":"todo","deadline":null,"internal_notes":null,"created_at":"2026-02-13 02:51:44","deleted_at":null,"customer_name":null,"offer_name":null,"offer_total":null,"offer_status":null}]

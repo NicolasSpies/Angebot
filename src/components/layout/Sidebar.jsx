@@ -1,12 +1,12 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useI18n } from '../../i18n/I18nContext';
-import { LayoutDashboard, FileText, Briefcase, Users, Zap, Settings, Command } from 'lucide-react';
+import { LayoutDashboard, FileText, Briefcase, Users, Zap, Settings, Command, Trash2 } from 'lucide-react';
 
 const Sidebar = () => {
     const { t } = useI18n();
 
-    const navItems = [
+    const workspaceItems = [
         { to: "/dashboard", icon: LayoutDashboard, label: t('nav.dashboard') },
         { to: "/offers", icon: FileText, label: t('nav.offers') },
         { to: "/projects", icon: Briefcase, label: t('nav.projects') },
@@ -14,75 +14,85 @@ const Sidebar = () => {
         { to: "/services", icon: Zap, label: t('nav.services') },
     ];
 
+    const systemItems = [
+        { to: "/trash", icon: Trash2, label: t('nav.trash') || 'Trash' },
+        { to: "/settings", icon: Settings, label: t('nav.settings') },
+    ];
+
     return (
-        <aside className="sidebar">
-            <div className="sidebar-logo">
-                <div style={{ background: 'var(--primary)', padding: '5px', borderRadius: '6px', color: 'white', display: 'flex' }}>
-                    <Command size={18} />
+        <div className="flex flex-col h-full bg-[var(--bg-sidebar)]">
+            {/* Logo Area */}
+            <div className="h-[64px] flex items-center px-6 border-b border-[var(--border-subtle)] flex-shrink-0">
+                <div className="flex items-center gap-3 text-[var(--text-main)]">
+                    <div className="w-8 h-8 bg-[var(--primary)] rounded-[var(--radius-md)] text-white flex items-center justify-center shadow-sm">
+                        <Command size={18} />
+                    </div>
+                    <span className="font-bold text-[15px] tracking-tight">Angebot</span>
                 </div>
-                <span style={{ fontSize: '1rem', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-main)' }}>Angebot</span>
             </div>
 
-            <nav style={{ display: 'flex', flexDirection: 'column', flex: 1, paddingBottom: '1.5rem' }}>
-                <div style={{ padding: '0 1.5rem 0.75rem', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Menu
-                </div>
-                {navItems.map((item) => (
-                    <NavLink key={item.to} to={item.to} className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-                        {({ isActive }) => (
-                            <>
-                                <item.icon size={18} strokeWidth={isActive ? 2 : 1.5} />
+            {/* Navigation */}
+            <nav className="flex-1 overflow-y-auto py-6 px-4 flex flex-col gap-8 custom-scrollbar">
+                <div>
+                    <div className="px-2 mb-2 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                        Workspace
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        {workspaceItems.map((item) => (
+                            <NavLink
+                                key={item.to}
+                                to={item.to}
+                                className={({ isActive }) => `
+                                    flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-[14px] font-medium transition-all
+                                    ${isActive
+                                        ? 'bg-[var(--bg-app)] text-[var(--text-main)] font-semibold shadow-sm'
+                                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-app)]/50 hover:text-[var(--text-main)]'}
+                                `}
+                            >
+                                <item.icon size={18} />
                                 <span>{item.label}</span>
-                            </>
-                        )}
-                    </NavLink>
-                ))}
+                            </NavLink>
+                        ))}
+                    </div>
+                </div>
 
-                <div style={{ marginTop: 'auto' }}>
-                    <NavLink to="/settings" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-                        {({ isActive }) => (
-                            <>
-                                <Settings size={18} strokeWidth={isActive ? 2 : 1.5} />
-                                <span>{t('nav.settings')}</span>
-                            </>
-                        )}
-                    </NavLink>
-
-                    {/* User Profile Section - Dash Style */}
-                    <div style={{
-                        marginTop: '1rem',
-                        margin: '0 1rem 1.5rem',
-                        padding: '1rem',
-                        borderRadius: 'var(--radius-lg)',
-                        background: 'var(--bg-main)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.75rem',
-                        border: '1px solid var(--border)',
-                        cursor: 'pointer'
-                    }} className="sidebar-user">
-                        <div style={{
-                            width: '36px',
-                            height: '36px',
-                            borderRadius: '10px',
-                            background: 'var(--primary)',
-                            color: 'white',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontWeight: '700',
-                            fontSize: '14px'
-                        }}>
-                            NS
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                            <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>Nicolas Spies</span>
-                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Admin</span>
-                        </div>
+                <div>
+                    <div className="px-2 mb-2 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                        System
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        {systemItems.map((item) => (
+                            <NavLink
+                                key={item.to}
+                                to={item.to}
+                                className={({ isActive }) => `
+                                    flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-[14px] font-medium transition-all
+                                    ${isActive
+                                        ? 'bg-[var(--bg-app)] text-[var(--text-main)] font-semibold shadow-sm'
+                                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-app)]/50 hover:text-[var(--text-main)]'}
+                                `}
+                            >
+                                <item.icon size={18} />
+                                <span>{item.label}</span>
+                            </NavLink>
+                        ))}
                     </div>
                 </div>
             </nav>
-        </aside>
+
+            {/* Profile Footer */}
+            <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+                <div className="flex items-center gap-3 p-2 rounded-[var(--radius-md)] hover:bg-[var(--bg-app)] transition-colors cursor-pointer">
+                    <div className="w-9 h-9 rounded-full bg-[var(--primary)] text-white flex items-center justify-center font-bold text-[13px] shadow-sm">
+                        NS
+                    </div>
+                    <div className="flex flex-col min-w-0 overflow-hidden">
+                        <span className="text-[13px] font-bold text-[var(--text-main)] truncate">Nicolas Spies</span>
+                        <span className="text-[11px] text-[var(--text-secondary)] truncate">Administrator</span>
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 };
 

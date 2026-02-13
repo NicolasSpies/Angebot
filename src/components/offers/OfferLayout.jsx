@@ -8,17 +8,19 @@ const cycleTitles = {
     monthly: { de: 'Monatliche Kosten', fr: 'Frais mensuels' }
 };
 
-const OfferLayout = ({ offer, settings }) => {
+const OfferLayout = ({ offer, settings, hideInternal = false }) => {
     // Group items by billing cycle
     const groups = { one_time: [], yearly: [], monthly: [] };
-    offer.items.forEach(item => {
+    const items = Array.isArray(offer?.items) ? offer.items : [];
+
+    items.forEach(item => {
         const cycle = item.billing_cycle || 'one_time';
         if (!groups[cycle]) groups[cycle] = [];
         groups[cycle].push(item);
     });
 
     const calculateGroupTotals = (items) => {
-        const subtotal = items.reduce((acc, i) => acc + (i.unit_price * i.quantity), 0);
+        const subtotal = items.reduce((acc, i) => acc + ((i.unit_price || 0) * (i.quantity || 0)), 0);
         const discountAmount = subtotal * ((offer.discount_percent || 0) / 100);
         const discountedSubtotal = subtotal - discountAmount;
         const vatRate = offer.customer_country === 'BE' ? 0.21 : 0.0;
@@ -30,64 +32,60 @@ const OfferLayout = ({ offer, settings }) => {
     const lang = offer.language || 'de';
 
     return (
-        <div className="a4-container card">
-            {/* Header: Company (Left) | Offer (Center) | Client (Right) */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3rem', borderBottom: '1px solid var(--border)', paddingBottom: '2rem' }}>
-                {/* Company Details */}
-                <div style={{ flex: 1 }}>
+        <div className="a4-container bg-white" style={{ padding: '3.5rem', color: 'var(--text-main)' }}>
+            {/* Header: Company & Recipient */}
+            <div className="flex justify-between gap-12 mb-16 pb-12 border-b border-[var(--border)]">
+                <div className="flex-1">
                     {settings?.logo_url && (
-                        <img src={settings.logo_url} alt="Logo" style={{ maxHeight: '60px', marginBottom: '1rem', display: 'block' }} />
+                        <img src={settings.logo_url} alt="Logo" className="max-h-[70px] mb-8 grayscale hover:grayscale-0 transition-all duration-500" />
                     )}
-                    <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-main)' }}>{settings?.company_name || 'My Agency'}</h2>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.6' }}>
-                        {settings?.address && <div style={{ whiteSpace: 'pre-wrap' }}>{settings.address}</div>}
-                        {settings?.vat_number && <div>{lang === 'de' ? 'MwSt' : 'TVA'}: {settings.vat_number}</div>}
-                        {settings?.email && <div>Email: <a href={`mailto:${settings.email}`} style={{ color: 'inherit', textDecoration: 'none' }}>{settings.email}</a></div>}
-                        {settings?.phone && <div>Phone: <a href={`tel:${settings.phone}`} style={{ color: 'inherit', textDecoration: 'none' }}>{settings.phone}</a></div>}
-                        {settings?.website && (
-                            <div>Website: <a href={settings.website.startsWith('http') ? settings.website : `https://${settings.website}`} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>{settings.website}</a></div>
-                        )}
+                    <h2 className="text-[18px] font-extrabold tracking-tight mb-4 text-[var(--text-main)]">
+                        {settings?.company_name || 'Business Catalyst Group'}
+                    </h2>
+                    <div className="text-[13px] text-[var(--text-secondary)] leading-loose font-medium">
+                        {settings?.address && <div className="whitespace-pre-wrap opacity-80">{settings.address}</div>}
+                        <div className="mt-4 flex flex-column gap-1">
+                            {settings?.vat_number && <div className="font-bold flex gap-2"><span className="opacity-50">{lang === 'de' ? 'ID' : 'TAX'}</span> {settings.vat_number}</div>}
+                            {settings?.email && <div className="flex gap-2"><span className="opacity-50">@</span> {settings.email}</div>}
+                            {settings?.website && <div className="flex gap-2"><span className="opacity-50">W</span> {settings.website}</div>}
+                        </div>
                     </div>
                 </div>
 
-                {/* Offer Info */}
-                <div style={{ textAlign: 'center', padding: '0 2rem' }}>
-                    <h1 style={{ color: 'var(--text-main)', marginBottom: '0.5rem', fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.02em' }}>
-                        {lang === 'de' ? 'ANGEBOT' : 'OFFRE'}
-                    </h1>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 500 }}>
-                        {offer.offer_name || `#${offer.id}`}
-                    </p>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                        {new Date(offer.created_at).toLocaleDateString()}
-                    </p>
-
-                    {offer.due_date && (
-                        <div style={{ marginTop: '1rem', maxWidth: '280px', margin: '1rem auto 0' }}>
-                            <DeadlineIndicator dueDate={offer.due_date} createdAt={offer.sent_at || offer.created_at} />
+                <div className="flex flex-column items-end text-right min-w-[280px]">
+                    <div className="p-4 bg-[var(--bg-main)] rounded-[var(--radius-lg)] border border-[var(--border)] mb-8 w-full">
+                        <h1 className="text-[11px] font-extrabold tracking-[0.2em] text-[var(--primary)] uppercase mb-2">
+                            {lang === 'de' ? 'Geschäftliches Angebot' : 'Proposition Commerciale'}
+                        </h1>
+                        <div className="text-[20px] font-extrabold mb-1">{offer.offer_name || `#${offer.id}`}</div>
+                        <div className="text-[12px] text-[var(--text-muted)] font-bold">
+                            {new Date(offer.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
                         </div>
-                    )}
-                </div>
+                    </div>
 
-                {/* Client Details */}
-                <div style={{ flex: 1, textAlign: 'right' }}>
-                    <div style={{ fontSize: '0.875rem', lineHeight: '1.6', marginTop: '1.8rem' }}>
-                        <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>{offer.customer_name || 'Client'}</div>
-                        {(offer.first_name || offer.last_name) && (
-                            <div>{offer.first_name} {offer.last_name}</div>
-                        )}
-                        {offer.address && <div>{offer.address}</div>}
-                        {(offer.postal_code || offer.city) && (
-                            <div>{offer.postal_code} {offer.city}</div>
-                        )}
-                        {offer.vat_number && (
-                            <div style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
-                                {lang === 'de' ? 'MwSt' : 'TVA'}: {offer.vat_number}
-                            </div>
-                        )}
+                    <div className="text-[14px]">
+                        <div className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest mb-3">Prepared for</div>
+                        <div className="text-[18px] font-extrabold text-[var(--text-main)] mb-1">{offer.customer_name || 'Strategic Partner'}</div>
+                        <div className="text-[var(--text-secondary)] font-medium leading-relaxed">
+                            {offer.address && <div>{offer.address}</div>}
+                            {(offer.postal_code || offer.city) && (
+                                <div>{offer.postal_code} {offer.city}</div>
+                            )}
+                            {offer.vat_number && (
+                                <div className="text-[12px] font-bold mt-2 opacity-60">
+                                    {lang === 'de' ? 'MwSt' : 'TVA'}: {offer.vat_number}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
+
+            {offer.due_date && (
+                <div className="mb-12 no-print">
+                    <DeadlineIndicator dueDate={offer.due_date} createdAt={offer.sent_at || offer.created_at} />
+                </div>
+            )}
 
             {/* Items Tables Grouped by Billing Cycle */}
             {['one_time', 'yearly', 'monthly'].map(cycle => {
@@ -97,53 +95,60 @@ const OfferLayout = ({ offer, settings }) => {
                 const groupTotals = calculateGroupTotals(items);
 
                 return (
-                    <div key={cycle} style={{ marginBottom: '2.5rem', breakInside: 'avoid' }}>
-                        {cycle !== 'one_time' && (
-                            <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', color: 'var(--text-main)', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
+                    <div key={cycle} className="mb-12 break-inside-avoid">
+                        <div className="flex items-center gap-4 mb-6">
+                            <h3 className="text-[14px] font-extrabold text-[var(--text-main)] uppercase tracking-[0.1em]">
                                 {lang === 'de' ? cycleTitles[cycle].de : cycleTitles[cycle].fr}
                             </h3>
-                        )}
+                            <div className="h-[1px] flex-1 bg-[var(--border)] opacity-50" />
+                        </div>
 
-                        <table className="data-table" style={{ marginBottom: '1rem' }}>
+                        <table className="w-full mb-6">
                             <thead>
-                                <tr>
-                                    <th>{lang === 'de' ? 'Leistung' : 'Service'}</th>
-                                    <th style={{ textAlign: 'center' }}>{lang === 'de' ? 'Menge' : 'Qté'}</th>
-                                    <th style={{ textAlign: 'right' }}>{lang === 'de' ? 'Einzelpreis' : 'Prix Unitaire'}</th>
-                                    <th style={{ textAlign: 'right' }}>{lang === 'de' ? 'Gesamt' : 'Total'}</th>
+                                <tr className="border-b border-[var(--text-main)]/10">
+                                    <th className="py-4 text-left text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider">{lang === 'de' ? 'Service/Beschreibung' : 'Service/Description'}</th>
+                                    <th className="py-4 text-center text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider w-20">{lang === 'de' ? 'Menge' : 'Qté'}</th>
+                                    <th className="py-4 text-right text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider">{lang === 'de' ? 'Einheit' : 'Unité'}</th>
+                                    <th className="py-4 text-right text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider">{lang === 'de' ? 'Betrag' : 'Total'}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {items.map(item => (
-                                    <tr key={item.id}>
-                                        <td>
-                                            <div style={{ fontWeight: 500 }}>{lang === 'de' ? item.name_de : item.name_fr}</div>
-                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{lang === 'de' ? item.description_de : item.description_fr}</div>
+                                    <tr key={item.id} className="border-b border-[var(--border)]">
+                                        <td className="py-5 pr-8">
+                                            <div className="text-[14px] font-bold text-[var(--text-main)] mb-1">
+                                                {item.item_name || (lang === 'de' ? item.name_de : item.name_fr)}
+                                            </div>
+                                            <div className="text-[12px] text-[var(--text-secondary)] leading-relaxed font-medium">
+                                                {item.item_description || (lang === 'de' ? item.description_de : item.description_fr)}
+                                            </div>
                                         </td>
-                                        <td style={{ textAlign: 'center' }}>{item.quantity}</td>
-                                        <td style={{ textAlign: 'right' }}>{formatCurrency(item.unit_price)}</td>
-                                        <td style={{ textAlign: 'right', fontWeight: 500 }}>{formatCurrency((item.quantity || 1) * item.unit_price)}</td>
+                                        <td className="py-5 text-center text-[14px] font-bold text-[var(--text-secondary)]">{item.quantity}</td>
+                                        <td className="py-5 text-right text-[14px] font-bold text-[var(--text-secondary)]">{formatCurrency(item.unit_price)}</td>
+                                        <td className="py-5 text-right text-[14px] font-extrabold text-[var(--text-main)]">{formatCurrency((item.quantity || 1) * item.unit_price)}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
 
-                        {/* Totals */}
-                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <div style={{ width: '250px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.875rem' }}>
-                                    <span style={{ color: 'var(--text-muted)' }}>{lang === 'de' ? 'Zwischensumme' : 'Sous-total'}</span>
-                                    <span>{formatCurrency(groupTotals.subtotal)}</span>
+                        {/* Totals Block */}
+                        <div className="flex justify-end mt-8">
+                            <div className="w-[300px] p-6 rounded-[var(--radius-lg)] bg-[var(--bg-main)]/50 border border-[var(--border)]">
+                                <div className="flex justify-between items-center mb-3">
+                                    <span className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-tight">{lang === 'de' ? 'Netto' : 'Sous-total'}</span>
+                                    <span className="text-[14px] font-bold text-[var(--text-main)]">{formatCurrency(groupTotals.subtotal)}</span>
                                 </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.875rem' }}>
-                                    <span style={{ color: 'var(--text-muted)' }}>{offer.customer_country === 'BE'
-                                        ? (lang === 'de' ? 'MwSt (21%)' : 'TVA (21%)')
-                                        : (lang === 'de' ? 'MwSt (0%)' : 'TVA (0%)')}</span>
-                                    <span>{formatCurrency(groupTotals.vat)}</span>
+                                <div className="flex justify-between items-center mb-4 pb-4 border-b border-[var(--border)] border-dashed">
+                                    <span className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-tight">
+                                        {offer.customer_country === 'BE'
+                                            ? (lang === 'de' ? 'MwSt (21%)' : 'TVA (21%)')
+                                            : (lang === 'de' ? 'Steuersatz (0%)' : 'TVA (0%)')}
+                                    </span>
+                                    <span className="text-[14px] font-bold text-[var(--text-main)]">{formatCurrency(groupTotals.vat)}</span>
                                 </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '2px solid var(--text-main)', fontWeight: 700, fontSize: '1.15rem' }}>
-                                    <span>{lang === 'de' ? 'Gesamt' : 'Total'}</span>
-                                    <span>{formatCurrency(groupTotals.total)}</span>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[14px] font-extrabold text-[var(--text-main)] uppercase tracking-wider">{lang === 'de' ? 'Gesamtbetrag' : 'Total Général'}</span>
+                                    <span className="text-[20px] font-extrabold text-[var(--primary)]">{formatCurrency(groupTotals.total)}</span>
                                 </div>
                             </div>
                         </div>
@@ -151,21 +156,41 @@ const OfferLayout = ({ offer, settings }) => {
                 );
             })}
 
-            {/* Footer */}
-            <div style={{ marginTop: '4rem', borderTop: '1px solid var(--border)', paddingTop: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
-                    {settings?.company_name && <span style={{ fontWeight: 500 }}>{settings.company_name}</span>}
-                    {settings?.address && <span>{settings.address}</span>}
+            {/* Strategic Notes (if present) */}
+            {(!hideInternal && (offer.strategic_notes || offer.internal_notes)) && (
+                <div className="mt-12 mb-8 p-6 bg-[var(--bg-main)]/50 rounded-[var(--radius-lg)] border border-[var(--border)]">
+                    <h4 className="text-[11px] font-extrabold text-[var(--text-secondary)] uppercase tracking-[0.2em] mb-4">
+                        {lang === 'de' ? 'Strategische Hinweise' : 'Notes Stratégiques'}
+                    </h4>
+                    <p className="text-[13px] text-[var(--text-main)] leading-relaxed font-medium whitespace-pre-wrap">
+                        {offer.strategic_notes || offer.internal_notes}
+                    </p>
+                </div>
+            )}
+
+            {/* Terms & Footer */}
+            <div className="mt-20 pt-16 border-t border-[var(--border)]">
+                <div className="grid grid-2 gap-12 mb-12">
+                    {settings?.payment_terms && (
+                        <div>
+                            <h4 className="text-[11px] font-extrabold text-[var(--text-secondary)] uppercase tracking-[0.2em] mb-3">Rechtliche Hinweise</h4>
+                            <p className="text-[12px] leading-relaxed text-[var(--text-muted)] italic font-medium">
+                                {settings.payment_terms}
+                            </p>
+                        </div>
+                    )}
+                    <div className="flex flex-column items-end justify-end">
+                        <div className="w-48 h-[1px] bg-[var(--text-main)] mb-4" />
+                        <div className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest">Digital Signature Panel</div>
+                    </div>
+                </div>
+
+                <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-[0.15em] flex justify-center items-center gap-8 flex-wrap opacity-60">
+                    {settings?.company_name && <span className="text-[var(--text-main)]">{settings.company_name}</span>}
                     {settings?.email && <span>{settings.email}</span>}
                     {settings?.phone && <span>{settings.phone}</span>}
-                    {settings?.website && <span>{settings.website}</span>}
-                    {settings?.vat_number && <span>{lang === 'de' ? 'MwSt' : 'TVA'}: {settings.vat_number}</span>}
+                    {settings?.vat_number && <span>VAT: {settings.vat_number}</span>}
                 </div>
-                {settings?.payment_terms && (
-                    <div style={{ textAlign: 'center', marginTop: '0.75rem', fontStyle: 'italic' }}>
-                        {settings.payment_terms}
-                    </div>
-                )}
             </div>
         </div>
     );

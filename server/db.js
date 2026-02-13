@@ -1,7 +1,12 @@
 import Database from 'better-sqlite3';
-import { join } from 'path';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-const db = new Database('database.sqlite', { verbose: console.log });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const dbPath = join(__dirname, '..', 'database.sqlite');
+
+const db = new Database(dbPath, { verbose: console.log });
 
 // Enable foreign keys
 db.pragma('foreign_keys = ON');
@@ -32,9 +37,11 @@ db.exec(`
         price REAL,
         cost_price REAL DEFAULT 0,
         unit_type TEXT,
+        billing_cycle TEXT DEFAULT 'one_time',
         default_selected INTEGER DEFAULT 0,
         dependency_rule TEXT,
-        active INTEGER DEFAULT 1
+        active INTEGER DEFAULT 1,
+        deleted_at DATETIME
     );
 
     CREATE TABLE IF NOT EXISTS customers (
@@ -49,7 +56,8 @@ db.exec(`
         postal_code TEXT,
         language TEXT,
         country TEXT,
-        vat_number TEXT
+        vat_number TEXT,
+        deleted_at DATETIME
     );
 
     CREATE TABLE IF NOT EXISTS offers (
@@ -66,6 +74,7 @@ db.exec(`
         sent_at DATETIME,
         signed_at DATETIME,
         token TEXT UNIQUE,
+        deleted_at DATETIME,
         FOREIGN KEY (customer_id) REFERENCES customers(id)
     );
 
@@ -99,6 +108,7 @@ db.exec(`
         deadline DATETIME,
         internal_notes TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deleted_at DATETIME,
         FOREIGN KEY (offer_id) REFERENCES offers(id),
         FOREIGN KEY (customer_id) REFERENCES customers(id)
     );
@@ -157,20 +167,50 @@ const migrations = [
     'ALTER TABLE offer_items ADD COLUMN billing_cycle TEXT;',
     // Projects & Tasks
     'ALTER TABLE offers ADD COLUMN internal_notes TEXT;',
+    'ALTER TABLE projects ADD COLUMN deleted_at DATETIME;',
+    'ALTER TABLE offers ADD COLUMN deleted_at DATETIME;',
+    'ALTER TABLE customers ADD COLUMN deleted_at DATETIME;',
+    'ALTER TABLE services ADD COLUMN deleted_at DATETIME;',
+    'ALTER TABLE packages ADD COLUMN deleted_at DATETIME;',
     // Custom Packages
     `CREATE TABLE IF NOT EXISTS packages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         description TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        discount_type TEXT DEFAULT 'percent',
+        discount_value REAL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deleted_at DATETIME
     );`,
     `CREATE TABLE IF NOT EXISTS package_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         package_id INTEGER NOT NULL,
         service_id INTEGER NOT NULL,
+        variant_name TEXT,
+        discount_percent REAL DEFAULT 0,
         FOREIGN KEY (package_id) REFERENCES packages (id) ON DELETE CASCADE,
         FOREIGN KEY (service_id) REFERENCES services (id) ON DELETE CASCADE
-    );`
+    );`,
+    'ALTER TABLE packages ADD COLUMN discount_type TEXT DEFAULT \'percent\';',
+    'ALTER TABLE packages ADD COLUMN discount_value REAL DEFAULT 0;',
+    'ALTER TABLE package_items ADD COLUMN discount_percent REAL DEFAULT 0;',
+    // Notifications System
+    `CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT,
+        link TEXT,
+        is_read INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );`,
+    'CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);',
+    'ALTER TABLE services ADD COLUMN billing_cycle TEXT DEFAULT "one_time";',
+    // Notification dedup
+    'ALTER TABLE notifications ADD COLUMN dedup_key TEXT;',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_dedup ON notifications(dedup_key);',
+    // Strategic notes field for offers (reuse internal_notes, add strategic_notes as alias)
+    'ALTER TABLE offers ADD COLUMN strategic_notes TEXT;',
 ];
 
 migrations.forEach(sql => {
@@ -181,4 +221,14 @@ migrations.forEach(sql => {
     }
 });
 
+// Optimization: Add Indices for Performance
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_offers_customer_id ON offers(customer_id);
+  CREATE INDEX IF NOT EXISTS idx_offer_items_offer_id ON offer_items(offer_id);
+  CREATE INDEX IF NOT EXISTS idx_projects_customer_id ON projects(customer_id);
+  CREATE INDEX IF NOT EXISTS idx_projects_offer_id ON projects(offer_id);
+  CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id);
+`);
+
+console.log('Database initialized with indices');
 export default db;

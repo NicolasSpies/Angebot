@@ -5,7 +5,8 @@
     "customers": "Kunden",
     "services": "Leistungen",
     "projects": "Projekte",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "trash": "Papierkorb"
   },
   "common": {
     "add": "Hinzufügen",

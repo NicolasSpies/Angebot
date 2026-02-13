@@ -9,6 +9,8 @@ const CreateProjectModal = ({ isOpen, onClose, onSuccess }) => {
     const [name, setName] = useState('');
     const [customerId, setCustomerId] = useState('');
     const [offerId, setOfferId] = useState('');
+    const [status, setStatus] = useState('todo');
+    const [deadline, setDeadline] = useState('');
     const [customers, setCustomers] = useState([]);
     const [offers, setOffers] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -29,13 +31,17 @@ const CreateProjectModal = ({ isOpen, onClose, onSuccess }) => {
             await dataService.createProject({
                 name,
                 customer_id: customerId || null,
-                offer_id: offerId || null
+                offer_id: offerId || null,
+                status,
+                deadline: deadline || null
             });
             onSuccess();
             onClose();
             setName('');
             setCustomerId('');
             setOfferId('');
+            setStatus('todo');
+            setDeadline('');
         } catch (error) {
             console.error('Failed to create project', error);
         }
@@ -52,6 +58,28 @@ const CreateProjectModal = ({ isOpen, onClose, onSuccess }) => {
                     placeholder="e.g. Website Redesign"
                     required
                 />
+
+                <div className="grid grid-cols-2 gap-4">
+                    <Select
+                        label="Status"
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value)}
+                        options={[
+                            { value: 'todo', label: 'To Do' },
+                            { value: 'in_progress', label: 'In Progress' },
+                            { value: 'on_hold', label: 'On Hold' },
+                            { value: 'completed', label: 'Completed' },
+                            { value: 'cancelled', label: 'Cancelled' }
+                        ]}
+                    />
+                    <Input
+                        label="Deadline (Optional)"
+                        type="date"
+                        value={deadline}
+                        onChange={(e) => setDeadline(e.target.value)}
+                    />
+                </div>
+
                 <Select
                     label="Customer (Optional)"
                     value={customerId}

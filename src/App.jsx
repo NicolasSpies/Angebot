@@ -1,41 +1,58 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import AppLayout from './components/layout/AppLayout';
-import DashboardPage from './pages/DashboardPage';
-import CustomersPage from './pages/CustomersPage';
-import ServicesPage from './pages/ServicesPage';
-import OffersPage from './pages/OffersPage';
-import OfferWizardPage from './pages/OfferWizardPage';
-import OfferPreviewPage from './pages/OfferPreviewPage';
-import PublicOfferPage from './pages/PublicOfferPage';
-import CustomerDetailPage from './pages/CustomerDetailPage';
-import SettingsPage from './pages/SettingsPage';
-import ProjectsPage from './pages/ProjectsPage';
-import ProjectDetailView from './pages/ProjectDetailPage';
+import React, { Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import PageShell from './components/layout/PageShell';
 import { I18nProvider } from './i18n/I18nContext';
+
+// Lazy Load Pages for Performance
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const CustomersPage = lazy(() => import('./pages/CustomersPage'));
+const CustomerDetailPage = lazy(() => import('./pages/CustomerDetailPage'));
+const OffersPage = lazy(() => import('./pages/OffersPage'));
+const OfferWizardPage = lazy(() => import('./pages/OfferWizardPage'));
+const OfferPreviewPage = lazy(() => import('./pages/OfferPreviewPage'));
+const OfferPublicPage = lazy(() => import('./pages/OfferPublicPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
+const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
+const ServicesPage = lazy(() => import('./pages/ServicesPage'));
+const TrashPage = lazy(() => import('./pages/TrashPage'));
+
+// Loading Fallback
+const PageLoader = () => (
+  <div className="flex items-center justify-center h-screen text-[var(--text-muted)] font-medium">
+    Loading application...
+  </div>
+);
 
 function App() {
   return (
     <I18nProvider>
-      <Router>
-        <Routes>
-          <Route path="/" element={<AppLayout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="offers" element={<OffersPage />} />
-            <Route path="projects" element={<ProjectsPage />} />
-            <Route path="projects/:id" element={<ProjectDetailView />} />
-            <Route path="customers" element={<CustomersPage />} />
-            <Route path="customers/:id" element={<CustomerDetailPage />} />
-            <Route path="services" element={<ServicesPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="offer/new" element={<OfferWizardPage />} />
-            <Route path="offer/edit/:editId" element={<OfferWizardPage />} />
-            <Route path="offer/preview/:id" element={<OfferPreviewPage />} />
-          </Route>
-          <Route path="offer/sign/:id" element={<PublicOfferPage />} />
-        </Routes>
-      </Router>
+      <BrowserRouter>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/offer/sign/:token" element={<OfferPublicPage />} />
+
+            {/* App Routes */}
+            <Route path="/" element={<PageShell />}>
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="customers" element={<CustomersPage />} />
+              <Route path="customers/:id" element={<CustomerDetailPage />} />
+              <Route path="offers" element={<OffersPage />} />
+              <Route path="offer/new" element={<OfferWizardPage />} />
+              <Route path="offer/edit/:editId" element={<OfferWizardPage />} />
+              <Route path="offer/wizard" element={<OfferWizardPage />} />
+              <Route path="offer/preview/:id" element={<OfferPreviewPage />} />
+              <Route path="projects" element={<ProjectsPage />} />
+              <Route path="projects/:id" element={<ProjectDetailPage />} />
+              <Route path="services" element={<ServicesPage />} />
+              <Route path="trash" element={<TrashPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+            </Route>
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
     </I18nProvider>
   );
 }

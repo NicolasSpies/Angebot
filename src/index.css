@@ -1,117 +1,152 @@
+@import "tailwindcss";
+
+/* ================================================================
+   DESIGN TOKENS
+   ================================================================ */
+@theme {
+  /* --- Color Tokens: Base --- */
+  --color-bg-app: #F8F9FA;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-sidebar: #FFFFFF;
+
+  /* --- Color Tokens: Borders --- */
+  --color-border-subtle: #E2E8F0;
+  --color-border-medium: #CBD5E1;
+
+  /* --- Color Tokens: Typography --- */
+  --color-text-main: #0F172A;
+  --color-text-secondary: #64748B;
+  --color-text-muted: #94A3B8;
+
+  /* --- Radius --- */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
 :root {
-  /* Colors - Dash Template Palette (Indigo/Slate) */
-  --primary: #7c3aed;
-  /* Indigo 600 */
-  --primary-hover: #6d28d9;
-  /* Indigo 700 */
-  --primary-light: #f5f3ff;
+  /* --- Color Tokens: Base --- */
+  --bg-app: #F8F9FA;
+  --bg-surface: #FFFFFF;
+  --bg-sidebar: #FFFFFF;
+  --bg-main: #F8F9FA;
+  --bg-card: #FFFFFF;
 
-  --secondary: #64748b;
-  /* Slate 500 */
-  --secondary-hover: #475569;
-  /* Slate 600 */
-  --secondary-light: #f1f5f9;
-  /* Slate 100 */
-
-  --success: #10b981;
-  /* Emerald 500 */
-  --success-bg: #ecfdf5;
-  --success-text: #047857;
-
-  --warning: #f59e0b;
-  /* Amber 500 */
-  --warning-bg: #fffbeb;
-  --warning-text: #b45309;
-
-  --danger: #ef4444;
-  /* Red 500 */
-  --danger-bg: #fef2f2;
-  --danger-text: #b91c1c;
-
-  --info: #3b82f6;
-  /* Blue 500 */
-  --info-bg: #eff6ff;
-  --info-text: #1d4ed8;
-
-  /* Neutrals */
-  --bg-main: #f8fafc;
-  /* Slate 50 */
-  --bg-sidebar: #ffffff;
-  --bg-card: #ffffff;
-
-  --text-main: #0f172a;
-  /* Slate 900 */
-  --text-secondary: #475569;
-  /* Slate 600 */
-  --text-muted: #94a3b8;
-  /* Slate 400 */
-  --text-inverse: #ffffff;
-
-  --border: #e2e8f0;
-  /* Slate 200 */
+  /* --- Color Tokens: Borders --- */
+  --border: #E2E8F0;
+  --border-subtle: #E2E8F0;
+  --border-medium: #CBD5E1;
   --border-focus: #7c3aed;
+  --border-hover: #CBD5E1;
 
-  /* Typography */
-  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* --- Color Tokens: Typography --- */
+  --text-main: #0F172A;
+  --text-secondary: #64748B;
+  --text-muted: #94A3B8;
+
+  /* --- Color Tokens: Brand/Actions --- */
+  --primary: #0F172A;
+  --primary-hover: #1E293B;
+  --primary-foreground: #FFFFFF;
+  --primary-light: #F1F5F9;
+  --accent: #3B82F6;
+
+  /* --- Color Tokens: Status --- */
+  --success: #10B981;
+  --success-bg: #ECFDF5;
+  --success-text: #059669;
+  --warning: #F59E0B;
+  --warning-bg: #FFFBEB;
+  --warning-text: #D97706;
+  --danger: #EF4444;
+  --danger-bg: #FEF2F2;
+  --danger-text: #DC2626;
+
+  /* --- Secondary --- */
+  --secondary: #64748b;
+  --secondary-hover: #475569;
+  --secondary-light: #f1f5f9;
+
+  /* --- Font Sizes --- */
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
   --font-size-base: 1rem;
   --font-size-lg: 1.125rem;
-  --font-size-xl: 1.25rem;
-  --font-size-2xl: 1.5rem;
 
-  /* Spacing & Layout */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  /* --- Spacing System (8pt Grid) --- */
+  --space-1: 0.25rem;
+  /*  4px */
+  --space-2: 0.5rem;
+  /*  8px */
+  --space-3: 0.75rem;
+  /* 12px */
+  --space-4: 1rem;
+  /* 16px */
+  --space-5: 1.25rem;
+  /* 20px */
+  --space-6: 1.5rem;
+  /* 24px */
+  --space-8: 2rem;
+  /* 32px */
+  --space-10: 2.5rem;
+  /* 40px */
+  --space-12: 3rem;
+  /* 48px */
+
+  /* --- Radius --- */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
   --radius-full: 9999px;
 
-  /* Shadows - Layered Dash style */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  /* --- Shadows --- */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-floating: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* --- Z-Index Layers (strict hierarchy) --- */
+  --z-base: 1;
+  --z-sticky: 40;
+  --z-sidebar: 50;
+  --z-header: 60;
+  --z-dropdown: 100;
+  --z-popover: 100;
+  --z-modal: 200;
+  --z-overlay: 300;
 }
 
-* {
-  box-sizing: border-box;
+/* ================================================================
+   GLOBAL RESET
+   ================================================================ */
+html,
+body,
+#root {
   margin: 0;
   padding: 0;
+  height: 100%;
 }
 
 body {
-  font-family: var(--font-family);
-  background-color: var(--bg-main);
+  background-color: var(--bg-app);
   color: var(--text-main);
-  line-height: 1.5;
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+  font-size: var(--font-size-sm);
 }
 
-/* Layout Container */
-.app-container {
-  display: flex;
-  min-height: 100vh;
-}
-
-.main-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  /* Prevent scroll on the wrapper */
-  height: 100vh;
-}
-
-.scroll-area {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  height: 100%;
+#root {
   display: flex;
   flex-direction: column;
 }
 
+/* ================================================================
+   LAYOUT PRIMITIVES
+   ================================================================ */
 .page-container {
   padding: 1.5rem 2rem;
   max-width: 1400px;
@@ -119,7 +154,28 @@ body {
   width: 100%;
 }
 
-/* UI Components Defaults */
+/* ================================================================
+   ANIMATIONS
+   ================================================================ */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* ================================================================
+   UI COMPONENT DEFAULTS (from original design system)
+   ================================================================ */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -152,7 +208,7 @@ body {
 }
 
 .sidebar-logo {
-  padding: 1.5rem 1.5rem;
+  padding: 1.5rem;
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--text-main);
@@ -203,7 +259,6 @@ body {
   top: 0;
   z-index: 100;
   flex-shrink: 0;
-  /* Ensure it doesn't shrink */
 }
 
 /* Forms */
@@ -213,27 +268,6 @@ body {
   font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 0.5rem;
-}
-
-input:not([type="checkbox"]):not([type="radio"]),
-select,
-textarea {
-  width: 100%;
-  padding: 0.625rem 0.875rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  font-family: inherit;
-  font-size: var(--font-size-sm);
-  transition: border-color 0.2s, box-shadow 0.2s;
-  background: #fff;
-}
-
-input:focus,
-select:focus,
-textarea:focus {
-  outline: none;
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
 }
 
 /* Buttons */
@@ -263,7 +297,7 @@ button {
   background: var(--primary-hover);
   border-color: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
 }
 
 .btn-secondary {
@@ -323,40 +357,6 @@ button {
   border: 1px solid var(--border);
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: #fff;
-}
-
-th {
-  background: #f1f5f9;
-  /* Dash template light grey header */
-  padding: 0.75rem 1.5rem;
-  text-align: left;
-  font-size: 11px;
-  font-weight: 700;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--border);
-}
-
-td {
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-  font-size: var(--font-size-sm);
-  color: var(--text-main);
-}
-
-tr:last-child td {
-  border-bottom: none;
-}
-
-tr:hover td {
-  background: var(--bg-main);
-}
-
 /* Badges */
 .badge {
   display: inline-flex;
@@ -379,9 +379,9 @@ tr:hover td {
 }
 
 .badge-primary {
-  background: rgba(124, 58, 237, 0.1);
+  background: rgba(15, 23, 42, 0.1);
   color: var(--primary);
-  border-color: rgba(124, 58, 237, 0.2);
+  border-color: rgba(15, 23, 42, 0.2);
 }
 
 .badge-primary .badge-dot {
@@ -438,7 +438,9 @@ tr:hover td {
   background: #64748b;
 }
 
-/* Utilities */
+/* ================================================================
+   HAND-ROLLED UTILITY CLASSES (layout basics)
+   ================================================================ */
 .grid {
   display: grid;
   gap: 1.5rem;
@@ -468,49 +470,9 @@ tr:hover td {
   }
 }
 
-/* Flexbox Utilities - RE-ADDED */
-.flex {
-  display: flex !important;
-}
-
+/* Flexbox Utilities */
 .flex-column {
   flex-direction: column !important;
-}
-
-.items-center {
-  align-items: center !important;
-}
-
-.justify-between {
-  justify-content: space-between !important;
-}
-
-.justify-end {
-  justify-content: flex-end !important;
-}
-
-.justify-center {
-  justify-content: center !important;
-}
-
-.gap-1 {
-  gap: 0.25rem !important;
-}
-
-.gap-2 {
-  gap: 0.5rem !important;
-}
-
-.gap-3 {
-  gap: 0.75rem !important;
-}
-
-.gap-4 {
-  gap: 1rem !important;
-}
-
-.wrap {
-  flex-wrap: wrap !important;
 }
 
 /* Spacing Utilities */
@@ -567,30 +529,6 @@ tr:hover td {
 }
 
 /* Text Utilities */
-.text-center {
-  text-align: center !important;
-}
-
-.text-right {
-  text-align: right !important;
-}
-
-.text-xs {
-  font-size: 0.75rem !important;
-}
-
-.text-sm {
-  font-size: 0.875rem !important;
-}
-
-.font-bold {
-  font-weight: 700 !important;
-}
-
-.font-semibold {
-  font-weight: 600 !important;
-}
-
 .text-muted {
   color: var(--text-muted) !important;
 }
@@ -603,10 +541,104 @@ tr:hover td {
   text-decoration: none !important;
 }
 
-.cursor-pointer {
-  cursor: pointer !important;
+.wrap {
+  flex-wrap: wrap !important;
 }
 
-.w-full {
-  width: 100% !important;
+/* Pill Filter Buttons */
+.pill-filter {
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.pill-filter:hover {
+  border-color: var(--border-medium);
+  color: var(--text-main);
+}
+
+.pill-filter.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ================================================================
+   SCROLLBAR POLISH
+   ================================================================ */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: 99px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* ================================================================
+   PRINT STYLES
+   ================================================================ */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Ensure background colors and shadows are printed exactly as seen */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide app shell elements if they exist */
+  aside,
+  header {
+    display: none !important;
+  }
+
+  /* Reset layout constraints */
+  .page-container {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  .a4-container {
+    padding: 2rem !important;
+    /* Reduce padding slightly for print */
+    box-shadow: none !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Ensure page breaks don't cut inside elements */
+  tr,
+  .break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+.print-only {
+  display: none;
 }

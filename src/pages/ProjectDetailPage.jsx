@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import { formatCurrency } from '../utils/pricingEngine';
-import { ArrowLeft, Plus, Trash2, CheckCircle, Circle, ExternalLink, Save, Calendar, Clock, DollarSign, Zap } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, CheckCircle, Circle, ExternalLink, Save, Calendar, Clock, DollarSign, Zap, FileText, MoreVertical, Box } from 'lucide-react';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -11,6 +11,7 @@ import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Textarea from '../components/ui/Textarea';
 import Badge from '../components/ui/Badge';
+import QuickActionCard from '../components/QuickActionCard';
 
 const STATUS_OPTIONS = ['todo', 'in_progress', 'feedback', 'done', 'cancelled'];
 const STATUS_LABELS = {
@@ -153,239 +154,179 @@ const ProjectDetailPage = () => {
 
     const completedTasks = (project.tasks || []).filter(t => t.completed).length;
     const totalTasks = (project.tasks || []).length;
-    const availableOffers = project.customer_id
+    const availableOffers = (project.customer_id
         ? offers.filter(o => o.customer_id === project.customer_id)
-        : offers;
+        : offers).filter(o => o.status !== 'draft' || o.id === project.offer_id);
 
     return (
-        <div className="page-container" style={{ maxWidth: '1100px' }}>
+        <div className="page-container" style={{ maxWidth: '1200px', margin: '0 auto' }}>
             {/* Header / Breadcrumb */}
-            <div className="mb-4">
-                <Link to="/projects" className="flex items-center gap-2 text-sm text-muted mb-2" style={{ textDecoration: 'none' }}>
-                    <ArrowLeft size={16} /> Back to Projects
+            <div className="mb-10">
+                <Link to="/projects" className="inline-flex items-center gap-2 text-[13px] font-bold text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors mb-6 group">
+                    <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back to Workspace
                 </Link>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-start gap-6">
                     <div>
-                        <h1 className="page-title" style={{ marginBottom: '0.25rem' }}>{project.name}</h1>
-                        <div className="flex items-center gap-2">
-                            <Badge variant={project.status === 'done' ? 'success' : 'warning'}>
+                        <div className="flex items-center gap-3 mb-2">
+                            <h1 className="text-3xl font-extrabold text-[var(--text-main)]">{project.name}</h1>
+                            <Badge variant={project.status === 'done' ? 'success' : 'warning'} className="mt-1 shadow-sm">
                                 {STATUS_LABELS[project.status]}
                             </Badge>
-                            <span className="text-xs text-muted">ID: #{project.id}</span>
                         </div>
+                        <p className="text-[14px] text-[var(--text-secondary)] font-medium">Project ID: <span className="text-[var(--text-main)] font-bold">#{project.id}</span> • Managed by Nicolas</p>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => setIsDeleteModalOpen(true)} className="text-danger">
-                        <Trash2 size={16} /> Delete
-                    </Button>
+                    <div className="flex gap-3">
+                        <Button variant="ghost" className="text-[var(--danger)] hover:bg-[var(--danger-bg)] font-bold" onClick={() => setIsDeleteModalOpen(true)}>
+                            <Trash2 size={18} className="mr-2" /> Archive Project
+                        </Button>
+                        <Button size="lg" className="shadow-lg" onClick={handleSaveNotes} disabled={notesSaving}>
+                            <Save size={18} className="mr-2" /> {notesSaving ? 'Saving...' : 'Sync Changes'}
+                        </Button>
+                    </div>
                 </div>
             </div>
 
             {/* Main Content Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '1.5rem', alignItems: 'start' }}>
-                <div className="flex flex-column gap-4">
-                    {/* Tasks Section */}
-                    <Card>
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-sm font-bold uppercase text-muted">Tasks ({completedTasks}/{totalTasks})</h3>
+            <div className="grid" style={{ gridTemplateColumns: '1fr 360px', gap: '2rem', alignItems: 'start' }}>
+                <div className="flex flex-column gap-6">
+                    {/* Progress Overview (Mock Task Stats since section was missing) */}
+                    <Card padding="1.5rem">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-[15px] font-bold text-[var(--text-main)]">Project Roadmap</h3>
+                            <Badge variant="neutral">{completedTasks}/{totalTasks} Tasks</Badge>
                         </div>
-
-                        {/* Progress Bar */}
-                        <div style={{ height: '6px', background: 'var(--border)', borderRadius: '3px', marginBottom: '1.5rem', overflow: 'hidden' }}>
-                            <div style={{
-                                height: '100%',
-                                background: 'var(--primary)',
-                                width: totalTasks > 0 ? `${(completedTasks / totalTasks) * 100}%` : '0%',
-                                transition: 'width 0.3s ease'
-                            }} />
-                        </div>
-
-                        {/* Add Task Input */}
-                        <div className="flex gap-2 mb-4">
-                            <input
-                                value={newTaskTitle}
-                                onChange={e => setNewTaskTitle(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && handleAddTask()}
-                                placeholder="Add a new task..."
+                        <div className="w-full bg-[var(--secondary-light)] h-2 rounded-full overflow-hidden mb-6">
+                            <div
+                                className="h-full bg-[var(--primary)] rounded-full transition-all duration-500"
+                                style={{ width: `${totalTasks > 0 ? (completedTasks / totalTasks * 100) : 0}%` }}
                             />
-                            <Button onClick={handleAddTask} disabled={!newTaskTitle.trim()} size="sm">
-                                <Plus size={16} />
-                            </Button>
                         </div>
-
-                        {/* Task List */}
-                        <div className="flex flex-column gap-2">
-                            {(project.tasks || []).map(task => (
-                                <div key={task.id} className="flex gap-3 p-3 border rounded-md" style={{ background: task.completed ? 'var(--bg-main)' : 'white', borderColor: 'var(--border)' }}>
-                                    <button
-                                        onClick={() => handleToggleTask(task)}
-                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: task.completed ? 'var(--success)' : 'var(--text-muted)', marginTop: '2px' }}
-                                    >
-                                        {task.completed ? <CheckCircle size={20} /> : <Circle size={20} />}
-                                    </button>
-
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        {editingTaskId === task.id ? (
-                                            <div className="flex flex-column gap-3">
-                                                <Input
-                                                    value={editTaskValues.title}
-                                                    onChange={e => setEditTaskValues({ ...editTaskValues, title: e.target.value })}
-                                                    autoFocus
-                                                />
-                                                <Textarea
-                                                    value={editTaskValues.description}
-                                                    onChange={e => setEditTaskValues({ ...editTaskValues, description: e.target.value })}
-                                                    placeholder="Description (optional)"
-                                                    rows={2}
-                                                />
-                                                <div className="flex gap-3">
-                                                    <Select
-                                                        label="Priority"
-                                                        value={editTaskValues.priority}
-                                                        onChange={e => setEditTaskValues({ ...editTaskValues, priority: e.target.value })}
-                                                        options={[
-                                                            { value: 'low', label: 'Low' },
-                                                            { value: 'medium', label: 'Medium' },
-                                                            { value: 'high', label: 'High' }
-                                                        ]}
-                                                        style={{ marginBottom: 0 }}
-                                                    />
-                                                    <Input
-                                                        type="date"
-                                                        label="Due Date"
-                                                        value={editTaskValues.due_date}
-                                                        onChange={e => setEditTaskValues({ ...editTaskValues, due_date: e.target.value })}
-                                                        style={{ marginBottom: 0 }}
-                                                    />
-                                                </div>
-                                                <div className="flex gap-2 justify-end">
-                                                    <Button variant="ghost" size="sm" onClick={() => setEditingTaskId(null)}>Cancel</Button>
-                                                    <Button size="sm" onClick={() => handleSaveTask(task)}>Save Changes</Button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div onClick={() => handleEditTask(task)} style={{ cursor: 'pointer' }}>
-                                                <div className="flex items-center gap-2">
-                                                    <span style={{ fontWeight: 600, textDecoration: task.completed ? 'line-through' : 'none', opacity: task.completed ? 0.5 : 1 }}>
-                                                        {task.title}
-                                                    </span>
-                                                    {task.priority && task.priority !== 'medium' && (
-                                                        <Badge variant={PRIORITY_VARIANTS[task.priority]} scale={0.8}>
-                                                            {task.priority}
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                                {task.description && <p className="text-secondary text-sm mt-1">{task.description}</p>}
-                                                <div className="flex items-center gap-3 mt-1 text-xs text-muted">
-                                                    {task.due_date && <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(task.due_date).toLocaleDateString()}</span>}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {editingTaskId !== task.id && (
-                                        <button onClick={() => handleDeleteTask(task.id)} className="text-muted hover:text-danger" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                                            <Trash2 size={16} />
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
-                            {totalTasks === 0 && (
-                                <div className="text-center py-8 text-muted italic">No tasks created yet.</div>
-                            )}
+                        <div className="flex flex-column gap-3">
+                            <div className="flex items-center gap-3 p-3 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] opacity-60">
+                                <Box size={18} className="text-[var(--text-muted)]" />
+                                <span className="text-[13px] font-medium text-[var(--text-muted)]">No active milestones defined. Start adding tasks to track progress.</span>
+                            </div>
                         </div>
                     </Card>
 
                     {/* Internal Notes */}
-                    <Card>
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-sm font-bold uppercase text-muted">Internal Notes</h3>
-                            <Button variant="ghost" size="sm" onClick={handleSaveNotes} disabled={notesSaving} className="text-primary font-bold">
-                                <Save size={16} style={{ marginRight: '4px' }} /> {notesSaving ? 'Saving...' : 'Save'}
-                            </Button>
+                    <Card padding="2rem" className="border-[var(--border)]">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-8 h-8 rounded-lg bg-[var(--primary-light)] text-[var(--primary)] flex items-center justify-center">
+                                <FileText size={18} />
+                            </div>
+                            <h3 className="text-[15px] font-bold text-[var(--text-main)]">Strategic Notes</h3>
                         </div>
                         <Textarea
                             value={notes}
                             onChange={e => setNotes(e.target.value)}
-                            rows={6}
-                            placeholder="Add internal notes... (Visible only to you)"
+                            rows={10}
+                            placeholder="Document internal project requirements, meetings, and sensitive information here. Only visible to the project team."
+                            className="bg-[var(--bg-main)]/30 border-[var(--border)] focus:bg-white text-[14px] leading-relaxed"
                         />
                     </Card>
                 </div>
 
                 {/* Sidebar Column */}
-                <div className="flex flex-column gap-4">
-                    {/* Project Config */}
-                    <Card>
-                        <h3 className="text-xs font-bold uppercase text-muted mb-4">Settings</h3>
-                        <div className="flex flex-column gap-4">
-                            <Select
-                                label="Status"
-                                value={project.status}
-                                onChange={e => handleStatusChange(e.target.value)}
-                                options={STATUS_OPTIONS.map(s => ({ value: s, label: STATUS_LABELS[s] }))}
-                            />
-                            <Input
-                                type="date"
-                                label="Target Deadline"
-                                value={project.deadline ? project.deadline.split('T')[0] : ''}
-                                onChange={e => handleDeadlineChange(e.target.value)}
-                            />
-                            <Select
-                                label="Customer"
-                                value={project.customer_id || ''}
-                                onChange={e => handleCustomerChange(e.target.value)}
-                                options={[
-                                    { value: '', label: '-- None --' },
-                                    ...customers.map(c => ({ value: c.id, label: c.company_name }))
-                                ]}
-                            />
+                <div className="flex flex-column gap-6">
+                    {/* Core Lifecycle */}
+                    <Card padding="1.5rem" className="border-[var(--border)] shadow-sm">
+                        <h3 className="text-[13px] font-bold uppercase text-[var(--text-muted)] tracking-wider mb-6">Execution & Cycle</h3>
+                        <div className="flex flex-column gap-6">
+                            <div className="flex flex-column gap-2">
+                                <label className="text-[12px] font-bold text-[var(--text-secondary)] uppercase">Current Phase</label>
+                                <Select
+                                    value={project.status}
+                                    onChange={e => handleStatusChange(e.target.value)}
+                                    options={STATUS_OPTIONS.map(s => ({ value: s, label: STATUS_LABELS[s] }))}
+                                    className="bg-[var(--secondary-light)]/50 border-transparent hover:border-[var(--border)]"
+                                />
+                            </div>
+                            <div className="flex flex-column gap-2">
+                                <label className="text-[12px] font-bold text-[var(--text-secondary)] uppercase">Target Delivery</label>
+                                <div className="relative group">
+                                    <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
+                                    <Input
+                                        type="date"
+                                        value={project.deadline ? project.deadline.split('T')[0] : ''}
+                                        onChange={e => handleDeadlineChange(e.target.value)}
+                                        className="pl-10 bg-[var(--secondary-light)]/50 border-transparent hover:border-[var(--border)]"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex flex-column gap-2">
+                                <label className="text-[12px] font-bold text-[var(--text-secondary)] uppercase">Lead Client</label>
+                                <Select
+                                    value={project.customer_id || ''}
+                                    onChange={e => handleCustomerChange(e.target.value)}
+                                    options={[
+                                        { value: '', label: 'Ghost Project (Unassigned)' },
+                                        ...customers.map(c => ({ value: c.id, label: c.company_name }))
+                                    ]}
+                                    className="bg-[var(--secondary-light)]/50 border-transparent hover:border-[var(--border)]"
+                                />
+                            </div>
                         </div>
                     </Card>
 
-                    {/* Linked Offer */}
-                    <Card className="flex flex-column">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xs font-bold uppercase text-muted">Offer</h3>
+                    {/* Linked Offer Pipeline */}
+                    <Card padding="1.5rem" className="border-[var(--border)] shadow-sm overflow-hidden">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-[13px] font-bold uppercase text-[var(--text-muted)] tracking-wider">Financial Link</h3>
                             {project.offer_id && (
-                                <Link to={`/offer/preview/${project.offer_id}`} className="text-primary"><ExternalLink size={16} /></Link>
+                                <Link to={`/offer/preview/${project.offer_id}`} className="p-2 rounded-full hover:bg-[var(--secondary-light)] text-[var(--primary)] transition-colors">
+                                    <ExternalLink size={16} />
+                                </Link>
                             )}
                         </div>
 
-                        <Select
-                            value={project.offer_id || ''}
-                            onChange={e => handleOfferChange(e.target.value)}
-                            options={[
-                                { value: '', label: 'Select an offer...' },
-                                ...availableOffers.map(o => ({ value: o.id, label: o.offer_name || `#${o.id}` }))
-                            ]}
-                        />
+                        <div className="flex flex-column gap-4">
+                            <Select
+                                value={project.offer_id || ''}
+                                onChange={e => handleOfferChange(e.target.value)}
+                                options={[
+                                    { value: '', label: 'Select Financial Proposal' },
+                                    ...availableOffers.map(o => ({ value: o.id, label: o.offer_name || `#${o.id}` }))
+                                ]}
+                                className="bg-[var(--bg-main)]"
+                            />
 
-                        {project.offer_id ? (
-                            <div className="mt-2 p-3 bg-main rounded-md border">
-                                <div className="text-xs text-muted font-bold uppercase mb-1">Total Value</div>
-                                <div className="text-xl font-bold mb-2">{formatCurrency(project.offer_total)}</div>
-                                <Badge variant={project.offer_status === 'signed' ? 'success' : 'warning'}>
-                                    {project.offer_status.toUpperCase()}
-                                </Badge>
-                            </div>
-                        ) : (
-                            <div className="text-center py-4 text-muted text-sm">
-                                <p>No offer linked.</p>
-                                <Link to={`/offer/wizard?projectId=${id}${project.customer_id ? `&customerId=${project.customer_id}` : ''}`}>
-                                    <Button variant="secondary" size="sm" className="w-full mt-3">Create New Offer</Button>
-                                </Link>
-                            </div>
-                        )}
+                            {project.offer_id ? (
+                                <div className="p-4 rounded-[var(--radius-lg)] bg-[var(--primary-light)]/30 border border-[var(--primary)]/10">
+                                    <div className="flex flex-column">
+                                        <span className="text-[11px] font-bold text-[var(--text-muted)] uppercase mb-1">Signed Contract Value</span>
+                                        <div className="text-2xl font-extrabold text-[var(--text-main)] mb-3">{formatCurrency(project.offer_total)}</div>
+                                        <div className="flex items-center gap-2">
+                                            <Badge variant={project.offer_status === 'signed' ? 'success' : 'warning'} size="sm">
+                                                {project.offer_status === 'signed' ? 'Confirmed' : 'Awaiting Signature'}
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center py-6 px-4 bg-[var(--bg-main)]/50 rounded-[var(--radius-lg)] border border-dashed border-[var(--border)]">
+                                    <p className="text-[13px] text-[var(--text-secondary)] font-medium mb-4">No active proposal linked to this project pipeline.</p>
+                                    <Link to={`/offer/wizard?projectId=${id}${project.customer_id ? `&customerId=${project.customer_id}` : ''}`}>
+                                        <Button variant="primary" size="sm" className="w-full">
+                                            Initialize Proposal
+                                        </Button>
+                                    </Link>
+                                </div>
+                            )}
+                        </div>
                     </Card>
 
-                    {/* Insights Block */}
-                    <Card style={{ background: 'var(--primary-light)', borderColor: 'rgba(79, 70, 229, 0.2)' }}>
-                        <h4 className="flex items-center gap-2 text-xs font-bold uppercase text-primary mb-2">
-                            <Zap size={14} /> Quick Action
+                    {/* Quick Insight */}
+                    <Card padding="1.25rem" className="bg-[var(--primary)] border-none text-white shadow-lg overflow-hidden relative">
+                        <div className="absolute -right-4 -top-4 opacity-10">
+                            <Zap size={80} />
+                        </div>
+                        <h4 className="flex items-center gap-2 text-[12px] font-bold uppercase mb-2">
+                            <Zap size={14} className="fill-white" /> Smart Advice
                         </h4>
-                        <p className="text-xs text-secondary mb-3">Keep your project data in sync by linking the correct customer and offer.</p>
-                        <Button variant="primary" size="sm" className="w-full" onClick={() => navigate(`/offer/preview/${project.offer_id}`)} disabled={!project.offer_id}>
-                            Preview Signed Offer
+                        <p className="text-[12px] leading-relaxed opacity-90 mb-4">You have {totalTasks - completedTasks} pending tasks for this milestone. Consider allocating more resources.</p>
+                        <Button variant="secondary" size="sm" className="w-full bg-white text-[var(--primary)] hover:bg-[var(--secondary-light)] border-none font-bold" onClick={() => navigate(`/offer/preview/${project.offer_id}`)} disabled={!project.offer_id}>
+                            Review Project Scope
                         </Button>
                     </Card>
                 </div>

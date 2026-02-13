@@ -25,6 +25,17 @@ export const calculateValidityProgress = (createdAt, dueDate) => {
 };
 
 /**
+ * Formats a date to DD.MM.YYYY.
+ * @param {string|Date} date - The date to format.
+ * @returns {string} Formatted date string.
+ */
+export const formatDateDot = (date) => {
+    if (!date) return '—';
+    const d = new Date(date);
+    return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+/**
  * Formats a date to the Dash template style (e.g., "MM/DD/YY" or "Month Day, Year").
  * @param {string|Date} date - The date to format.
  * @param {boolean} long - Whether to use long format.

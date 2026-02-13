@@ -1,23 +1,27 @@
 import React from 'react';
 
 const Button = ({ children, variant = 'primary', size = 'md', className = '', ...props }) => {
-    let cls = 'inline-flex items-center justify-center font-semibold transition-all duration-200 rounded-md disabled:opacity-50 disabled:cursor-not-allowed ';
+    let baseCls = 'inline-flex items-center justify-center font-bold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed select-none rounded-[var(--radius-md)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/20 active:scale-[0.98] ';
 
-    if (variant === 'primary') cls += 'btn-primary ';
-    else if (variant === 'secondary') cls += 'btn-secondary ';
-    else if (variant === 'danger') cls += 'bg-danger text-white hover:opacity-90 ';
-    else if (variant === 'ghost') cls += 'bg-transparent text-secondary hover:bg-secondary-light ';
-    else if (variant === 'icon') cls += 'p-1.5 rounded-md hover:bg-secondary-light flex items-center justify-center text-secondary ';
+    const variants = {
+        primary: 'bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] shadow-[var(--shadow-sm)] border border-transparent ',
+        secondary: 'bg-white text-[var(--text-main)] border border-[var(--border-subtle)] hover:border-[var(--border-medium)] hover:bg-[var(--bg-app)] shadow-[var(--shadow-sm)] ',
+        danger: 'bg-[var(--danger)] text-white hover:bg-[var(--danger)]/90 shadow-[var(--shadow-sm)] border border-transparent ',
+        ghost: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-app)] hover:text-[var(--text-main)] border border-transparent ',
+        icon: 'p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-app)] hover:text-[var(--text-main)] '
+    };
 
-    if (size === 'sm' && variant !== 'icon') cls += 'text-xs px-2.5 py-1 ';
-    else if (size === 'lg' && variant !== 'icon') cls += 'text-base px-5 py-2.5 ';
-    else if (size === 'md' && variant !== 'icon') cls += 'text-sm px-3.5 py-1.5 ';
+    const sizes = {
+        xs: 'text-[12px] h-7 px-2.5 ',
+        sm: 'text-[13px] h-9 px-3 ',
+        md: 'text-[14px] h-10 px-4 ',
+        lg: 'text-[15px] h-12 px-6 '
+    };
+
+    const cls = baseCls + (variants[variant] || variants.primary) + (variant !== 'icon' ? (sizes[size] || sizes.md) : '') + className;
 
     return (
-        <button
-            className={`${cls} ${className}`}
-            {...props}
-        >
+        <button className={cls} {...props}>
             {children}
         </button>
     );

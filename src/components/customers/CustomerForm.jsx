@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useI18n } from '../../i18n/I18nContext';
 import ConfirmationDialog from '../ui/ConfirmationDialog';
+import Button from '../ui/Button';
+import Input from '../ui/Input';
+import Select from '../ui/Select';
 
 const CustomerForm = ({ customer, onSave, onDelete, onCancel }) => {
     const { t } = useI18n();
@@ -30,162 +33,138 @@ const CustomerForm = ({ customer, onSave, onDelete, onCancel }) => {
     };
 
     return (
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <form onSubmit={handleSubmit} className="space-y-10 py-2">
             {/* Company Information */}
-            <div>
-                <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600, color: 'var(--text-muted)' }}>Company Information</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div>
-                        <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>{t('customer.company_name')}</label>
-                        <input
-                            style={{ width: '100%' }}
-                            name="company_name"
-                            value={formData.company_name}
-                            onChange={handleChange}
-                            required
-                        />
-                    </div>
-                    <div>
-                        <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>{t('customer.vat_number')}</label>
-                        <input
-                            style={{ width: '100%' }}
-                            name="vat_number"
-                            value={formData.vat_number}
-                            onChange={handleChange}
-                        />
-                    </div>
+            <div className="space-y-6">
+                <h3 className="text-[12px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] border-b border-[var(--border)] pb-2">Institutional Identity</h3>
+                <div className="grid grid-2 gap-6">
+                    <Input
+                        label={t('customer.company_name')}
+                        name="company_name"
+                        value={formData.company_name}
+                        onChange={handleChange}
+                        required
+                        placeholder="e.g. Acme Corp"
+                    />
+                    <Input
+                        label={t('customer.vat_number')}
+                        name="vat_number"
+                        value={formData.vat_number}
+                        onChange={handleChange}
+                        placeholder="VAT-000000"
+                    />
                 </div>
             </div>
 
             {/* Contact Person */}
-            <div>
-                <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600, color: 'var(--text-muted)' }}>Contact Person</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div className="grid grid-2">
-                        <div>
-                            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>First Name</label>
-                            <input
-                                style={{ width: '100%' }}
-                                name="first_name"
-                                value={formData.first_name || ''}
-                                onChange={handleChange}
-                            />
-                        </div>
-                        <div>
-                            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Last Name</label>
-                            <input
-                                style={{ width: '100%' }}
-                                name="last_name"
-                                value={formData.last_name || ''}
-                                onChange={handleChange}
-                            />
-                        </div>
-                    </div>
-                    <div className="grid grid-2">
-                        <div>
-                            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Email</label>
-                            <input
-                                type="email"
-                                style={{ width: '100%' }}
-                                name="email"
-                                value={formData.email || ''}
-                                onChange={handleChange}
-                            />
-                        </div>
-                        <div>
-                            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Phone</label>
-                            <input
-                                type="tel"
-                                style={{ width: '100%' }}
-                                name="phone"
-                                value={formData.phone || ''}
-                                onChange={handleChange}
-                            />
-                        </div>
-                    </div>
+            <div className="space-y-6">
+                <h3 className="text-[12px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] border-b border-[var(--border)] pb-2">Primary Liaison</h3>
+                <div className="grid grid-2 gap-6">
+                    <Input
+                        label="First Name"
+                        name="first_name"
+                        value={formData.first_name || ''}
+                        onChange={handleChange}
+                        placeholder="John"
+                    />
+                    <Input
+                        label="Last Name"
+                        name="last_name"
+                        value={formData.last_name || ''}
+                        onChange={handleChange}
+                        placeholder="Doe"
+                    />
+                    <Input
+                        label="Email Address"
+                        type="email"
+                        name="email"
+                        value={formData.email || ''}
+                        onChange={handleChange}
+                        placeholder="liaison@company.com"
+                    />
+                    <Input
+                        label="Direct Line"
+                        type="tel"
+                        name="phone"
+                        value={formData.phone || ''}
+                        onChange={handleChange}
+                        placeholder="+32 ..."
+                    />
                 </div>
             </div>
 
             {/* Address */}
-            <div>
-                <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600, color: 'var(--text-muted)' }}>Address</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div>
-                        <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Street Address</label>
-                        <input
-                            style={{ width: '100%' }}
-                            name="address"
-                            value={formData.address || ''}
+            <div className="space-y-6">
+                <h3 className="text-[12px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] border-b border-[var(--border)] pb-2">Geographic Presence</h3>
+                <div className="space-y-6">
+                    <Input
+                        label="Street Address"
+                        name="address"
+                        value={formData.address || ''}
+                        onChange={handleChange}
+                        placeholder="Avenue des Arts 12"
+                    />
+                    <div className="grid grid-2 gap-6">
+                        <Input
+                            label="City / Region"
+                            name="city"
+                            value={formData.city || ''}
                             onChange={handleChange}
+                            placeholder="Brussels"
+                        />
+                        <Input
+                            label="Postal Code"
+                            name="postal_code"
+                            value={formData.postal_code || ''}
+                            onChange={handleChange}
+                            placeholder="1000"
                         />
                     </div>
-                    <div className="grid grid-2">
-                        <div>
-                            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>City</label>
-                            <input
-                                style={{ width: '100%' }}
-                                name="city"
-                                value={formData.city || ''}
-                                onChange={handleChange}
-                            />
-                        </div>
-                        <div>
-                            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Postal Code</label>
-                            <input
-                                style={{ width: '100%' }}
-                                name="postal_code"
-                                value={formData.postal_code || ''}
-                                onChange={handleChange}
-                            />
-                        </div>
-                    </div>
-                    <div className="grid grid-2">
-                        <div>
-                            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>{t('customer.country')}</label>
-                            <select name="country" value={formData.country} onChange={handleChange} style={{ width: '100%' }}>
-                                <option value="BE">Belgium</option>
-                                <option value="DE">Germany</option>
-                                <option value="FR">France</option>
-                                <option value="LU">Luxembourg</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>{t('offer.language')}</label>
-                            <select name="language" value={formData.language} onChange={handleChange} style={{ width: '100%' }}>
-                                <option value="de">Deutsch</option>
-                                <option value="fr">Français</option>
-                            </select>
-                        </div>
+                    <div className="grid grid-2 gap-6">
+                        <Select
+                            label={t('customer.country')}
+                            name="country"
+                            value={formData.country}
+                            onChange={handleChange}
+                            options={[
+                                { value: 'BE', label: 'Belgium' },
+                                { value: 'DE', label: 'Germany' },
+                                { value: 'FR', label: 'France' },
+                                { value: 'LU', label: 'Luxembourg' }
+                            ]}
+                        />
+                        <Select
+                            label={t('offer.language')}
+                            name="language"
+                            value={formData.language}
+                            onChange={handleChange}
+                            options={[
+                                { value: 'de', label: 'Deutsch' },
+                                { value: 'fr', label: 'Français' }
+                            ]}
+                        />
                     </div>
                 </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', justifyContent: 'space-between' }}>
+            <div className="flex gap-4 mt-8 pt-6 border-t border-[var(--border)]">
                 {customer && onDelete && (
-                    <button
-                        type="button"
+                    <Button
+                        variant="danger"
                         onClick={() => setShowDeleteConfirm(true)}
-                        className="btn-danger"
-                        style={{
-                            background: 'transparent',
-                            color: 'var(--danger)',
-                            border: '1px solid var(--danger)',
-                            padding: '0.6rem 1.25rem',
-                            fontWeight: 600,
-                            borderRadius: 'var(--radius-md)',
-                            cursor: 'pointer'
-                        }}
+                        type="button"
+                        className="px-6"
                     >
                         {t('common.delete')}
-                    </button>
+                    </Button>
                 )}
-                <div style={{ display: 'flex', gap: '1rem', marginLeft: 'auto' }}>
-                    <button type="button" onClick={onCancel} className="btn-secondary">
+                <div className="flex gap-4 ml-auto">
+                    <Button variant="ghost" onClick={onCancel} type="button" className="px-6 font-bold">
                         {t('common.cancel')}
-                    </button>
-                    <button type="submit" className="btn-primary">
+                    </Button>
+                    <Button variant="primary" type="submit" className="px-10 shadow-lg">
                         {t('common.save')}
-                    </button>
+                    </Button>
                 </div>
             </div>
 

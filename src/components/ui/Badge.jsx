@@ -1,14 +1,22 @@
 import React from 'react';
 
 const Badge = ({ children, variant = 'neutral', className = '', showDot = true, ...props }) => {
-    const variantClass = `badge-${variant}`;
+    const baseCls = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] font-bold border ';
+
+    const variants = {
+        primary: 'bg-[var(--primary)] text-white border-transparent',
+        success: 'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success)]/20',
+        warning: 'bg-[var(--warning-bg)] text-[var(--warning)] border-[var(--warning)]/20',
+        danger: 'bg-[var(--danger-bg)] text-[var(--danger)] border-[var(--danger)]/20',
+        neutral: 'bg-[var(--bg-app)] text-[var(--text-secondary)] border-[var(--border-subtle)]'
+    };
 
     return (
         <span
-            className={`badge ${variantClass} ${className} flex items-center gap-2`}
+            className={`${baseCls} ${variants[variant] || variants.neutral} ${className}`}
             {...props}
         >
-            {showDot && <span className="badge-dot" />}
+            {showDot && <span className={`w-1.5 h-1.5 rounded-full ${variant === 'primary' ? 'bg-white' : 'bg-current'}`} />}
             {children}
         </span>
     );

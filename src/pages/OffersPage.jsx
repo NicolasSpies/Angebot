@@ -1,27 +1,36 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
-import { Link, useNavigate } from 'react-router-dom';
 import { formatCurrency } from '../utils/pricingEngine';
-import DropdownMenu from '../components/ui/DropdownMenu';
-import ConfirmationDialog from '../components/ui/ConfirmationDialog';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+    Plus, FileText, Eye, Edit2, Send, Link as LinkIcon, Trash2
+} from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
-import Badge from '../components/ui/Badge';
 import Table from '../components/ui/Table';
-import { Plus, Search, Filter } from 'lucide-react';
-import { calculateValidityProgress, formatDateDash } from '../utils/dateUtils';
+import Skeleton from '../components/ui/Skeleton';
+import DropdownMenu from '../components/ui/DropdownMenu';
+import ConfirmationDialog from '../components/ui/ConfirmationDialog';
+import { formatDateDot } from '../utils/dateUtils';
+import ListPageHeader from '../components/layout/ListPageHeader';
+import ListPageToolbar from '../components/layout/ListPageToolbar';
+import StatusPill from '../components/ui/StatusPill';
+import DueStatusIndicator from '../components/ui/DueStatusIndicator';
+import EmptyState from '../components/ui/EmptyState';
 
 const OffersPage = () => {
     const { t } = useI18n();
     const navigate = useNavigate();
     const [offers, setOffers] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
     const [deleteId, setDeleteId] = useState(null);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
 
     const loadOffers = useCallback(async () => {
+        setIsLoading(true);
         const data = await dataService.getOffers();
         setOffers(data);
         setIsLoading(false);
@@ -49,119 +58,157 @@ const OffersPage = () => {
 
     const handleSend = async (id) => {
         setIsLoading(true);
-        await dataService.sendOffer(id);
+        const result = await dataService.sendOffer(id);
+        if (result.token) {
+            window.open(`/offer/sign/${result.token}`, '_blank');
+        }
         loadOffers();
+    };
+
+    const handleUpdateStatus = async (id, newStatus) => {
+        setOffers(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
+        try {
+            await dataService.updateOffer(id, { status: newStatus });
+        } catch (error) {
+            console.error('Failed to update status', error);
+            loadOffers();
+        }
     };
 
     const copyLink = (token) => {
         const url = `${window.location.origin}/offer/sign/${token}`;
         navigator.clipboard.writeText(url);
-        // Using a more subtle notification would be better, but sticking to basics for now
         alert('Signature link copied to clipboard!');
     };
 
-    const filteredOffers = offers.filter(o =>
-        (o.offer_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (o.customer_name || '').toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredOffers = offers.filter(offer => {
+        const matchesSearch = (offer.offer_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (offer.customer_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesStatus = statusFilter === 'all' || offer.status === statusFilter;
+        return matchesSearch && matchesStatus;
+    });
+
+    const STATUS_OPTIONS = [
+        { value: 'all', label: 'All' },
+        { value: 'draft', label: 'Draft' },
+        { value: 'sent', label: 'Sent' },
+        { value: 'signed', label: 'Signed' },
+        { value: 'declined', label: 'Declined' }
+    ];
 
     return (
-        <div className="page-container">
-            <div className="flex justify-between items-center mb-4">
-                <h1 className="page-title" style={{ marginBottom: 0 }}>{t('nav.offers')}</h1>
-                <Link to="/offer/new" style={{ textDecoration: 'none' }}>
-                    <Button>
-                        <Plus size={18} style={{ marginRight: '0.5rem' }} /> {t('offer.create')}
-                    </Button>
-                </Link>
-            </div>
+        <div className="page-container fade-in">
+            <ListPageHeader
+                title={t('nav.offers')}
+                description="Create and manage your professional offers and proposals."
+                action={
+                    <Link to="/offer/new">
+                        <Button className="btn-primary shadow-sm">
+                            <Plus size={18} /> New Offer
+                        </Button>
+                    </Link>
+                }
+            />
 
-            <Card className="mb-4" padding="1rem">
-                <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                        <Filter size={16} className="text-muted" />
-                        <span className="text-sm font-bold text-muted uppercase">Filters</span>
-                    </div>
-                    <div style={{ position: 'relative', width: '300px' }}>
-                        <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--text-muted)' }} />
-                        <input
-                            placeholder="Search offers or clients..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            style={{ paddingLeft: '2.5rem' }}
-                        />
-                    </div>
-                </div>
-            </Card>
+            <ListPageToolbar
+                searchProps={{
+                    value: searchTerm,
+                    onChange: setSearchTerm,
+                    placeholder: "Search by name, customer or project..."
+                }}
+                filters={
+                    STATUS_OPTIONS.map(opt => (
+                        <button
+                            key={opt.value}
+                            onClick={() => setStatusFilter(opt.value)}
+                            className={`px-3 py-1.5 rounded-[var(--radius-md)] text-[13px] font-medium transition-all border ${statusFilter === opt.value
+                                ? 'bg-[var(--primary)] text-white border-[var(--primary)] shadow-[var(--shadow-sm)]'
+                                : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-medium)] hover:text-[var(--text-main)]'
+                                }`}
+                        >
+                            {opt.label}
+                        </button>
+                    ))
+                }
+            />
 
-            <Card padding="0">
-                <Table headers={[
-                    'Offer / Project',
-                    'Customer',
-                    'Total',
-                    'Status',
-                    'Created / Due',
-                    'Actions'
-                ]}>
-                    {isLoading ? (
-                        <tr><td colSpan="6" style={{ padding: '4rem', textAlign: 'center' }}>Loading offers...</td></tr>
-                    ) : filteredOffers.length > 0 ? filteredOffers.map(o => (
-                        <tr key={o.id}>
-                            <td>
-                                <Link to={`/offer/preview/${o.id}`} style={{ textDecoration: 'none', color: 'var(--text-main)', fontWeight: 600 }}>
-                                    {o.offer_name || <i className="text-muted">Untitled Offer #{o.id}</i>}
-                                </Link>
-                                {o.project_name && (
-                                    <div className="text-xs text-muted mt-1">{o.project_name}</div>
-                                )}
-                            </td>
-                            <td className="text-secondary">{o.customer_name}</td>
-                            <td className="font-bold">{formatCurrency(o.total)}</td>
-                            <td>
-                                <Badge variant={
-                                    o.status === 'signed' ? 'success' :
-                                        o.status === 'sent' ? 'warning' :
-                                            o.status === 'draft' ? 'primary' : 'neutral'
-                                } showDot={true}>
-                                    {(o.status || 'draft').toUpperCase()}
-                                </Badge>
-                            </td>
-                            <td>
-                                <div className="flex flex-column gap-1" style={{ minWidth: '100px' }}>
-                                    <div className="flex items-center gap-1">
-                                        <span className="text-sm">{formatDateDash(o.created_at)}</span>
-                                        {o.due_date && <span className="text-muted" style={{ fontSize: '10px' }}>→</span>}
-                                        {o.due_date && <span className="text-sm">{formatDateDash(o.due_date)}</span>}
-                                    </div>
-                                    {o.due_date && o.status !== 'signed' && o.status !== 'declined' && (
-                                        <div style={{ width: '100%', height: '4px', background: 'var(--border)', borderRadius: '2px', overflow: 'hidden', marginTop: '4px' }}>
-                                            <div style={{
-                                                width: `${calculateValidityProgress(o.created_at, o.due_date)}%`,
-                                                height: '100%',
-                                                background: calculateValidityProgress(o.created_at, o.due_date) > 90 ? 'var(--danger)' : 'var(--primary)',
-                                                transition: 'width 0.3s ease'
-                                            }} />
-                                        </div>
+            <Table headers={['Offer Name', 'Customer', 'Validity', 'Total Amount', 'Status', 'Actions']}>
+                {isLoading ? (
+                    Array(5).fill(0).map((_, i) => (
+                        <tr key={i}>
+                            <td className="p-4"><Skeleton style={{ width: '60%', height: 20 }} /></td>
+                            <td className="p-4"><Skeleton style={{ width: '40%', height: 20 }} /></td>
+                            <td className="p-4"><Skeleton style={{ width: '30%', height: 20 }} /></td>
+                            <td className="p-4"><Skeleton style={{ width: '20%', height: 20 }} /></td>
+                            <td className="p-4"><Skeleton style={{ width: 80, height: 24, borderRadius: 12 }} /></td>
+                            <td className="p-4"><Skeleton style={{ width: 24, height: 24 }} /></td>
+                        </tr>
+                    ))
+                ) : filteredOffers.length === 0 ? (
+                    <tr>
+                        <td colSpan={6}>
+                            <EmptyState
+                                icon={FileText}
+                                title="No offers found"
+                                description="Create a new offer to get started."
+                            />
+                        </td>
+                    </tr>
+                ) : (
+                    filteredOffers.map(offer => (
+                        <tr key={offer.id} className="hover:bg-[var(--bg-app)] transition-colors group border-b border-[var(--border-subtle)] last:border-0 text-left align-middle h-14">
+                            <td className="py-3 px-6">
+                                <div className="flex flex-col">
+                                    <Link to={`/offer/preview/${offer.id}`} className="font-bold text-[14px] text-[var(--text-main)] hover:text-[var(--primary)] transition-colors mb-0.5">
+                                        {offer.offer_name || `#${offer.id}`}
+                                    </Link>
+                                    {offer.project_name && (
+                                        <span className="text-[12px] text-[var(--text-muted)] font-medium">
+                                            {offer.project_name}
+                                        </span>
                                     )}
                                 </div>
                             </td>
-                            <td>
+                            <td className="py-3 px-6 text-[14px] font-medium text-[var(--text-secondary)]">
+                                {offer.customer_name ? offer.customer_name : <span className="text-[var(--text-muted)] opacity-50">—</span>}
+                            </td>
+                            <td className="py-3 px-6">
+                                <DueStatusIndicator dueDate={offer.due_date} />
+                            </td>
+                            <td className="py-3 px-6 text-[14px] font-bold text-[var(--text-main)]">
+                                {formatCurrency(offer.total)}
+                            </td>
+                            <td className="py-3 px-6">
                                 <DropdownMenu
-                                    actions={[
-                                        { label: t('common.view'), onClick: () => navigate(`/offer/preview/${o.id}`) },
-                                        { label: t('common.edit'), onClick: () => navigate(`/offer/edit/${o.id}`) },
-                                        { label: t('common.send'), onClick: () => handleSend(o.id), disabled: !(o.status === 'draft' || o.status === 'declined') },
-                                        ...((o.status === 'sent' || o.status === 'signed' || o.status === 'declined') && o.token ? [{ label: t('common.link'), onClick: () => copyLink(o.token) }] : []),
-                                        { label: t('common.delete'), onClick: () => handleDeleteClick(o.id), isDestructive: true }
-                                    ]}
+                                    trigger={<button className="hover:opacity-80 transition-opacity"><StatusPill status={offer.status} /></button>}
+                                    actions={STATUS_OPTIONS.map(s => ({
+                                        label: s.label,
+                                        onClick: () => handleUpdateStatus(offer.id, s.value)
+                                    }))}
                                 />
                             </td>
+                            <td className="py-3 px-6">
+                                <div className="flex justify-end">
+                                    <DropdownMenu
+                                        actions={[
+                                            { label: t('common.view'), onClick: () => navigate(`/offer/preview/${offer.id}`), icon: Eye },
+                                            { label: t('common.edit'), onClick: () => navigate(`/offer/edit/${offer.id}`), icon: Edit2 },
+                                            {
+                                                label: t('common.send'),
+                                                onClick: () => handleSend(offer.id),
+                                                disabled: !(offer.status === 'draft' || offer.status === 'declined') || !offer.customer_id,
+                                                icon: Send
+                                            },
+                                            ...((offer.status === 'sent' || offer.status === 'signed' || offer.status === 'declined') && offer.token ? [{ label: t('common.link'), onClick: () => copyLink(offer.token), icon: LinkIcon }] : []),
+                                            { label: t('common.delete'), onClick: () => handleDeleteClick(offer.id), isDestructive: true, icon: Trash2 }
+                                        ]}
+                                    />
+                                </div>
+                            </td>
                         </tr>
-                    )) : (
-                        <tr><td colSpan="6" style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>No offers found.</td></tr>
-                    )}
-                </Table>
-            </Card>
+                    ))
+                )}
+            </Table>
 
             <ConfirmationDialog
                 isOpen={isDeleteDialogOpen}

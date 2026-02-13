@@ -6,7 +6,7 @@ import { formatCurrency } from '../utils/pricingEngine';
 import {
     Briefcase, Clock, CheckCircle, FileText, AlertTriangle,
     TrendingUp, Plus, Copy, Pencil, ExternalLink,
-    ChevronLeft, Globe, Mail, Phone, MapPin
+    ChevronLeft, Globe, Mail, Phone, MapPin, FolderOpen
 } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import CustomerForm from '../components/customers/CustomerForm';
@@ -14,6 +14,8 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Table from '../components/ui/Table';
 import Badge from '../components/ui/Badge';
+import StatusPill from '../components/ui/StatusPill';
+import DueStatusIndicator from '../components/ui/DueStatusIndicator';
 import DropdownMenu from '../components/ui/DropdownMenu';
 
 const CustomerDetailPage = () => {
@@ -52,116 +54,190 @@ const CustomerDetailPage = () => {
 
     if (isLoading || !data) return <div className="page-container">Loading customer...</div>;
 
-    const { customer, offers, stats } = data;
+    const { customer, offers, projects, stats } = data;
 
     return (
-        <div className="page-container" style={{ maxWidth: '1100px' }}>
-            {/* Header */}
-            <div className="mb-6">
-                <Link to="/customers" className="flex items-center gap-1 text-sm text-muted mb-2" style={{ textDecoration: 'none' }}>
-                    <ChevronLeft size={16} /> Back to Customers
+        <div className="page-container" style={{ maxWidth: '1200px', margin: '0 auto' }}>
+            {/* Header / Breadcrumb */}
+            <div className="mb-10">
+                <Link to="/customers" className="inline-flex items-center gap-2 text-[13px] font-bold text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors mb-6 group">
+                    <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back to Directory
                 </Link>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-start gap-6">
                     <div>
-                        <h1 className="page-title" style={{ marginBottom: '0.25rem' }}>{customer.company_name}</h1>
-                        <div className="flex items-center gap-4 text-xs text-muted">
-                            <span className="flex items-center gap-1"><MapPin size={14} /> {customer.country}</span>
-                            <span className="flex items-center gap-1"><FileText size={14} /> {customer.vat_number || 'No VAT'}</span>
-                            <span className="flex items-center gap-1"><Globe size={14} /> {customer.language === 'de' ? 'German' : 'French'}</span>
+                        <div className="flex items-center gap-3 mb-2">
+                            <h1 className="text-3xl font-extrabold text-[var(--text-main)]">{customer.company_name}</h1>
+                            <Badge variant="neutral" className="mt-1 shadow-sm px-3 py-1">#{customer.id}</Badge>
+                        </div>
+                        <div className="flex items-center gap-6 text-[14px] text-[var(--text-secondary)] font-medium">
+                            <span className="flex items-center gap-2"><MapPin size={16} className="text-[var(--text-muted)]" /> {customer.city}, {customer.country}</span>
+                            <span className="flex items-center gap-2"><FileText size={16} className="text-[var(--text-muted)]" /> <span className="uppercase font-bold text-[12px]">{customer.vat_number || 'VAT Exempt'}</span></span>
+                            <span className="flex items-center gap-2">
+                                <Globe size={16} className="text-[var(--text-muted)]" />
+                                <span className="uppercase font-bold text-[12px] tracking-wider">{customer.language === 'de' ? 'German (DE)' : 'French (FR)'}</span>
+                            </span>
                         </div>
                     </div>
-                    <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => setIsEditModalOpen(true)}>
-                            <Pencil size={16} /> Edit Profile
+                    <div className="flex gap-3">
+                        <Button variant="ghost" className="font-bold border-[var(--border)]" onClick={() => setIsEditModalOpen(true)}>
+                            <Pencil size={18} className="mr-2" /> Update Profile
                         </Button>
-                        <Button size="sm" onClick={() => navigate('/offer/new', { state: { customerId: customer.id } })}>
-                            <Plus size={16} /> New Offer
+                        <Button size="lg" className="shadow-lg" onClick={() => navigate('/offer/new', { state: { customerId: customer.id } })}>
+                            <Plus size={18} className="mr-2" /> New Business Offer
                         </Button>
                     </div>
                 </div>
             </div>
 
-            {/* Stats Overview */}
-            <div className="grid grid-4 mb-6">
-                <Card padding="1.25rem" className="flex items-center gap-4">
-                    <div style={{ background: 'var(--success-light)', color: 'var(--success)', padding: '10px', borderRadius: '10px' }}>
-                        <TrendingUp size={20} />
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-muted uppercase">Revenue</p>
-                        <h2 style={{ fontSize: '1.25rem', margin: 0 }}>{formatCurrency(stats.totalRevenue)}</h2>
-                    </div>
-                </Card>
-                <Card padding="1.25rem" className="flex items-center gap-4">
-                    <div style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '10px', borderRadius: '10px' }}>
-                        <FileText size={20} />
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-muted uppercase">Total Offers</p>
-                        <h2 style={{ fontSize: '1.25rem', margin: 0 }}>{stats.totalOffers}</h2>
+            {/* Summary Cards */}
+            <div className="grid grid-3 gap-6 mb-10">
+                <Card padding="1.5rem" className="border-[var(--border)] shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex items-center gap-5">
+                        <div className="w-12 h-12 rounded-xl bg-[var(--primary-light)] text-[var(--primary)] flex items-center justify-center shadow-sm">
+                            <FileText size={24} />
+                        </div>
+                        <div>
+                            <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">Open Offers</p>
+                            <h2 className="text-[24px] font-black text-[var(--text-main)] tracking-tight">{stats.openOffersCount}</h2>
+                            <p className="text-[13px] text-[var(--text-secondary)] font-medium mt-0.5">Value: {formatCurrency(stats.openOffersValue)}</p>
+                        </div>
                     </div>
                 </Card>
-                <Card padding="1.25rem" className="flex items-center gap-4">
-                    <div style={{ background: 'var(--warning-light)', color: 'var(--warning)', padding: '10px', borderRadius: '10px' }}>
-                        <CheckCircle size={20} />
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-muted uppercase">Signed</p>
-                        <h2 style={{ fontSize: '1.25rem', margin: 0 }}>{stats.signedCount}</h2>
+                <Card padding="1.5rem" className="border-[var(--border)] shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex items-center gap-5">
+                        <div className="w-12 h-12 rounded-xl bg-[var(--warning-bg)] text-[var(--warning)] flex items-center justify-center shadow-sm">
+                            <Briefcase size={24} />
+                        </div>
+                        <div>
+                            <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">Active Projects</p>
+                            <h2 className="text-[24px] font-black text-[var(--text-main)] tracking-tight">{stats.activeProjectsCount}</h2>
+                            <div className="flex items-center gap-2 mt-1 text-[11px] font-bold text-[var(--text-muted)]">
+                                {stats.projectStatusBreakdown && (
+                                    <>
+                                        <span>{stats.projectStatusBreakdown.pending || 0} pending</span>
+                                        <span className="opacity-30">·</span>
+                                        <span>{stats.projectStatusBreakdown.todo || 0} to do</span>
+                                        <span className="opacity-30">·</span>
+                                        <span>{stats.projectStatusBreakdown.in_progress || 0} active</span>
+                                    </>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </Card>
-                <Card padding="1.25rem" className="flex items-center gap-4">
-                    <div style={{ background: 'var(--danger-light)', color: 'var(--danger)', padding: '10px', borderRadius: '10px' }}>
-                        <AlertTriangle size={20} />
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-muted uppercase">Declined</p>
-                        <h2 style={{ fontSize: '1.25rem', margin: 0 }}>{stats.declinedCount}</h2>
+                <Card padding="1.5rem" className="border-[var(--border)] shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex items-center gap-5">
+                        <div className="w-12 h-12 rounded-xl bg-[var(--success-bg)] text-[var(--success)] flex items-center justify-center shadow-sm">
+                            <TrendingUp size={24} />
+                        </div>
+                        <div>
+                            <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">Total Revenue</p>
+                            <h2 className="text-[24px] font-black text-[var(--text-main)] tracking-tight">{formatCurrency(stats.totalRevenue)}</h2>
+                            <p className="text-[13px] text-[var(--text-secondary)] font-medium mt-0.5">{stats.signedCount} signed contracts</p>
+                        </div>
                     </div>
                 </Card>
             </div>
 
             {/* Offer History */}
-            <Card padding="0">
-                <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 className="text-sm font-bold uppercase text-muted">Offer History</h3>
+            <Card padding="0" className="border-[var(--border)] shadow-sm overflow-hidden mb-10">
+                <div className="px-6 py-5 border-b border-[var(--border)] bg-[var(--bg-main)]/50 flex justify-between items-center">
+                    <div>
+                        <h3 className="text-[16px] font-bold text-[var(--text-main)]">Financial Pipeline</h3>
+                        <p className="text-[13px] text-[var(--text-secondary)] font-medium mt-1">Timeline of all proposals and signed agreements.</p>
+                    </div>
                     <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => offers.length > 0 && handleDuplicateOffer(offers[0].id)}
                         disabled={offers.length === 0}
-                        className="text-primary font-bold"
+                        className="text-[var(--primary)] hover:bg-[var(--primary-light)] font-bold px-4"
                     >
-                        <Copy size={16} /> Duplicate Last
+                        <Copy size={16} className="mr-2" /> Clone Recent
                     </Button>
                 </div>
-                <Table headers={['Reference', 'Date', 'Amount', 'Status', 'Actions']}>
+                <Table headers={['Offer Name', 'Creation Date', 'Contract Value', 'Status', 'Actions']}>
                     {offers.length > 0 ? offers.map(offer => (
-                        <tr key={offer.id}>
-                            <td className="font-bold">ANB-{offer.id}</td>
-                            <td className="text-secondary">{new Date(offer.created_at).toLocaleDateString()}</td>
-                            <td className="font-bold">{formatCurrency(offer.total)}</td>
+                        <tr key={offer.id} className="group hover:bg-[var(--bg-main)] transition-colors h-14">
+                            <td className="font-bold text-[var(--text-main)]">
+                                <Link to={`/offer/preview/${offer.id}`} className="hover:text-[var(--primary)] transition-colors">
+                                    {offer.offer_name || `ANB-${offer.id}`}
+                                </Link>
+                            </td>
+                            <td className="text-[14px] text-[var(--text-secondary)] font-medium">
+                                {new Date(offer.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                            </td>
+                            <td className="font-extrabold text-[var(--text-main)]">{formatCurrency(offer.total)}</td>
                             <td>
-                                <Badge variant={
-                                    offer.status === 'signed' ? 'success' :
-                                        offer.status === 'sent' ? 'warning' :
-                                            offer.status === 'declined' ? 'danger' : 'neutral'
-                                } showDot={true}>
-                                    {offer.status.toUpperCase()}
-                                </Badge>
+                                <div className="flex items-center">
+                                    <Badge variant={
+                                        offer.status === 'signed' ? 'success' :
+                                            offer.status === 'sent' ? 'warning' :
+                                                offer.status === 'declined' ? 'danger' : 'neutral'
+                                    } showDot={true} className="shadow-sm">
+                                        {(offer.status || 'draft').toUpperCase()}
+                                    </Badge>
+                                </div>
                             </td>
                             <td>
-                                <DropdownMenu
-                                    actions={[
-                                        { label: 'View Offer', onClick: () => navigate(`/offer/preview/${offer.id}`) },
-                                        { label: 'Edit Offer', onClick: () => navigate(`/offer/edit/${offer.id}`) },
-                                        { label: 'Duplicate', onClick: () => handleDuplicateOffer(offer.id) }
-                                    ]}
-                                />
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+                                    <Button variant="ghost" size="sm" onClick={() => navigate(`/offer/preview/${offer.id}`)} className="text-[var(--primary)]">
+                                        <ExternalLink size={16} />
+                                    </Button>
+                                    <DropdownMenu
+                                        actions={[
+                                            { label: 'View Preview', onClick: () => navigate(`/offer/preview/${offer.id}`) },
+                                            { label: 'Edit Draft', onClick: () => navigate(`/offer/edit/${offer.id}`) },
+                                            { label: 'Duplicate Offer', onClick: () => handleDuplicateOffer(offer.id) }
+                                        ]}
+                                    />
+                                </div>
                             </td>
                         </tr>
                     )) : (
-                        <tr><td colSpan="5" style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>No offers found for this customer.</td></tr>
+                        <tr><td colSpan="5" className="py-20 text-center">
+                            <FileText size={40} className="mx-auto text-[var(--text-muted)] opacity-20 mb-4" />
+                            <p className="text-[var(--text-muted)] font-medium">No financial history recorded for this customer.</p>
+                        </td></tr>
+                    )}
+                </Table>
+            </Card>
+
+            {/* Projects Table */}
+            <Card padding="0" className="border-[var(--border)] shadow-sm overflow-hidden">
+                <div className="px-6 py-5 border-b border-[var(--border)] bg-[var(--bg-main)]/50 flex justify-between items-center">
+                    <div>
+                        <h3 className="text-[16px] font-bold text-[var(--text-main)]">Projects</h3>
+                        <p className="text-[13px] text-[var(--text-secondary)] font-medium mt-1">Active and completed projects for this customer.</p>
+                    </div>
+                </div>
+                <Table headers={['Project Name', 'Status', 'Deadline', 'Linked Offer']}>
+                    {(projects || []).length > 0 ? (projects || []).map(project => (
+                        <tr key={project.id} className="group hover:bg-[var(--bg-main)] transition-colors h-14">
+                            <td>
+                                <Link to={`/projects/${project.id}`} className="font-bold text-[var(--text-main)] hover:text-[var(--primary)] transition-colors">
+                                    {project.name}
+                                </Link>
+                            </td>
+                            <td>
+                                <div className="flex items-center">
+                                    <StatusPill status={project.status} />
+                                </div>
+                            </td>
+                            <td className="text-[14px] text-[var(--text-secondary)] font-medium">
+                                {project.deadline ? (
+                                    <DueStatusIndicator dueDate={project.deadline} status={project.status} />
+                                ) : '—'}
+                            </td>
+                            <td className="text-[14px] text-[var(--text-secondary)] font-medium">
+                                {project.offer_name || '—'}
+                            </td>
+                        </tr>
+                    )) : (
+                        <tr><td colSpan="4" className="py-20 text-center">
+                            <FolderOpen size={40} className="mx-auto text-[var(--text-muted)] opacity-20 mb-4" />
+                            <p className="text-[var(--text-muted)] font-medium">No projects recorded for this customer.</p>
+                        </td></tr>
                     )}
                 </Table>
             </Card>
