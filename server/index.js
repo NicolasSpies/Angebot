@@ -32,7 +32,7 @@ function createNotification(type, title, message, link, dedupKey) {
 }
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // --- NOTIFICATIONS API ---
@@ -149,11 +149,14 @@ const upload = multer({
     }
 });
 
-app.post('/api/upload', upload.single('logo'), (req, res) => {
-    if (!req.file) {
+app.post('/api/upload', upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'file', maxCount: 1 }]), (req, res) => {
+    const files = req.files;
+    const file = (files?.logo?.[0]) || (files?.file?.[0]);
+
+    if (!file) {
         return res.status(400).json({ error: 'No file uploaded' });
     }
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
     res.json({ url: fileUrl });
 });
 
@@ -511,7 +514,7 @@ app.post('/api/offers/public/:token/decline', (req, res) => {
     if (!offer) return res.status(404).json({ error: 'Offer not found' });
 
     db.transaction(() => {
-        db.prepare("UPDATE offers SET status = 'declined', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(offer.id);
+        db.prepare("UPDATE offers SET status = 'declined', declined_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(offer.id);
         db.prepare("INSERT INTO offer_events (offer_id, event_type, comment, ip_address) VALUES (?, 'declined', ?, ?)").run(offer.id, comment, ip);
 
         // Smart Sync
@@ -524,25 +527,64 @@ app.post('/api/offers/public/:token/decline', (req, res) => {
     res.json({ success: true });
 });
 
+const signRateLimit = new Map();
+
 app.post('/api/offers/public/:token/sign', (req, res) => {
     const { token } = req.params;
+    const { name, email, signatureData, pdfUrl } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+    // Rate Limit Check
+    const now = Date.now();
+    const limitWindow = 60 * 60 * 1000; // 1 hour
+    const limitCount = 5;
+
+    let rateData = signRateLimit.get(ip) || { count: 0, firstAttempt: now };
+    if (now - rateData.firstAttempt > limitWindow) {
+        rateData = { count: 0, firstAttempt: now };
+    }
+
+    if (rateData.count >= limitCount) {
+        return res.status(429).json({ error: 'Too many signing attempts. Please try again later.' });
+    }
+
+    rateData.count++;
+    signRateLimit.set(ip, rateData);
 
     const offer = db.prepare('SELECT * FROM offers WHERE token = ?').get(token);
     if (!offer) return res.status(404).json({ error: 'Offer not found' });
+    if (['signed', 'declined'].includes(offer.status)) {
+        return res.status(400).json({ error: 'Offer is already finalized.' });
+    }
 
-    db.transaction(() => {
-        db.prepare("UPDATE offers SET status = 'signed', signed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(offer.id);
-        db.prepare("INSERT INTO offer_events (offer_id, event_type, ip_address) VALUES (?, 'signed', ?)").run(offer.id, ip);
+    try {
+        db.transaction(() => {
+            db.prepare(`
+                UPDATE offers SET 
+                    status = 'signed', 
+                    signed_at = CURRENT_TIMESTAMP, 
+                    updated_at = CURRENT_TIMESTAMP,
+                    signed_by_name = ?,
+                    signed_by_email = ?,
+                    signature_data = ?,
+                    signed_ip = ?,
+                    signed_pdf_url = ?
+                WHERE id = ?
+            `).run(name, email, signatureData, ip, pdfUrl || null, offer.id);
 
-        // Smart Sync
-        syncProjectWithOffer(offer.id, 'signed');
+            db.prepare("INSERT INTO offer_events (offer_id, event_type, ip_address) VALUES (?, 'signed', ?)").run(offer.id, ip);
 
-        // Notification (with dedup)
-        createNotification('offer', 'Offer Signed! ✍️', `Offer "${offer.offer_name}" has been signed by the client.`, `/projects`, `offer_signed_${offer.id}`);
-    })();
+            // Smart Sync
+            syncProjectWithOffer(offer.id, 'signed');
 
-    res.json({ success: true });
+            // Notification (with dedup)
+            createNotification('offer', 'Offer Signed! ✍️', `Offer "${offer.offer_name}" signed by ${name}`, `/offers/${offer.id}`, `offer_signed_${offer.id}`);
+        })();
+
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.post('/api/offers', (req, res) => {

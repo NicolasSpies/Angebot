@@ -199,7 +199,16 @@ const OffersPage = () => {
                                                 disabled: !(offer.status === 'draft' || offer.status === 'declined') || !offer.customer_id,
                                                 icon: Send
                                             },
-                                            ...((offer.status === 'sent' || offer.status === 'signed' || offer.status === 'declined') && offer.token ? [{ label: t('common.link'), onClick: () => copyLink(offer.token), icon: LinkIcon }] : []),
+                                            ...((offer.status === 'sent' || offer.status === 'signed' || offer.status === 'declined') && offer.token ? [
+                                                { label: t('common.link'), onClick: () => copyLink(offer.token), icon: LinkIcon },
+                                                {
+                                                    label: 'Open Signing Link',
+                                                    onClick: () => window.open(`/offer/sign/${offer.token}`, '_blank'),
+                                                    icon: LinkIcon, // Re-using LinkIcon or Import ExternalLink if needed
+                                                    disabled: ['signed', 'declined'].includes(offer.status),
+                                                    title: ['signed', 'declined'].includes(offer.status) ? "Offer is already finalized" : "Open public signing page"
+                                                }
+                                            ] : []),
                                             { label: t('common.delete'), onClick: () => handleDeleteClick(offer.id), isDestructive: true, icon: Trash2 }
                                         ]}
                                     />

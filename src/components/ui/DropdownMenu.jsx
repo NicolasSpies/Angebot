@@ -100,6 +100,7 @@ const DropdownMenu = ({ actions, trigger }) => {
                                     ${action.isDestructive ? 'text-[var(--danger)] hover:bg-[var(--danger-bg)]' : 'text-[var(--text-main)] hover:bg-[var(--bg-app)]'}
                                     ${action.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                                 `}
+                                title={action.title}
                             >
                                 {action.icon && <action.icon size={14} className={action.isDestructive ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'} />}
                                 {action.label}

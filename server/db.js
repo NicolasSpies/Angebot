@@ -211,6 +211,13 @@ const migrations = [
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_dedup ON notifications(dedup_key);',
     // Strategic notes field for offers (reuse internal_notes, add strategic_notes as alias)
     'ALTER TABLE offers ADD COLUMN strategic_notes TEXT;',
+    // Signature fields
+    'ALTER TABLE offers ADD COLUMN signed_by_name TEXT;',
+    'ALTER TABLE offers ADD COLUMN signed_by_email TEXT;',
+    'ALTER TABLE offers ADD COLUMN signature_data TEXT;',
+    'ALTER TABLE offers ADD COLUMN signed_ip TEXT;',
+    'ALTER TABLE offers ADD COLUMN signed_pdf_url TEXT;',
+    'ALTER TABLE offers ADD COLUMN declined_at DATETIME;',
 ];
 
 migrations.forEach(sql => {

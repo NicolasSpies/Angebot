@@ -134,8 +134,21 @@ export const dataService = {
         return res.json();
     },
 
-    signOffer: async (token) => {
-        const res = await fetch(`${API_URL}/offers/public/${token}/sign`, { method: 'POST' });
+    signOffer: async (token, data) => {
+        const res = await fetch(`${API_URL}/offers/public/${token}/sign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        return res.json();
+    },
+
+    declineOffer: async (token, reason) => {
+        const res = await fetch(`${API_URL}/offers/public/${token}/decline`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ comment: reason })
+        });
         return res.json();
     },
 
@@ -269,5 +282,14 @@ export const dataService = {
             console.error('Check expiring failed:', err);
             return { checked: 0 };
         }
+    },
+    uploadFile: async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch(`${API_URL}/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        return res.json();
     }
 };

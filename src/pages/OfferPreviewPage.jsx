@@ -66,6 +66,16 @@ const OfferPreviewPage = () => {
                     <Button size="lg" className="shadow-lg px-8" onClick={() => window.print()}>
                         <FileText size={18} className="mr-2" /> Export PDF
                     </Button>
+                    <Button
+                        size="lg"
+                        variant="secondary"
+                        className="shadow-sm border-[var(--border)] bg-gray-50 hover:bg-gray-100 text-[var(--text-main)]"
+                        disabled={['signed', 'declined'].includes(offer.status)}
+                        title={['signed', 'declined'].includes(offer.status) ? "Offer is already finalized" : "Open public signing page"}
+                        onClick={() => window.open(`/offer/sign/${offer.token}`, '_blank')}
+                    >
+                        <FileText size={18} className="mr-2" /> Open Signing Link
+                    </Button>
                 </div>
             </div>
 

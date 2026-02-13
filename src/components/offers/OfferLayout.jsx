@@ -31,6 +31,13 @@ const OfferLayout = ({ offer, settings, hideInternal = false }) => {
 
     const lang = offer.language || 'de';
 
+    const signatureToDisplay = (typeof tempSignature !== 'undefined' ? tempSignature : null) || (offer.status === 'signed' ? {
+        name: offer.signed_by_name,
+        email: offer.signed_by_email,
+        date: offer.signed_at,
+        image: offer.signature_data
+    } : null);
+
     return (
         <div className="a4-container bg-white" style={{ padding: '3.5rem', color: 'var(--text-main)' }}>
             {/* Header: Company & Recipient */}
@@ -180,8 +187,26 @@ const OfferLayout = ({ offer, settings, hideInternal = false }) => {
                         </div>
                     )}
                     <div className="flex flex-column items-end justify-end">
-                        <div className="w-48 h-[1px] bg-[var(--text-main)] mb-4" />
-                        <div className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest">Digital Signature Panel</div>
+                        {signatureToDisplay ? (
+                            <div className="flex flex-col items-end">
+                                <div className="mb-2">
+                                    <img src={signatureToDisplay.image} alt="Signature" className="h-16 object-contain" style={{ maxWidth: '200px' }} />
+                                </div>
+                                <div className="w-56 h-[1px] bg-[var(--text-main)] mb-2" />
+                                <div className="text-[11px] font-extrabold text-[var(--text-main)] uppercase tracking-widest text-right">
+                                    Signed by {signatureToDisplay.name}
+                                </div>
+                                <div className="text-[10px] text-[var(--text-muted)] mt-1 text-right font-medium leading-tight">
+                                    {new Date(signatureToDisplay.date || new Date()).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })} <br />
+                                    {signatureToDisplay.email}
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="w-48 h-[1px] bg-[var(--text-main)] mb-4" />
+                                <div className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest">Digital Signature Panel</div>
+                            </>
+                        )}
                     </div>
                 </div>
 

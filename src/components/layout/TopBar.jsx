@@ -76,6 +76,21 @@ const TopBar = () => {
         setShowNotifications(!showNotifications);
     };
 
+    const handleNotificationClick = async (notification) => {
+        try {
+            await dataService.markNotificationAsRead(notification.id);
+            loadNotifications(); // Refresh badge
+            if (notification.link) {
+                navigate(notification.link);
+                setShowNotifications(false);
+            }
+        } catch (err) {
+            console.error('Failed to handle notification click:', err);
+        }
+    };
+
+
+
     return (
         <div className="flex items-center justify-between w-full h-full">
             {/* Title / Breadcrumb Area */}
@@ -109,6 +124,11 @@ const TopBar = () => {
                     </button>
                 </div>
 
+
+
+
+                {/* ... (rest of the component structure) ... */}
+
                 {/* Notification Dropdown — Portal */}
                 {showNotifications && createPortal(
                     <div
@@ -129,7 +149,7 @@ const TopBar = () => {
                                 <div
                                     key={n.id}
                                     className={`p-4 border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-app)] transition-colors cursor-pointer ${!n.is_read ? 'bg-[var(--accent)]/5' : ''}`}
-                                    onClick={() => n.link && navigate(n.link)}
+                                    onClick={() => handleNotificationClick(n)}
                                 >
                                     <div className="flex gap-3">
                                         <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${!n.is_read ? 'bg-[var(--accent)]' : 'bg-transparent'}`} />
