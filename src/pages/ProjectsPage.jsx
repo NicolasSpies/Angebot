@@ -9,6 +9,7 @@ import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
+import Select from '../components/ui/Select';
 import Table from '../components/ui/Table';
 
 const STATUS_OPTIONS = ['pending', 'todo', 'in_progress', 'feedback', 'done', 'cancelled'];
@@ -103,39 +104,31 @@ const ProjectsPage = () => {
                 </Button>
             </div>
 
-            <Card className="mb-4" padding="1rem">
+            <Card className="mb-4" padding="0.75rem">
                 <div className="flex justify-between items-center" style={{ flexWrap: 'wrap', gap: '1rem' }}>
                     <div className="flex items-center gap-2">
                         <Filter size={16} className="text-muted" />
-                        <div className="flex gap-1">
+                        <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '4px' }} className="no-scrollbar">
                             {['all', ...STATUS_OPTIONS].map(s => (
-                                <button
+                                <Button
                                     key={s}
+                                    variant={filterStatus === s ? 'primary' : 'ghost'}
+                                    size="sm"
                                     onClick={() => setFilterStatus(s)}
-                                    style={{
-                                        padding: '0.35rem 0.85rem',
-                                        borderRadius: '6px',
-                                        fontSize: '0.75rem',
-                                        fontWeight: 600,
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                        background: filterStatus === s ? 'var(--primary-light)' : 'transparent',
-                                        color: filterStatus === s ? 'var(--primary)' : 'var(--text-secondary)',
-                                        transition: 'all 0.2s'
-                                    }}
+                                    style={{ whiteSpace: 'nowrap', minWidth: 'auto', padding: '0.25rem 0.75rem' }}
                                 >
                                     {s === 'all' ? 'All' : STATUS_LABELS[s]}
-                                </button>
+                                </Button>
                             ))}
                         </div>
                     </div>
                     <div style={{ position: 'relative', width: '280px' }}>
-                        <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--text-muted)' }} />
-                        <input
+                        <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <Input
                             placeholder="Search projects or clients..."
                             value={filterText}
                             onChange={(e) => setFilterText(e.target.value)}
-                            style={{ paddingLeft: '2.5rem' }}
+                            style={{ paddingLeft: '2.5rem', marginBottom: 0 }}
                         />
                     </div>
                 </div>
@@ -175,20 +168,13 @@ const ProjectsPage = () => {
                                 )}
                             </td>
                             <td>
-                                <div className="flex flex-column gap-1" style={{ width: '140px' }}>
-                                    <Badge variant={STATUS_VARIANTS[project.status]} showDot={true}>
-                                        {STATUS_LABELS[project.status]}
-                                    </Badge>
-                                    <select
+                                <div style={{ width: '140px' }}>
+                                    <Select
                                         value={project.status}
                                         onChange={(e) => handleUpdateStatus(project.id, e.target.value)}
-                                        className="text-xs p-1 border rounded bg-white mt-1"
-                                        style={{ cursor: 'pointer', width: '100%' }}
-                                    >
-                                        {STATUS_OPTIONS.map(s => (
-                                            <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                                        ))}
-                                    </select>
+                                        options={STATUS_OPTIONS.map(s => ({ value: s, label: STATUS_LABELS[s] }))}
+                                        style={{ margin: 0, padding: '0.25rem' }}
+                                    />
                                 </div>
                             </td>
                             <td>

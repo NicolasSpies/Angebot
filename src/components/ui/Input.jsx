@@ -8,8 +8,6 @@ const Input = ({ label, error, className = '', ...props }) => {
                 {...props}
                 className={error ? 'border-danger' : ''}
                 style={{
-                    background: 'var(--bg-card)',
-                    border: '1px solid var(--border)',
                     ...props.style
                 }}
             />

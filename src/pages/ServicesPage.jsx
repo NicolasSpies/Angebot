@@ -72,8 +72,9 @@ const ServicesPage = () => {
                         setEditingService(null);
                         setIsModalOpen(true);
                     }}
+                    size="default"
                 >
-                    <Plus size={18} style={{ marginRight: '0.5rem' }} /> {t('common.add')}
+                    <Plus size={18} /> {t('common.add')}
                 </Button>
             </div>
 
@@ -84,8 +85,8 @@ const ServicesPage = () => {
                     <Card key={service.id} className="flex flex-column justify-between h-full">
                         <div>
                             <div className="flex justify-between items-center mb-3">
-                                <Badge variant="primary" style={{ textTransform: 'uppercase', fontSize: '0.65rem' }}>{service.category}</Badge>
-                                {!service.active && <Badge variant="danger">Inactive</Badge>}
+                                <Badge variant="primary" showDot={true} style={{ fontSize: '10px' }}>{service.category}</Badge>
+                                {!service.active && <Badge variant="danger" showDot={true}>Inactive</Badge>}
                             </div>
                             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem' }}>
                                 {locale === 'de' ? service.name_de : service.name_fr}
@@ -105,10 +106,10 @@ const ServicesPage = () => {
                                 )}
                             </div>
                             <div className="flex gap-1">
-                                <Button variant="ghost" size="sm" onClick={() => handleEdit(service)} className="text-primary p-2">
+                                <Button variant="ghost" size="sm" onClick={() => handleEdit(service)} className="text-primary">
                                     <Edit2 size={16} />
                                 </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleDeleteClick(service)} className="text-danger p-2">
+                                <Button variant="ghost" size="sm" onClick={() => handleDeleteClick(service)} className="text-danger">
                                     <Trash2 size={16} />
                                 </Button>
                             </div>

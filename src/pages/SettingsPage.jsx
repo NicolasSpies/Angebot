@@ -97,7 +97,7 @@ const SettingsPage = () => {
         <div className="page-container" style={{ maxWidth: '1000px' }}>
             <h1 className="page-title">{t('nav.settings')}</h1>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '2rem', alignItems: 'start' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '1.5rem', alignItems: 'start' }}>
                 {/* Vertical Tabs */}
                 <div className="flex flex-column gap-1">
                     {tabs.map(tab => (
@@ -235,7 +235,7 @@ const SettingsPage = () => {
                                 </div>
                                 <div className="flex flex-wrap gap-2 mt-4">
                                     {JSON.parse(settings.work_categories || '[]').map(c => (
-                                        <Badge key={c} variant="neutral" className="flex items-center gap-2 py-1.5 px-3">
+                                        <Badge key={c} variant="neutral" showDot={true} className="flex items-center gap-2 py-1.5 px-3">
                                             {c} <X size={14} className="cursor-pointer hover:text-danger" onClick={() => {
                                                 const cats = JSON.parse(settings.work_categories || '[]');
                                                 setSettings({ ...settings, work_categories: JSON.stringify(cats.filter(x => x !== c)) });
@@ -263,16 +263,16 @@ const SettingsPage = () => {
                         )}
                     </Card>
 
-                    {/* Bottom Action Bar */}
+                    {/* Bottom Action Bar inside main column */}
                     {activeTab !== 'data' && !editingPackage && (
-                        <Card padding="1rem" className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-success-text">{msg}</span>
-                            <div className="flex gap-3">
+                        <div className="mt-4 flex justify-end">
+                            <div className="flex items-center gap-3">
+                                {msg && <span className="text-sm font-medium text-success-text fade-in">{msg}</span>}
                                 <Button type="submit" disabled={isSaving}>
                                     <Save size={18} /> {isSaving ? 'Saving...' : 'Save Settings'}
                                 </Button>
                             </div>
-                        </Card>
+                        </div>
                     )}
                 </form>
             </div>

@@ -40,8 +40,7 @@ const DashboardPage = () => {
                 <h1 className="page-title" style={{ marginBottom: 0 }}>{t('nav.dashboard')}</h1>
                 <Link to="/offer/new">
                     <Button>
-                        <Plus size={18} style={{ marginRight: '0.5rem' }} />
-                        New Offer
+                        <Plus size={18} /> New Offer
                     </Button>
                 </Link>
             </div>
@@ -91,7 +90,7 @@ const DashboardPage = () => {
                 <Card>
                     <div className="flex justify-between items-center mb-4">
                         <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Performance</h3>
-                        <Badge variant="primary">Yearly</Badge>
+                        <Badge variant="primary" showDot={true}>Yearly</Badge>
                     </div>
                     <div style={{ height: '300px', width: '100%' }}>
                         <ResponsiveContainer width="100%" height="100%">
@@ -127,9 +126,9 @@ const DashboardPage = () => {
                         <h4 style={{ fontSize: '1.25rem', margin: 0, color: 'var(--success)' }}>{formatCurrency(financials.profitEstimate)}</h4>
                     </Card>
                     <Card padding="1rem" style={{ gridColumn: 'span 2' }}>
-                        <div className="flex justify-between items-center">
-                            <span className="text-sm text-secondary">Signed This Month</span>
-                            <span className="font-bold">{performance.signedThisMonthCount}</span>
+                        <div className="flex justify-between items-center w-full gap-4">
+                            <span className="text-sm text-secondary whitespace-nowrap">Signed This Month</span>
+                            <span className="font-bold text-lg">{performance.signedThisMonthCount}</span>
                         </div>
                     </Card>
                 </div>
@@ -146,14 +145,14 @@ const DashboardPage = () => {
                             <div style={{ background: 'var(--danger-bg)', padding: '0.75rem', borderRadius: '8px' }}>
                                 <div className="flex justify-between items-center">
                                     <span className="text-sm font-bold" style={{ color: 'var(--danger-text)' }}>Expiring Soon</span>
-                                    <Badge variant="danger">{alerts.expiringSoonCount}</Badge>
+                                    <Badge variant="danger" showDot={true}>{alerts.expiringSoonCount}</Badge>
                                 </div>
                             </div>
                         )}
                         <div style={{ background: 'var(--warning-bg)', padding: '0.75rem', borderRadius: '8px' }}>
                             <div className="flex justify-between items-center">
                                 <span className="text-sm font-bold" style={{ color: 'var(--warning-text)' }}>Old Drafts</span>
-                                <Badge variant="warning">{alerts.oldDraftsCount}</Badge>
+                                <Badge variant="warning" showDot={true}>{alerts.oldDraftsCount}</Badge>
                             </div>
                         </div>
                     </div>

@@ -174,8 +174,8 @@ const ProjectDetailPage = () => {
                             <span className="text-xs text-muted">ID: #{project.id}</span>
                         </div>
                     </div>
-                    <Button variant="ghost" onClick={() => setIsDeleteModalOpen(true)} className="text-danger flex items-center gap-2">
-                        <Trash2 size={18} /> Delete
+                    <Button variant="ghost" size="sm" onClick={() => setIsDeleteModalOpen(true)} className="text-danger">
+                        <Trash2 size={16} /> Delete
                     </Button>
                 </div>
             </div>
@@ -207,8 +207,8 @@ const ProjectDetailPage = () => {
                                 onKeyDown={e => e.key === 'Enter' && handleAddTask()}
                                 placeholder="Add a new task..."
                             />
-                            <Button onClick={handleAddTask} disabled={!newTaskTitle.trim()} style={{ whiteSpace: 'nowrap' }}>
-                                <Plus size={18} />
+                            <Button onClick={handleAddTask} disabled={!newTaskTitle.trim()} size="sm">
+                                <Plus size={16} />
                             </Button>
                         </div>
 

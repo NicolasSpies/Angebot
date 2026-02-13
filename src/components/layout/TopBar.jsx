@@ -1,15 +1,19 @@
 import React from 'react';
 import { useI18n } from '../../i18n/I18nContext';
 import { Globe, Bell, Search } from 'lucide-react';
+import Input from '../ui/Input';
 
 const TopBar = () => {
     const { locale, setLocale } = useI18n();
 
     return (
         <header className="topbar">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                <Search size={16} />
-                <span>Search everything...</span>
+            <div style={{ width: '300px' }}>
+                <Input
+                    placeholder="Search "
+                    icon={Search}
+                    style={{ background: '#f1f5f9', border: 'none' }}
+                />
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>

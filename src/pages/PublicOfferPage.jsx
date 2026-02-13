@@ -89,7 +89,7 @@ const PublicOfferPage = () => {
                                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                                     <button
                                         className="btn-primary"
-                                        style={{ flex: 2, padding: '0.75rem' }}
+                                        style={{ flex: 2 }}
                                         onClick={handleSign}
                                         disabled={isSigning}
                                     >

@@ -3,6 +3,7 @@ import { useI18n } from '../i18n/I18nContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import { dataService } from '../data/dataService';
 import { calculateTotals, formatCurrency } from '../utils/pricingEngine';
+import Input from '../components/ui/Input';
 
 const OfferWizardPage = () => {
     const { t, locale } = useI18n();
@@ -297,12 +298,12 @@ const OfferWizardPage = () => {
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="form-label">{t('offer.due_date') || 'Valid Until'}</label>
-                                        <input
+                                        <Input
+                                            label={t('offer.due_date') === 'offer.due_date' ? 'Valid Until' : t('offer.due_date')}
                                             type="date"
-                                            style={{ width: '100%', padding: '0.75rem' }}
                                             value={dueDate}
                                             onChange={(e) => setDueDate(e.target.value)}
+                                            style={{ marginBottom: 0 }}
                                         />
                                     </div>
                                 </div>
@@ -367,7 +368,7 @@ const OfferWizardPage = () => {
 
                                             {/* Variants List */}
                                             {hasVariants && (
-                                                <div style={{ marginLeft: '2.5rem', marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                <div style={{ marginLeft: '0', paddingLeft: '2.5rem', marginTop: '0.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                                     {s.variants.map(v => (
                                                         <label key={v.id} style={{
                                                             display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer',
@@ -410,23 +411,23 @@ const OfferWizardPage = () => {
                         <div>
                             <h2 style={{ marginBottom: '1.5rem' }}>Finalize</h2>
                             <div className="grid grid-2" style={{ marginBottom: '1.5rem' }}>
-                                <div>
-                                    <label className="form-label">Rabatt (%)</label>
-                                    <input
-                                        type="number"
-                                        max="100"
-                                        min="0"
-                                        style={{ width: '100%', padding: '0.75rem' }}
-                                        value={discountPercent}
-                                        onChange={(e) => setDiscountPercent(parseFloat(e.target.value) || 0)}
-                                    />
-                                </div>
+                                <Input
+                                    label="Rabatt (%)"
+                                    type="number"
+                                    max="100"
+                                    min="0"
+                                    value={discountPercent}
+                                    onChange={(e) => setDiscountPercent(parseFloat(e.target.value) || 0)}
+                                    style={{ marginBottom: 0 }}
+                                />
                             </div>
-                            <div className="card" style={{ background: '#f8fafc' }}>
+                            <div className="card" style={{ background: '#f8fafc', padding: '1.5rem', border: '1px solid var(--border)' }}>
                                 <h3>Summary</h3>
-                                <p>Customer: {selectedCustomer?.company_name}</p>
-                                <p>Language: {offerLanguage.toUpperCase()}</p>
-                                <p>Selected Items: {selectedServices.length}</p>
+                                <div className="flex flex-column gap-2 mt-2">
+                                    <p><strong>Customer:</strong> {selectedCustomer?.company_name}</p>
+                                    <p><strong>Language:</strong> {offerLanguage.toUpperCase()}</p>
+                                    <p><strong>Selected Items:</strong> {selectedServices.length}</p>
+                                </div>
                             </div>
                         </div>
                     )}

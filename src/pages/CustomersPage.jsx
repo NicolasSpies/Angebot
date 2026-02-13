@@ -7,6 +7,7 @@ import CustomerForm from '../components/customers/CustomerForm';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Table from '../components/ui/Table';
+import Input from '../components/ui/Input';
 import { Plus, Search, User } from 'lucide-react';
 
 const CustomersPage = () => {
@@ -59,18 +60,18 @@ const CustomersPage = () => {
                         setIsModalOpen(true);
                     }}
                 >
-                    <Plus size={18} style={{ marginRight: '0.5rem' }} /> {t('common.add')}
+                    <Plus size={18} /> {t('common.add')}
                 </Button>
             </div>
 
             <Card className="mb-4" padding="1rem">
                 <div style={{ position: 'relative', maxWidth: '400px' }}>
-                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--text-muted)' }} />
-                    <input
+                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                    <Input
                         placeholder="Search customers..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        style={{ paddingLeft: '2.5rem' }}
+                        style={{ paddingLeft: '2.5rem', marginBottom: 0 }}
                     />
                 </div>
             </Card>

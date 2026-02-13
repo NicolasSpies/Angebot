@@ -71,11 +71,11 @@ const CustomerDetailPage = () => {
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <Button variant="ghost" onClick={() => setIsEditModalOpen(true)}>
-                            <Pencil size={18} style={{ marginRight: '0.5rem' }} /> Edit Profile
+                        <Button variant="ghost" size="sm" onClick={() => setIsEditModalOpen(true)}>
+                            <Pencil size={16} /> Edit Profile
                         </Button>
-                        <Button onClick={() => navigate('/offer/new', { state: { customerId: customer.id } })}>
-                            <Plus size={18} style={{ marginRight: '0.5rem' }} /> New Offer
+                        <Button size="sm" onClick={() => navigate('/offer/new', { state: { customerId: customer.id } })}>
+                            <Plus size={16} /> New Offer
                         </Button>
                     </div>
                 </div>
@@ -132,7 +132,7 @@ const CustomerDetailPage = () => {
                         disabled={offers.length === 0}
                         className="text-primary font-bold"
                     >
-                        <Copy size={14} style={{ marginRight: '0.4rem' }} /> Duplicate Last
+                        <Copy size={16} /> Duplicate Last
                     </Button>
                 </div>
                 <Table headers={['Reference', 'Date', 'Amount', 'Status', 'Actions']}>
@@ -144,9 +144,9 @@ const CustomerDetailPage = () => {
                             <td>
                                 <Badge variant={
                                     offer.status === 'signed' ? 'success' :
-                                        offer.status === 'sent' ? 'info' :
+                                        offer.status === 'sent' ? 'warning' :
                                             offer.status === 'declined' ? 'danger' : 'neutral'
-                                }>
+                                } showDot={true}>
                                     {offer.status.toUpperCase()}
                                 </Badge>
                             </td>

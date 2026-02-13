@@ -9,7 +9,7 @@ const AppLayout = () => {
             <Sidebar />
             <div className="main-content">
                 <TopBar />
-                <main>
+                <main className="scroll-area">
                     <Outlet />
                 </main>
             </div>

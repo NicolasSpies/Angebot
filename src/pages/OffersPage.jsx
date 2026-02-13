@@ -122,7 +122,7 @@ const OffersPage = () => {
                                     o.status === 'signed' ? 'success' :
                                         o.status === 'sent' ? 'warning' :
                                             o.status === 'draft' ? 'primary' : 'neutral'
-                                }>
+                                } showDot={true}>
                                     {(o.status || 'draft').toUpperCase()}
                                 </Badge>
                             </td>
