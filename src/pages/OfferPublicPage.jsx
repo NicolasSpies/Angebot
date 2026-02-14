@@ -8,6 +8,7 @@ import ErrorBoundary from '../components/ui/ErrorBoundary';
 import Button from '../components/ui/Button';
 import { FileText, CheckCircle, Clock, Download, Loader2, XCircle } from 'lucide-react';
 import { useI18n } from '../i18n/I18nContext';
+import DeadlineIndicator from '../components/ui/DeadlineIndicator';
 
 const OfferPublicPage = () => {
     const { token } = useParams();
@@ -80,11 +81,10 @@ const OfferPublicPage = () => {
             setApiError(null);
 
             // 5. Trigger Browser Print
-            // User needs to see the signed state first.
+            // User sees the signed state and success toast first.
             setTimeout(() => {
-                alert('Offer signed successfully! The print dialog will now open for you to save a PDF copy.');
                 window.print();
-            }, 500);
+            }, 1000);
 
         } catch (err) {
             console.error('Signing failed:', err);
@@ -115,7 +115,7 @@ const OfferPublicPage = () => {
     if (!offer) return null;
 
     return (
-        <div className="min-h-screen bg-[var(--bg-app)] py-12 px-4 print:bg-white print:p-0">
+        <div className="min-h-screen bg-[var(--bg-app)] py-12 px-4">
             {/* Header Actions */}
             <div className="max-w-[1000px] mx-auto mb-8 flex justify-between items-center no-print flex-wrap gap-4">
                 <div className="flex items-center gap-4">
@@ -174,10 +174,16 @@ const OfferPublicPage = () => {
                 </div>
             </div>
 
+            {offer.due_date && (
+                <div className="max-w-[1000px] mx-auto mb-6 no-print">
+                    <DeadlineIndicator dueDate={offer.due_date} createdAt={offer.sent_at || offer.created_at} />
+                </div>
+            )}
+
             {/* Offer Content */}
             <div
                 id="offer-content"
-                className="max-w-[1000px] mx-auto bg-white rounded-[var(--radius-lg)] shadow-lg overflow-hidden print:shadow-none print:rounded-none"
+                className="max-w-[1000px] mx-auto bg-white rounded-[var(--radius-lg)] shadow-lg overflow-hidden"
             >
                 <ErrorBoundary key={offer?.id}>
                     <OfferLayout
@@ -211,31 +217,23 @@ const OfferPublicPage = () => {
                     isSubmitting={isDeclining}
                 />
             )}
-            {/* Dev Debug Overlay */}
-            <DevDebug offer={offer} token={token} error={apiError} />
-        </div>
-    );
-};
 
-const DevDebug = ({ offer, token, error }) => {
-    if (!import.meta.env.DEV) return null;
-    return (
-        <div className="fixed bottom-4 left-4 p-4 bg-black/80 text-white text-xs rounded-lg shadow-xl z-50 font-mono w-96 pointer-events-none opacity-75 hover:opacity-100 transition-opacity no-print">
-            <h3 className="font-bold border-b border-gray-600 pb-1 mb-2 text-green-400">DEV DEBUG INSPECTOR</h3>
-            <div className="space-y-1">
-                <p><span className="text-gray-400">Token:</span> <span className="text-blue-300">{token}</span></p>
-                <p><span className="text-gray-400">Offer ID:</span> {offer?.id} ({offer?.offer_name})</p>
-                <p><span className="text-gray-400">Status:</span>
-                    <span className={['signed', 'accepted'].includes(offer?.status) ? 'text-green-400 ml-1' : 'text-yellow-400 ml-1'}>{offer?.status?.toUpperCase()}</span>
-                </p>
-                <p><span className="text-gray-400">Cust ID:</span> {offer?.customer_id}</p>
-                {error && (
-                    <div className="mt-2 pt-2 border-t border-red-900 bg-red-900/20 p-2 rounded">
-                        <p className="text-red-400 font-bold">API ERROR:</p>
-                        <p className="break-all">{error.message || JSON.stringify(error)}</p>
-                    </div>
-                )}
-            </div>
+            {/* Success Toast / Notification */}
+            {offer.status === 'signed' && !showSignModal && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-[var(--success)] text-white px-6 py-3 rounded-full shadow-floating z-50 animate-in fade-in slide-in-from-bottom-4 flex items-center gap-2 no-print">
+                    <CheckCircle size={20} />
+                    <span className="font-bold">Offer signed successfully! Downloading PDF...</span>
+                </div>
+            )}
+
+            {/* Error Notification */}
+            {apiError && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-[var(--danger)] text-white px-6 py-3 rounded-full shadow-floating z-50 animate-in fade-in slide-in-from-bottom-4 flex items-center gap-2 no-print">
+                    <XCircle size={20} />
+                    <span className="font-bold">Signing failed: {apiError.message || 'Unknown error'}</span>
+                    <button onClick={() => setApiError(null)} className="ml-2 hover:bg-white/20 rounded-full p-1"><XCircle size={14} /></button>
+                </div>
+            )}
         </div>
     );
 };

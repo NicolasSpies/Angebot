@@ -462,10 +462,7 @@ const OfferWizardPage = () => {
                                         <p className="text-[13px] text-[var(--text-muted)] font-medium leading-relaxed max-w-[480px]">Apply a competitive discount to incentivize signing. This will be visible on the final contract as a 'Strategic Rebate'.</p>
                                     </div>
 
-                                    {/* Moved Strategic Notes to Step 2 */}
-                                    <div className="p-4 rounded-xl bg-[var(--bg-main)] border border-[var(--border)] text-[13px] text-[var(--text-secondary)] italic">
-                                        Strategic notes are now configured in the "Strategy" step.
-                                    </div>
+
                                 </Card>
                             </div>
                         )}
@@ -482,9 +479,18 @@ const OfferWizardPage = () => {
                                     Next Phase <ArrowRight size={18} className="ml-2" />
                                 </Button>
                             ) : (
-                                <Button size="lg" className="px-12 font-extrabold shadow-xl shadow-[var(--primary)]/20" onClick={handleSave} disabled={isSaving}>
-                                    {isSaving ? 'Synchronizing Data...' : 'Generate Strategic Proposal'} <Check size={18} className="ml-2" />
-                                </Button>
+                                <div className="flex flex-col items-end gap-2">
+                                    <Button
+                                        size="lg"
+                                        className="px-12 font-extrabold shadow-xl shadow-[var(--primary)]/20"
+                                        onClick={handleSave}
+                                        disabled={isSaving || !selectedCustomer}
+                                        title={!selectedCustomer ? "Please select a Strategic Client in Step 1" : ""}
+                                    >
+                                        {isSaving ? 'Synchronizing Data...' : 'Generate Strategic Proposal'} <Check size={18} className="ml-2" />
+                                    </Button>
+                                    {!selectedCustomer && <p className="text-[11px] text-[var(--danger)] font-bold">Client selection required</p>}
+                                </div>
                             )}
                         </div>
                     </div>

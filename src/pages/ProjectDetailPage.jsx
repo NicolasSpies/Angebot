@@ -1,9 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import { formatCurrency } from '../utils/pricingEngine';
-import { ArrowLeft, Plus, Trash2, CheckCircle, Circle, ExternalLink, Save, Calendar, Clock, DollarSign, Zap, FileText, MoreVertical, Box, Pencil, Globe } from 'lucide-react';
+import {
+    ArrowLeft, Plus, Trash2, CheckCircle, Circle,
+    ExternalLink, Save, Calendar, Clock, DollarSign,
+    Zap, FileText, MoreVertical, Box, Pencil, Globe,
+    AlertTriangle, Link as LinkIcon, CheckSquare,
+    User, File
+} from 'lucide-react';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -11,43 +17,55 @@ import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Textarea from '../components/ui/Textarea';
 import Badge from '../components/ui/Badge';
-import QuickActionCard from '../components/QuickActionCard';
+import StatusPill from '../components/ui/StatusPill';
 
 const STATUS_OPTIONS = ['todo', 'in_progress', 'feedback', 'done', 'cancelled'];
 const STATUS_LABELS = {
     todo: 'To Do', in_progress: 'In Progress', feedback: 'Feedback', done: 'Done', cancelled: 'Cancelled'
 };
-const PRIORITY_VARIANTS = {
-    low: 'neutral', medium: 'warning', high: 'danger'
-};
+const PRIORITY_OPTIONS = ['low', 'medium', 'high'];
+const PRIORITY_LABELS = { low: 'Low', medium: 'Medium', high: 'High' };
 
 const ProjectDetailPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { t } = useI18n();
+
+    // Data State
     const [project, setProject] = useState(null);
-    const [customers, setCustomers] = useState([]);
-    const [offers, setOffers] = useState([]);
+    const [customer, setCustomer] = useState(null);
+    const [offer, setOffer] = useState(null);
+
+    // UI State
     const [isLoading, setIsLoading] = useState(true);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+    // Notes State
     const [notes, setNotes] = useState('');
     const [notesSaving, setNotesSaving] = useState(false);
+    const [lastSaved, setLastSaved] = useState(null);
+    const autosaveTimerRef = useRef(null);
+
+    // Task State
     const [newTaskTitle, setNewTaskTitle] = useState('');
-    const [editingTaskId, setEditingTaskId] = useState(null);
-    const [editTaskValues, setEditTaskValues] = useState({});
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
     const loadProject = useCallback(async () => {
         setIsLoading(true);
         try {
-            const [projectData, customersData, offersData] = await Promise.all([
-                dataService.getProject(id),
-                dataService.getCustomers(),
-                dataService.getOffers()
-            ]);
+            const projectData = await dataService.getProject(id);
             setProject(projectData);
-            setCustomers(customersData);
-            setOffers(offersData);
             setNotes(projectData.internal_notes || '');
+            setLastSaved(projectData.updated_at);
+
+            // Load Linked Data
+            if (projectData.customer_id) {
+                const customers = await dataService.getCustomers();
+                setCustomer(customers.find(c => c.id === projectData.customer_id));
+            }
+            if (projectData.offer_id) {
+                const offerData = await dataService.getOffer(projectData.offer_id);
+                setOffer(offerData);
+            }
         } catch (err) {
             console.error('Failed to load project data', err);
         }
@@ -56,89 +74,75 @@ const ProjectDetailPage = () => {
 
     useEffect(() => { loadProject(); }, [loadProject]);
 
-    const handleStatusChange = async (newStatus) => {
-        await dataService.updateProject(id, { ...project, status: newStatus });
-        setProject(prev => ({ ...prev, status: newStatus }));
-    };
+    // --- Actions ---
 
-    const handleDeadlineChange = async (newDeadline) => {
-        await dataService.updateProject(id, { ...project, deadline: newDeadline || null });
-        setProject(prev => ({ ...prev, deadline: newDeadline }));
-    };
-
-    const handleCustomerChange = async (customerId) => {
-        const selectedCustomer = customers.find(c => c.id === parseInt(customerId));
-        const newCustomerId = selectedCustomer ? selectedCustomer.id : null;
-        const newCustomerName = selectedCustomer ? selectedCustomer.company_name : null;
-
-        await dataService.updateProject(id, { ...project, customer_id: newCustomerId });
-        setProject(prev => ({ ...prev, customer_id: newCustomerId, customer_name: newCustomerName }));
-    };
-
-    const handleOfferChange = async (offerId) => {
-        const selectedOffer = offers.find(o => o.id === parseInt(offerId));
-        const newOfferId = selectedOffer ? selectedOffer.id : null;
-
-        const newOfferName = selectedOffer ? (selectedOffer.offer_name || `#${selectedOffer.id}`) : null;
-        const newOfferTotal = selectedOffer ? selectedOffer.total : null;
-        const newOfferStatus = selectedOffer ? selectedOffer.status : null;
-
-        await dataService.updateProject(id, { ...project, offer_id: newOfferId });
-        setProject(prev => ({
-            ...prev,
-            offer_id: newOfferId,
-            offer_name: newOfferName,
-            offer_total: newOfferTotal,
-            offer_status: newOfferStatus
-        }));
-    };
-
-    const handleSaveNotes = async () => {
-        setNotesSaving(true);
+    const handleUpdateProject = async (updates) => {
+        const updated = { ...project, ...updates };
+        setProject(updated); // Optimistic
         try {
-            await dataService.updateProject(id, { ...project, internal_notes: notes });
+            await dataService.updateProject(id, updated);
         } catch (error) {
-            console.error('Failed to save notes', error);
+            console.error('Update failed', error);
+            loadProject(); // Revert on error
         }
-        setNotesSaving(false);
     };
 
-    const handleAddTask = async () => {
+    const handleNotesChange = (e) => {
+        const newValue = e.target.value;
+        setNotes(newValue);
+
+        // Debounced Autosave
+        if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = setTimeout(async () => {
+            setNotesSaving(true);
+            try {
+                await dataService.updateProject(id, { ...project, internal_notes: newValue });
+                setLastSaved(new Date().toISOString());
+            } catch (error) {
+                console.error('Autosave failed', error);
+            }
+            setNotesSaving(false);
+        }, 1500);
+    };
+
+    const handleAddTask = async (e) => {
+        if (e && e.key !== 'Enter') return;
         if (!newTaskTitle.trim()) return;
-        await dataService.createTask(id, { title: newTaskTitle.trim() });
-        setNewTaskTitle('');
-        loadProject();
+
+        try {
+            await dataService.createTask(id, { title: newTaskTitle.trim() });
+            setNewTaskTitle('');
+            // Refresh logic - ideally we'd just append, but full reload ensures ID sync
+            const refreshed = await dataService.getProject(id);
+            setProject(refreshed);
+        } catch (error) {
+            console.error('Add task failed', error);
+        }
     };
 
     const handleToggleTask = async (task) => {
-        await dataService.updateTask(task.id, { ...task, completed: !task.completed });
-        loadProject();
+        // Optimistic update
+        const updatedTasks = project.tasks.map(t =>
+            t.id === task.id ? { ...t, completed: !t.completed } : t
+        );
+        setProject({ ...project, tasks: updatedTasks });
+
+        try {
+            await dataService.updateTask(task.id, { completed: !task.completed });
+        } catch (error) {
+            loadProject();
+        }
     };
 
     const handleDeleteTask = async (taskId) => {
-        await dataService.deleteTask(taskId);
-        loadProject();
-    };
+        const updatedTasks = project.tasks.filter(t => t.id !== taskId);
+        setProject({ ...project, tasks: updatedTasks });
 
-    const handleEditTask = (task) => {
-        setEditingTaskId(task.id);
-        setEditTaskValues({
-            title: task.title,
-            description: task.description || '',
-            priority: task.priority || 'medium',
-            due_date: task.due_date ? task.due_date.split('T')[0] : '',
-            status: task.status || 'todo'
-        });
-    };
-
-    const handleSaveTask = async (task) => {
-        await dataService.updateTask(task.id, {
-            ...task,
-            ...editTaskValues,
-            due_date: editTaskValues.due_date || null
-        });
-        setEditingTaskId(null);
-        loadProject();
+        try {
+            await dataService.deleteTask(taskId);
+        } catch (error) {
+            loadProject();
+        }
     };
 
     const handleDeleteProject = async () => {
@@ -146,124 +150,292 @@ const ProjectDetailPage = () => {
             await dataService.deleteProject(id);
             navigate('/projects');
         } catch (error) {
-            console.error('Failed to delete project', error);
+            console.error('Delete failed', error);
         }
     };
 
-    if (isLoading) return <div className="page-container">Loading project...</div>;
-    if (!project || project.error) return <div className="page-container text-[var(--danger)]">Error loading project: {project?.error || 'Unknown error'}</div>;
+    if (isLoading) return <div className="page-container flex items-center justify-center min-h-[400px]">Loading project...</div>;
+    if (!project) return <div className="page-container text-[var(--danger)]">Project not found.</div>;
 
     const completedTasks = (project.tasks || []).filter(t => t.completed).length;
     const totalTasks = (project.tasks || []).length;
-    const availableOffers = (project.customer_id
-        ? offers.filter(o => o.customer_id === project.customer_id)
-        : offers).filter(o => o.status !== 'draft' || o.id === project.offer_id);
+    const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
     return (
-        <div className="page-container" style={{ maxWidth: '1200px', margin: '0 auto' }}>
-            {/* Header / Breadcrumb */}
-            <div className="mb-10">
-                <Link to="/projects" className="inline-flex items-center gap-2 text-[13px] font-bold text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors mb-6 group">
-                    <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back to Workspace
+        <div className="page-container" style={{ maxWidth: '1400px', margin: '0 auto' }}>
+            {/* Header */}
+            <div className="mb-8">
+                <Link to="/projects" className="inline-flex items-center gap-2 text-[13px] font-bold text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors mb-4 group">
+                    <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back to Projects
                 </Link>
-                <div className="flex justify-between items-start gap-6">
-                    <div className="flex-1">
-                        <div className="group relative">
+
+                <div className="flex justify-between items-start gap-8">
+                    <div className="flex-1 min-w-0">
+                        {/* Inline Edit Title */}
+                        <div className="group relative mb-2">
                             <input
                                 type="text"
                                 value={project.name || ''}
-                                onChange={(e) => setProject(prev => ({ ...prev, name: e.target.value }))}
-                                onBlur={async (e) => {
-                                    const newName = e.target.value.trim();
-                                    if (newName !== project.name) {
-                                        // Revert if empty
-                                        if (!newName) {
-                                            const original = await dataService.getProject(id);
-                                            setProject(prev => ({ ...prev, name: original.name }));
-                                            return;
-                                        }
-
-                                        // Save changes to Project
-                                        await dataService.updateProject(id, { ...project, name: newName });
-
-                                        // Sync to Offer if linked
-                                        if (project.offer_id) {
-                                            const linkedOffer = offers.find(o => o.id === project.offer_id);
-                                            if (linkedOffer) {
-                                                await dataService.updateOffer(project.offer_id, {
-                                                    ...linkedOffer,
-                                                    offer_name: newName
-                                                });
-                                                // Refresh offers to reflect change
-                                                const updatedOffers = await dataService.getOffers();
-                                                setOffers(updatedOffers);
-                                            }
-                                        }
+                                onChange={(e) => setProject({ ...project, name: e.target.value })}
+                                onBlur={(e) => {
+                                    if (e.target.value.trim() && e.target.value !== project.name) {
+                                        handleUpdateProject({ name: e.target.value.trim() });
                                     }
                                 }}
-                                className="text-3xl font-extrabold text-[var(--text-main)] w-full bg-transparent border-b-2 border-transparent hover:border-[var(--border)] focus:border-[var(--primary)] focus:outline-none transition-colors py-1"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') e.target.blur();
+                                }}
+                                className="text-3xl font-extrabold text-[var(--text-main)] w-full bg-transparent border-none p-0 focus:ring-0 truncate"
                             />
-                            <Pencil size={16} className="absolute top-1/2 -translate-y-1/2 -left-6 opacity-0 group-hover:opacity-50 text-[var(--text-muted)]" />
+                            <Pencil size={16} className="absolute right-full top-1/2 -translate-y-1/2 mr-2 opacity-0 group-hover:opacity-50 text-[var(--text-muted)]" />
                         </div>
-                        <div className="flex items-center gap-6 mt-2 text-[14px] text-[var(--text-secondary)] font-medium">
-                            <span className="flex items-center gap-2">
-                                <span className={`w-2 h-2 rounded-full ${project.status === 'done' ? 'bg-[var(--success)]' :
-                                    project.status === 'in_progress' ? 'bg-[var(--primary)]' :
-                                        project.status === 'cancelled' ? 'bg-[var(--danger)]' : 'bg-[var(--warning)]'
-                                    }`} />
-                                {(STATUS_LABELS[project.status] || project.status || 'unknown').toUpperCase()}
-                            </span>
-                            {project.customer_name && (
-                                <Link to={`/customers/${project.customer_id}`} className="flex items-center gap-2 hover:text-[var(--primary)] transition-colors">
-                                    <Globe size={16} className="text-[var(--text-muted)]" /> {project.customer_name}
+
+                        {/* Metadata Row */}
+                        <div className="flex items-center gap-6 text-[13px] font-medium text-[var(--text-secondary)]">
+                            <div className="flex items-center gap-2">
+                                <span className={`w-2.5 h-2.5 rounded-full ${project.status === 'done' ? 'bg-[var(--success)]' : project.status === 'in_progress' ? 'bg-[var(--primary)]' : project.status === 'cancelled' ? 'bg-[var(--danger)]' : 'bg-[var(--warning)]'}`} />
+                                <span className="uppercase tracking-wider font-bold">{STATUS_LABELS[project.status]}</span>
+                            </div>
+
+                            {customer && (
+                                <Link to={`/customers/${customer.id}`} className="flex items-center gap-2 hover:text-[var(--primary)] transition-colors">
+                                    <Globe size={14} className="text-[var(--text-muted)]" />
+                                    {customer.company_name}
                                 </Link>
                             )}
-                            <span className="flex items-center gap-2">
-                                <Clock size={16} className="text-[var(--text-muted)]" /> Created {project.created_at ? new Date(project.created_at).toLocaleDateString() : 'Unknown'}
+
+                            {offer && (
+                                <Link to={`/offer/preview/${offer.id}`} className="flex items-center gap-2 hover:text-[var(--primary)] transition-colors">
+                                    <FileText size={14} className="text-[var(--text-muted)]" />
+                                    {offer.offer_name}
+                                </Link>
+                            )}
+
+                            <span className="flex items-center gap-2 text-[var(--text-muted)]">
+                                <Clock size={14} /> Created {new Date(project.created_at).toLocaleDateString()}
                             </span>
                         </div>
                     </div>
-                    {/* ... rest of header ... */}
-                    <div className="flex gap-3">
-                        <Button variant="ghost" className="text-[var(--danger)] hover:bg-[var(--danger-bg)] font-bold" onClick={() => setIsDeleteModalOpen(true)}>
-                            <Trash2 size={18} className="mr-2" /> Archive Project
-                        </Button>
-                        <Button size="lg" className="shadow-lg" onClick={handleSaveNotes} disabled={notesSaving}>
-                            <Save size={18} className="mr-2" /> {notesSaving ? 'Saving...' : 'Sync Changes'}
-                        </Button>
-                    </div>
+
+                    <Button variant="ghost" className="text-[var(--danger)] hover:bg-[var(--danger-bg)] hover:text-[var(--danger)]" onClick={() => setIsDeleteModalOpen(true)}>
+                        <Trash2 size={18} />
+                    </Button>
                 </div>
             </div>
 
-            {/* Main Content Grid */}
-            <div className="grid" style={{ gridTemplateColumns: '1fr 360px', gap: '2rem', alignItems: 'start' }}>
-                <div className="flex flex-col gap-6">
-                    {/* ... */}
+            {/* 2-Column Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8 items-start">
+
+                {/* Left Column (Main) */}
+                <div className="flex flex-col gap-8">
+
+                    {/* Roadmap / Tasks */}
+                    <Card padding="2rem" className="border-[var(--border)] shadow-sm">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-[15px] font-extrabold text-[var(--text-main)] flex items-center gap-2">
+                                <CheckSquare size={18} className="text-[var(--primary)]" />
+                                Roadmap & Tasks
+                            </h3>
+                            {totalTasks > 0 && <Badge variant="neutral">{progress}% Complete</Badge>}
+                        </div>
+
+                        {/* Progress Bar */}
+                        {totalTasks > 0 && (
+                            <div className="mb-8">
+                                <div className="h-2 w-full bg-[var(--bg-active)] rounded-full overflow-hidden flex">
+                                    <div
+                                        className="h-full bg-[var(--primary)] transition-all duration-500"
+                                        style={{ width: `${progress}%` }}
+                                    />
+                                </div>
+                                <div className="flex justify-between mt-2 text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                                    <span>Start</span>
+                                    <span>Finish</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Task List */}
+                        <div className="space-y-1 mb-6">
+                            {(project.tasks || []).length === 0 ? (
+                                <div className="text-center py-8 border-2 border-dashed border-[var(--border)] rounded-xl">
+                                    <div className="w-12 h-12 rounded-full bg-[var(--bg-active)] flex items-center justify-center mx-auto mb-3 text-[var(--text-muted)]">
+                                        <CheckSquare size={20} />
+                                    </div>
+                                    <p className="text-[13px] font-medium text-[var(--text-muted)]">No tasks properly defined.</p>
+                                </div>
+                            ) : (
+                                (project.tasks || []).map(task => (
+                                    <div key={task.id} className="group flex items-start gap-3 p-3 hover:bg-[var(--bg-app)] rounded-lg transition-colors">
+                                        <button
+                                            onClick={() => handleToggleTask(task)}
+                                            className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border transition-colors flex items-center justify-center ${task.completed ? 'bg-[var(--primary)] border-[var(--primary)] text-white' : 'border-[var(--border-strong)] hover:border-[var(--primary)]'}`}
+                                        >
+                                            {task.completed && <CheckCircle size={14} />}
+                                        </button>
+                                        <span className={`flex-1 text-[14px] leading-relaxed transition-all ${task.completed ? 'text-[var(--text-muted)] line-through decoration-2' : 'text-[var(--text-main)] font-medium'}`}>
+                                            {task.title}
+                                        </span>
+                                        <button
+                                            onClick={() => handleDeleteTask(task.id)}
+                                            className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-[var(--danger)] transition-all"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Add Task */}
+                        <div className="relative">
+                            <Plus size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                            <input
+                                type="text"
+                                placeholder="Add a new task..."
+                                className="w-full pl-10 pr-4 py-3 bg-[var(--bg-active)] border border-transparent focus:bg-white focus:border-[var(--primary)] rounded-lg text-[14px] font-medium transition-all outline-none"
+                                value={newTaskTitle}
+                                onChange={(e) => setNewTaskTitle(e.target.value)}
+                                onKeyDown={handleAddTask}
+                            />
+                        </div>
+                    </Card>
+
+                    {/* Strategic Notes */}
+                    <Card padding="2rem" className="border-[var(--border)] shadow-sm relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-[var(--warning)]" />
+                        <div className="flex justify-between items-center mb-6 pl-2">
+                            <h3 className="text-[15px] font-extrabold text-[var(--text-main)] flex items-center gap-2">
+                                <FileText size={18} className="text-[var(--warning-text)]" />
+                                Strategic Notes
+                            </h3>
+                            <div className="flex items-center gap-2">
+                                {notesSaving && <span className="text-[11px] text-[var(--text-muted)] animate-pulse">Saving...</span>}
+                                {!notesSaving && lastSaved && <span className="text-[11px] text-[var(--text-muted)] opacity-50">Saved {new Date(lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                            </div>
+                        </div>
+                        <Textarea
+                            value={notes}
+                            onChange={handleNotesChange}
+                            placeholder="Capture internal strategic notes, risks, or key requirements..."
+                            className="min-h-[200px] bg-[var(--bg-active)]/50 border-none focus:bg-white focus:ring-1 focus:ring-[var(--warning)] resize-none text-[15px] leading-relaxed"
+                        />
+                        <div className="mt-2 flex items-center gap-2 text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider pl-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" />
+                            Private & Internal Only
+                        </div>
+                    </Card>
+
                     {/* Activity Timeline */}
                     <Card padding="2rem" className="border-[var(--border)]">
                         <h3 className="text-[15px] font-bold text-[var(--text-main)] mb-6">Project Activity</h3>
                         <ActivityTimeline projectId={id} />
                     </Card>
+
                 </div>
-                {/* ... Sidebar ... */}
+
+                {/* Right Column (Sidebar) */}
                 <div className="flex flex-col gap-6">
-                    {/* Core Lifecycle */}
-                    <Card padding="1.5rem" className="border-[var(--border)] shadow-sm">
-                        <h3 className="text-[13px] font-bold uppercase text-[var(--text-muted)] tracking-wider mb-6">Execution & Cycle</h3>
-                        <div className="flex flex-col gap-6">
-                            <div className="flex flex-col gap-2">
-                                <label className="text-[12px] font-bold text-[var(--text-secondary)] uppercase">Current Phase</label>
+
+                    {/* Execution & Cycle */}
+                    <Card padding="1.5rem" className="border-[var(--border)] shadow-md bg-gradient-to-br from-white to-[var(--bg-app)]">
+                        <h3 className="text-[11px] font-black uppercase text-[var(--text-muted)] tracking-widest mb-6 border-b border-[var(--border)] pb-2">Execution & Cycle</h3>
+
+                        <div className="space-y-5">
+                            <div className="space-y-2">
+                                <label className="text-[12px] font-bold text-[var(--text-secondary)]">Current Phase</label>
                                 <Select
-                                    value={project.status || 'todo'}
-                                    onChange={e => handleStatusChange(e.target.value)}
+                                    value={project.status}
+                                    onChange={(e) => handleUpdateProject({ status: e.target.value })}
                                     options={STATUS_OPTIONS.map(s => ({ value: s, label: STATUS_LABELS[s] }))}
-                                    className="bg-[var(--secondary-light)]/50 border-transparent hover:border-[var(--border)]"
                                 />
                             </div>
-                            {/* ... */}
+
+                            <div className="space-y-2">
+                                <label className="text-[12px] font-bold text-[var(--text-secondary)]">Priority Level</label>
+                                <Select
+                                    value={project.priority || 'medium'}
+                                    onChange={(e) => handleUpdateProject({ priority: e.target.value })}
+                                    options={PRIORITY_OPTIONS.map(p => ({ value: p, label: PRIORITY_LABELS[p] }))}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[12px] font-bold text-[var(--text-secondary)]">Target Delivery</label>
+                                <input
+                                    type="date"
+                                    className="w-full px-3 py-2 bg-white border border-[var(--border)] rounded-md text-[14px] font-medium focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
+                                    value={project.deadline ? project.deadline.split('T')[0] : ''}
+                                    onChange={(e) => handleUpdateProject({ deadline: e.target.value || null })}
+                                />
+                            </div>
                         </div>
                     </Card>
-                    {/* ... */}
+
+                    {/* Linked Customer */}
+                    <Card padding="1.5rem" className="border-[var(--border)] shadow-sm">
+                        <div className="flex items-center gap-3 mb-4 text-[var(--primary)]">
+                            <User size={18} />
+                            <h3 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-main)]">Client Entity</h3>
+                        </div>
+                        {customer ? (
+                            <div>
+                                <Link to={`/customers/${customer.id}`} className="block text-[15px] font-extrabold text-[var(--text-main)] hover:text-[var(--primary)] mb-1">
+                                    {customer.company_name}
+                                </Link>
+                                <div className="text-[13px] text-[var(--text-secondary)]">
+                                    {customer.first_name} {customer.last_name}
+                                </div>
+                                <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] flex gap-2">
+                                    <Badge variant="neutral">{customer.country}</Badge>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-[13px] text-[var(--text-muted)] italic">No client linked.</div>
+                        )}
+                    </Card>
+
+                    {/* Linked Offer */}
+                    <Card padding="1.5rem" className="border-[var(--border)] shadow-sm">
+                        <div className="flex items-center gap-3 mb-4 text-[var(--primary)]">
+                            <FileText size={18} />
+                            <h3 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-main)]">Strategic Basis</h3>
+                        </div>
+                        {offer ? (
+                            <div>
+                                <Link to={`/offer/preview/${offer.id}`} className="block text-[15px] font-extrabold text-[var(--text-main)] hover:text-[var(--primary)] mb-1 break-words">
+                                    {offer.offer_name}
+                                </Link>
+                                <div className="text-[13px] font-bold text-[var(--text-secondary)] mb-3">
+                                    {formatCurrency(offer.total)}
+                                </div>
+                                <StatusPill status={offer.status} />
+
+                                {/* Quick Actions */}
+                                <div className="mt-6 space-y-2">
+                                    <Button
+                                        variant="ghost"
+                                        className="w-full justify-start text-[13px] h-8"
+                                        onClick={() => navigate(`/offer/preview/${offer.id}`)}
+                                    >
+                                        <ExternalLink size={14} className="mr-2" /> View Proposal
+                                    </Button>
+                                    {offer.token && (
+                                        <Button
+                                            variant="ghost"
+                                            className="w-full justify-start text-[13px] h-8"
+                                            onClick={() => window.open(`/offer/sign/${offer.token}`, '_blank')}
+                                        >
+                                            <LinkIcon size={14} className="mr-2" /> Open Signing Page
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-[13px] text-[var(--text-muted)] italic">No offer linked.</div>
+                        )}
+                    </Card>
+
                 </div>
             </div>
 
@@ -271,17 +443,16 @@ const ProjectDetailPage = () => {
                 isOpen={isDeleteModalOpen}
                 onClose={() => setIsDeleteModalOpen(false)}
                 onConfirm={handleDeleteProject}
-                title="Delete Project?"
-                message={`Are you sure you want to delete "${project.name}"? This action cannot be undone.`}
-                confirmText="Delete"
-                cancelText="Cancel"
+                title="Archive Project?"
+                message={`Are you sure you want to archive "${project.name}"? This action cannot be undone.`}
+                confirmText="Archive Project"
                 isDestructive={true}
             />
         </div>
     );
 };
 
-// Simple Activity Timeline Component
+// Activity Component
 const ActivityTimeline = ({ projectId }) => {
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -289,22 +460,22 @@ const ActivityTimeline = ({ projectId }) => {
     useEffect(() => {
         dataService.getProjectActivity(projectId)
             .then(data => {
-                if (Array.isArray(data)) setEvents(data);
-                else setEvents([]);
+                setEvents(Array.isArray(data) ? data : []);
             })
             .catch(() => setEvents([]))
             .finally(() => setLoading(false));
     }, [projectId]);
 
     if (loading) return <div className="text-[13px] text-[var(--text-muted)]">Loading activity...</div>;
-    if (events.length === 0) return <div className="text-[13px] text-[var(--text-muted)]">No activity recorded.</div>;
+    if (!events || events.length === 0) return <div className="text-[13px] text-[var(--text-muted)]">No activity recorded.</div>;
 
     return (
         <div className="relative pl-4 border-l border-[var(--border-subtle)] space-y-6">
             {events.map((e, i) => (
                 <div key={i} className="relative">
                     <div className={`absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-white ${e.event_type === 'signed' ? 'bg-[var(--success)]' :
-                        e.event_type === 'status_change' ? 'bg-[var(--primary)]' : 'bg-[var(--text-muted)]'
+                            e.event_type === 'status_change' ? 'bg-[var(--primary)]' :
+                                e.event_type === 'created' ? 'bg-[var(--text-main)]' : 'bg-[var(--text-muted)]'
                         }`}></div>
                     <p className="text-[13px] font-medium text-[var(--text-main)]">{e.comment || e.event_type}</p>
                     <p className="text-[11px] text-[var(--text-muted)]">{new Date(e.created_at).toLocaleString()}</p>

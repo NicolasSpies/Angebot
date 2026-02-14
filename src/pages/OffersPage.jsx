@@ -4,7 +4,7 @@ import { dataService } from '../data/dataService';
 import { formatCurrency } from '../utils/pricingEngine';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-    Plus, FileText, Eye, Edit2, Send, Link as LinkIcon, Trash2
+    Plus, FileText, Eye, Edit2, Send, Link as LinkIcon, Trash2, ExternalLink
 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -182,13 +182,13 @@ const OffersPage = () => {
                                 </div>
                             </td>
                             <td className="py-3 px-6 text-[14px] font-medium text-[var(--text-secondary)]">
-                                {offer.customer_name ? offer.customer_name : <span className="text-[var(--text-muted)] opacity-50">—</span>}
+                                {offer.customer_name || <span className="text-[var(--text-muted)] opacity-50">—</span>}
                             </td>
                             <td className="py-3 px-6">
                                 <DueStatusIndicator dueDate={offer.due_date} />
                             </td>
                             <td className="py-3 px-6 text-[14px] font-bold text-[var(--text-main)]">
-                                {formatCurrency(offer.total)}
+                                {formatCurrency(offer.total || 0)}
                             </td>
                             <td className="py-3 px-6">
                                 <DropdownMenu
@@ -204,25 +204,25 @@ const OffersPage = () => {
                                 <div className="flex justify-end">
                                     <DropdownMenu
                                         actions={[
-                                            { label: t('common.view'), onClick: () => navigate(`/offer/preview/${offer.id}`), icon: Eye },
-                                            { label: t('common.edit'), onClick: () => navigate(`/offer/edit/${offer.id}`), icon: Edit2 },
+                                            { label: 'View Offer', onClick: () => navigate(`/offer/preview/${offer.id}`), icon: Eye },
+                                            { label: 'Edit Draft', onClick: () => navigate(`/offer/edit/${offer.id}`), icon: Edit2 },
                                             {
-                                                label: t('common.send'),
+                                                label: 'Send to Client',
                                                 onClick: () => handleSend(offer.id),
                                                 disabled: !(offer.status === 'draft' || offer.status === 'declined') || !offer.customer_id,
                                                 icon: Send
                                             },
                                             ...((offer.status === 'sent' || offer.status === 'signed' || offer.status === 'declined') && offer.token ? [
-                                                { label: t('common.link'), onClick: () => copyLink(offer.token), icon: LinkIcon },
+                                                { label: 'Copy Public Link', onClick: () => copyLink(offer.token), icon: LinkIcon },
                                                 {
-                                                    label: 'Open Signing Link',
+                                                    label: 'Open Signing Page',
                                                     onClick: () => window.open(`/offer/sign/${offer.token}`, '_blank'),
-                                                    icon: LinkIcon, // Re-using LinkIcon or Import ExternalLink if needed
+                                                    icon: ExternalLink,
                                                     disabled: ['signed', 'declined'].includes(offer.status),
                                                     title: ['signed', 'declined'].includes(offer.status) ? "Offer is already finalized" : "Open public signing page"
                                                 }
                                             ] : []),
-                                            { label: t('common.delete'), onClick: () => handleDeleteClick(offer.id), isDestructive: true, icon: Trash2 }
+                                            { label: 'Delete Offer', onClick: () => handleDeleteClick(offer.id), isDestructive: true, icon: Trash2 }
                                         ]}
                                     />
                                 </div>

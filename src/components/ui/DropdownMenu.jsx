@@ -126,7 +126,7 @@ const DropdownMenu = ({ actions, trigger }) => {
                                         {action.status && (
                                             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: statusAuthColor.dot }} />
                                         )}
-                                        {action.icon && <action.icon size={14} className={action.isDestructive ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'} />}
+                                        {action.icon && <action.icon size={14} className={action.isDestructive ? 'text-[var(--danger)]' : (action.status ? '' : 'text-[var(--text-muted)]')} />}
                                         {action.label}
                                     </button>
                                 );

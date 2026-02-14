@@ -655,121 +655,90 @@ button {
    PRINT STYLES
    ================================================================ */
 @media print {
-  .no-print {
+
+  .no-print,
+  .dev-debug-panel,
+  .dev-debug-inspector,
+  header,
+  footer,
+  nav,
+  aside,
+  .sidebar,
+  .topbar,
+  button,
+  .btn,
+  .badge,
+  .status-pill,
+  [role="dialog"],
+  .fixed,
+  .sticky {
     display: none !important;
   }
 
-  .print-only {
-    display: block !important;
+  /* Reset layout constraints for full page printing */
+  html,
+  body,
+  #root,
+  .page-container,
+  .a4-container {
+    background: white !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
   }
 
-  /* Ensure background colors and shadows are printed exactly as seen */
+  /* Optimize Page Margins and Remove Headers */
+  @page {
+    margin: 0;
+    size: auto;
+  }
+
+  body {
+    color: black !important;
+    /* Minimal padding for the content itself when printed */
+    padding: 1cm !important;
+  }
+
+  /* Ensure text colors print correctly */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* Hide app shell elements and explicit no-print tokens */
-  aside,
-  header,
-  nav,
-  footer,
-  .no-print,
-  button,
-  .btn,
-  .dev-debug-panel,
-  [role="dialog"],
-  .fixed {
-    display: none !important;
-  }
-
-  /* Reset layout constraints */
-  .page-container {
-    padding: 0 !important;
-    margin: 0 !important;
-    max-width: none !important;
-    width: 100% !important;
-    background: white !important;
-  }
-
-  body {
-    background: white !important;
-    color: black !important;
-    width: 100% !important;
-    margin: 0 !important;
-  }
-
-  /* Remove shadows and borders that look bad in print */
-  .card,
-  .a4-container {
-    box-shadow: none !important;
-    border: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    background: transparent !important;
-  }
-
-  /* Typography overrides */
+  /* Typography overrides for print readability */
   h1,
   h2,
   h3,
   h4,
-  .text-main,
-  .text-secondary {
-    color: black !important;
+  p,
+  span,
+  div {
+    color: #000 !important;
   }
 
   .text-muted {
-    color: #555 !important;
+    color: #444 !important;
+    /* Slightly darker than strict gray for legibility */
   }
 
   /* Page Break Management */
-  .break-inside-avoid {
+  .break-inside-avoid,
+  tr,
+  td,
+  th,
+  .card,
+  .offer-section {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
 
-  /* Ensure images print */
-  img {
-    max-width: 100% !important;
-    print-color-adjust: exact;
+  /* Hide green deadline bar if specifically requested to be outside doc */
+  .deadline-indicator {
+    display: none !important;
   }
-
-  /* Ensure page breaks don't cut inside elements */
-  tr,
-  td,
-  th {
-    page-break-inside: avoid !important;
-  }
-
-  /* Fix overflow and height issues */
-  html,
-  body,
-  #root,
-  .min-h-screen {
-    height: auto !important;
-    min-height: 0 !important;
-    overflow: visible !important;
-  }
-
-  tr,
-  .break-inside-avoid,
-  .offer-section {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  /* Typography Adjustments for Print */
-  h1,
-  h2,
-  h3,
-  p {
-    color: #000 !important;
-  }
-}
-
-.print-only {
-  display: none;
 }

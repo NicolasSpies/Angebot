@@ -161,17 +161,17 @@ const CustomerDetailPage = () => {
             >
                 <Table headers={['Offer Name', 'Creation Date', 'Contract Value', 'Status', 'Actions']}>
                     {offers.length > 0 ? offers.map(offer => (
-                        <tr key={offer.id} className="group hover:bg-[var(--bg-main)] transition-colors h-14">
-                            <td className="font-bold text-[var(--text-main)]">
+                        <tr key={offer.id} className="group hover:bg-[var(--bg-main)] transition-colors h-14 border-b border-[var(--border-subtle)] last:border-0">
+                            <td className="py-3 px-6 font-bold text-[var(--text-main)]">
                                 <Link to={`/offer/preview/${offer.id}`} className="hover:text-[var(--primary)] transition-colors">
                                     {offer.offer_name || `ANB-${offer.id}`}
                                 </Link>
                             </td>
-                            <td className="text-[14px] text-[var(--text-secondary)] font-medium">
+                            <td className="py-3 px-6 text-[14px] text-[var(--text-secondary)] font-medium">
                                 {new Date(offer.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                             </td>
-                            <td className="font-extrabold text-[var(--text-main)]">{formatCurrency(offer.total)}</td>
-                            <td>
+                            <td className="py-3 px-6 font-extrabold text-[var(--text-main)]">{formatCurrency(offer.total)}</td>
+                            <td className="py-3 px-6">
                                 <div className="flex items-center">
                                     <Badge variant={
                                         offer.status === 'signed' ? 'success' :
@@ -182,7 +182,7 @@ const CustomerDetailPage = () => {
                                     </Badge>
                                 </div>
                             </td>
-                            <td>
+                            <td className="py-3 px-6">
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
                                     <Button variant="ghost" size="sm" onClick={() => navigate(`/offer/preview/${offer.id}`)} className="text-[var(--primary)]">
                                         <ExternalLink size={16} />
@@ -198,7 +198,7 @@ const CustomerDetailPage = () => {
                             </td>
                         </tr>
                     )) : (
-                        <tr><td colSpan="5" className="py-20 text-center">
+                        <tr><td colSpan="5" className="py-20 px-6 text-center">
                             <FileText size={40} className="mx-auto text-[var(--text-muted)] opacity-20 mb-4" />
                             <p className="text-[var(--text-muted)] font-medium">No financial history recorded for this customer.</p>
                         </td></tr>
@@ -210,28 +210,28 @@ const CustomerDetailPage = () => {
             <TableCard title="Projects">
                 <Table headers={['Project Name', 'Status', 'Deadline', 'Linked Offer']}>
                     {(projects || []).length > 0 ? (projects || []).map(project => (
-                        <tr key={project.id} className="group hover:bg-[var(--bg-main)] transition-colors h-14">
-                            <td>
+                        <tr key={project.id} className="group hover:bg-[var(--bg-main)] transition-colors h-14 border-b border-[var(--border-subtle)] last:border-0">
+                            <td className="py-3 px-6">
                                 <Link to={`/projects/${project.id}`} className="font-bold text-[var(--text-main)] hover:text-[var(--primary)] transition-colors">
                                     {project.name}
                                 </Link>
                             </td>
-                            <td>
+                            <td className="py-3 px-6">
                                 <div className="flex items-center">
                                     <StatusPill status={project.status} />
                                 </div>
                             </td>
-                            <td className="text-[14px] text-[var(--text-secondary)] font-medium">
+                            <td className="py-3 px-6 text-[14px] text-[var(--text-secondary)] font-medium">
                                 {project.deadline ? (
                                     <DueStatusIndicator dueDate={project.deadline} status={project.status} />
                                 ) : '—'}
                             </td>
-                            <td className="text-[14px] text-[var(--text-secondary)] font-medium">
+                            <td className="py-3 px-6 text-[14px] text-[var(--text-secondary)] font-medium">
                                 {project.offer_name || '—'}
                             </td>
                         </tr>
                     )) : (
-                        <tr><td colSpan="4" className="py-20 text-center">
+                        <tr><td colSpan="4" className="py-20 px-6 text-center">
                             <FolderOpen size={40} className="mx-auto text-[var(--text-muted)] opacity-20 mb-4" />
                             <p className="text-[var(--text-muted)] font-medium">No projects recorded for this customer.</p>
                         </td></tr>

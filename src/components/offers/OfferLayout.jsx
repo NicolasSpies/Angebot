@@ -68,6 +68,14 @@ const OfferLayout = ({ offer, settings, hideInternal = false }) => {
                         <div className="text-[12px] text-[var(--text-muted)] font-bold">
                             {new Date(offer.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
                         </div>
+                        {offer.due_date && (
+                            <div className="mt-3 pt-3 border-t border-[var(--border)]/50">
+                                <div className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest mb-1">Valid Until</div>
+                                <div className="text-[12px] font-bold text-[var(--text-main)]">
+                                    {new Date(offer.due_date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <div className="text-[14px]">
@@ -87,20 +95,6 @@ const OfferLayout = ({ offer, settings, hideInternal = false }) => {
                     </div>
                 </div>
             </div>
-
-            {offer.due_date && (
-                <>
-                    <div className="mb-12 no-print">
-                        <DeadlineIndicator dueDate={offer.due_date} createdAt={offer.sent_at || offer.created_at} />
-                    </div>
-                    <div className="mb-8 hidden print:block">
-                        <div className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest mb-1">Offer Valid Until</div>
-                        <div className="text-[14px] font-bold text-[var(--text-main)]">
-                            {new Date(offer.due_date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                        </div>
-                    </div>
-                </>
-            )}
 
             {/* Items Tables Grouped by Billing Cycle */}
             {['one_time', 'yearly', 'monthly'].map(cycle => {

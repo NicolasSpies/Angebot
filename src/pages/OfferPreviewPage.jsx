@@ -5,6 +5,7 @@ import { useI18n } from '../i18n/I18nContext';
 import OfferLayout from '../components/offers/OfferLayout';
 import { AlertTriangle, ChevronLeft, Pencil, FileText } from 'lucide-react';
 import Button from '../components/ui/Button';
+import DeadlineIndicator from '../components/ui/DeadlineIndicator';
 
 const OfferPreviewPage = () => {
     const { id } = useParams();
@@ -78,6 +79,12 @@ const OfferPreviewPage = () => {
                     </Button>
                 </div>
             </div>
+
+            {offer.due_date && (
+                <div className="mb-6 no-print">
+                    <DeadlineIndicator dueDate={offer.due_date} createdAt={offer.sent_at || offer.created_at} />
+                </div>
+            )}
 
             <div className="premium-document-shadow rounded-[var(--radius-lg)] overflow-hidden">
                 <OfferLayout offer={offer} settings={settings} />
