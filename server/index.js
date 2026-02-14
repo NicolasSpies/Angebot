@@ -137,15 +137,15 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
     fileFilter: (req, file, cb) => {
-        const allowedTypes = /jpeg|jpg|png|svg/;
+        const allowedTypes = /jpeg|jpg|png|svg|pdf/;
         const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
         const mimetype = allowedTypes.test(file.mimetype);
         if (extname && mimetype) {
             return cb(null, true);
         }
-        cb(new Error('Only .png, .jpg and .svg format allowed!'));
+        cb(new Error('Only .png, .jpg, .svg and .pdf format allowed!'));
     }
 });
 
@@ -1210,6 +1210,12 @@ app.get('/api/search', (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// Global Error Handler
+app.use((err, req, res, next) => {
+    console.error('Unhandled Error:', err);
+    res.status(500).json({ error: err.message, stack: err.stack });
 });
 
 app.listen(port, () => {

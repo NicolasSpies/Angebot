@@ -22,6 +22,7 @@ const OfferPublicPage = () => {
     // Signing State
     const [showSignModal, setShowSignModal] = useState(false);
     const [tempSignature, setTempSignature] = useState(null);
+    const [apiError, setApiError] = useState(null);
     const [isGenerating, setIsGenerating] = useState(false);
 
     // Decline State
@@ -97,21 +98,31 @@ const OfferPublicPage = () => {
 
                     // Upload PDF
                     const uploadRes = await dataService.uploadFile(file);
-                    if (!uploadRes.url) throw new Error('Failed to upload signed PDF');
+                    if (!uploadRes.url) throw new Error(uploadRes.error || 'Failed to upload signed PDF');
 
                     // Submit to backend
-                    await dataService.signOffer(token, {
+                    console.log('--- SIGNING REQUEST PAYLOAD START ---');
+                    console.log('Token:', token);
+                    console.log('Signature Length:', signatureData.signatureData?.length);
+                    console.log('PDF URL:', uploadRes.url);
+                    console.log('--- SIGNING REQUEST PAYLOAD END ---');
+
+                    const response = await dataService.signOffer(token, {
                         ...signatureData,
                         pdfUrl: uploadRes.url
                     });
+
+                    console.log('--- SIGNING API RESPONSE ---', response);
 
                     // Refresh state
                     await loadData();
                     setShowSignModal(false);
                     setTempSignature(null);
+                    setApiError(null);
                     resolve();
                 } catch (err) {
                     console.error('Signing failed:', err);
+                    setApiError(err);
                     setTempSignature(null);
                     reject(err);
                 } finally {
@@ -246,6 +257,31 @@ const OfferPublicPage = () => {
                     isSubmitting={isDeclining}
                 />
             )}
+            {/* Dev Debug Overlay */}
+            <DevDebug offer={offer} token={token} error={apiError} />
+        </div>
+    );
+};
+
+const DevDebug = ({ offer, token, error }) => {
+    if (!import.meta.env.DEV) return null;
+    return (
+        <div className="fixed bottom-4 left-4 p-4 bg-black/80 text-white text-xs rounded-lg shadow-xl z-50 font-mono w-96 pointer-events-none opacity-75 hover:opacity-100 transition-opacity">
+            <h3 className="font-bold border-b border-gray-600 pb-1 mb-2 text-green-400">DEV DEBUG INSPECTOR</h3>
+            <div className="space-y-1">
+                <p><span className="text-gray-400">Token:</span> <span className="text-blue-300">{token}</span></p>
+                <p><span className="text-gray-400">Offer ID:</span> {offer?.id} ({offer?.offer_name})</p>
+                <p><span className="text-gray-400">Status:</span>
+                    <span className={['signed', 'accepted'].includes(offer?.status) ? 'text-green-400 ml-1' : 'text-yellow-400 ml-1'}>{offer?.status?.toUpperCase()}</span>
+                </p>
+                <p><span className="text-gray-400">Cust ID:</span> {offer?.customer_id}</p>
+                {error && (
+                    <div className="mt-2 pt-2 border-t border-red-900 bg-red-900/20 p-2 rounded">
+                        <p className="text-red-400 font-bold">API ERROR:</p>
+                        <p className="break-all">{error.message || JSON.stringify(error)}</p>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
