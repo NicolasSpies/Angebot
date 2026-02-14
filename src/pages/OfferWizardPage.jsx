@@ -242,15 +242,15 @@ const OfferWizardPage = () => {
                 <main className="flex-1 min-w-0">
                     {/* Stepper Header */}
                     <div className="flex gap-12 mb-12 border-b border-[var(--border)] pb-6 overflow-x-auto no-scrollbar">
-                        {[1, 2, 3].map(s => (
+                        {[1, 2, 3, 4].map(s => (
                             <div key={s} className={`flex items-center gap-4 transition-all whitespace-nowrap ${step >= s ? 'opacity-100' : 'opacity-40'}`}>
                                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-extrabold text-[13px] shadow-sm transition-all ${step >= s ? 'bg-[var(--primary)] text-white scale-110' : 'bg-[var(--bg-main)] text-[var(--text-muted)] border border-[var(--border)]'}`}>
                                     {s}
                                 </div>
                                 <span className={`font-bold text-[14px] uppercase tracking-wider ${step >= s ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)]'}`}>
-                                    {t(`offer.step_${s}`)}
+                                    {t(`offer.step_${s}`) || (s === 2 ? "Strategy" : s === 3 ? "Services" : s === 4 ? "Finalize" : "Basics")}
                                 </span>
-                                {s < 3 && <div className="w-8 h-[2px] bg-[var(--border)] opacity-50 ml-2" />}
+                                {s < 4 && <div className="w-8 h-[2px] bg-[var(--border)] opacity-50 ml-2" />}
                             </div>
                         ))}
                     </div>
@@ -315,6 +315,37 @@ const OfferWizardPage = () => {
                         )}
 
                         {step === 2 && (
+                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="mb-8">
+                                    <h2 className="text-3xl font-extrabold text-[var(--text-main)] mb-2">Strategic Context</h2>
+                                    <p className="text-[var(--text-secondary)] font-medium">Capture internal notes and strategic requirements handled by the team.</p>
+                                </div>
+                                <Card className="border-[var(--border)] shadow-sm p-8">
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-2 rounded-lg bg-[var(--primary-light)] text-[var(--primary)] shadow-sm">
+                                                <Save size={20} />
+                                            </div>
+                                            <label className="text-[13px] font-extrabold text-[var(--text-main)] uppercase tracking-[0.1em]">Internal Strategic Notes</label>
+                                        </div>
+                                        <textarea
+                                            className="w-full bg-[var(--bg-main)] border border-[var(--border)] rounded-[var(--radius-md)] py-4 px-6 text-[15px] font-medium min-h-[240px] focus:bg-white focus:ring-4 focus:ring-[var(--primary)]/10 focus:border-[var(--primary)] transition-all outline-none leading-relaxed"
+                                            placeholder="Capture key strategic drivers, risk assessments, or timeline constraints for your team. These notes will stay internal and sync to the Project."
+                                            value={internalNotes}
+                                            onChange={(e) => setInternalNotes(e.target.value)}
+                                        />
+                                        <div className="flex items-center gap-3 pt-2 text-[var(--text-muted)] text-[13px]">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" />
+                                            <span>Private & Internal Only</span>
+                                        </div>
+                                    </div>
+                                </Card>
+                            </div>
+                        )}
+
+
+
+                        {step === 3 && (
                             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <div className="mb-8 flex justify-between items-end">
                                     <div>
@@ -406,7 +437,7 @@ const OfferWizardPage = () => {
                             </div>
                         )}
 
-                        {step === 3 && (
+                        {step === 4 && (
                             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <div className="mb-8">
                                     <h2 className="text-3xl font-extrabold text-[var(--text-main)] mb-2">Finalization & Logic</h2>
@@ -430,19 +461,10 @@ const OfferWizardPage = () => {
                                         />
                                         <p className="text-[13px] text-[var(--text-muted)] font-medium leading-relaxed max-w-[480px]">Apply a competitive discount to incentivize signing. This will be visible on the final contract as a 'Strategic Rebate'.</p>
                                     </div>
-                                    <div className="space-y-4">
-                                        <div className="flex items-center gap-2">
-                                            <div className="p-2 rounded-lg bg-[var(--primary-light)] text-[var(--primary)] shadow-sm">
-                                                <Save size={20} />
-                                            </div>
-                                            <label className="text-[13px] font-extrabold text-[var(--text-main)] uppercase tracking-[0.1em]">Strategic Notes</label>
-                                        </div>
-                                        <textarea
-                                            className="w-full bg-[var(--bg-main)] border border-[var(--border)] rounded-[var(--radius-md)] py-4 px-6 text-[15px] font-medium min-h-[160px] focus:bg-white focus:ring-4 focus:ring-[var(--primary)]/10 focus:border-[var(--primary)] transition-all outline-none leading-relaxed"
-                                            placeholder="Capture key strategic drivers, risk assessments, or timeline constraints for your team..."
-                                            value={internalNotes}
-                                            onChange={(e) => setInternalNotes(e.target.value)}
-                                        />
+
+                                    {/* Moved Strategic Notes to Step 2 */}
+                                    <div className="p-4 rounded-xl bg-[var(--bg-main)] border border-[var(--border)] text-[13px] text-[var(--text-secondary)] italic">
+                                        Strategic notes are now configured in the "Strategy" step.
                                     </div>
                                 </Card>
                             </div>
@@ -451,13 +473,13 @@ const OfferWizardPage = () => {
                         <div className="pt-10 border-t border-[var(--border)] flex items-center justify-between">
                             {step > 1 ? (
                                 <Button variant="ghost" className="font-extrabold px-8 group" onClick={() => setStep(step - 1)}>
-                                    <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" /> Retrospective Step
+                                    <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" /> {step === 2 ? "Back to Basics" : "Previous Step"}
                                 </Button>
                             ) : <div />}
 
-                            {step < 3 ? (
+                            {step < 4 ? (
                                 <Button size="lg" className="px-10 font-extrabold shadow-lg" onClick={() => setStep(step + 1)} disabled={step === 1 && !offerName}>
-                                    Progress Forward <ArrowRight size={18} className="ml-2" />
+                                    Next Phase <ArrowRight size={18} className="ml-2" />
                                 </Button>
                             ) : (
                                 <Button size="lg" className="px-12 font-extrabold shadow-xl shadow-[var(--primary)]/20" onClick={handleSave} disabled={isSaving}>

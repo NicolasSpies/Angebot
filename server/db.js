@@ -218,6 +218,18 @@ const migrations = [
     'ALTER TABLE offers ADD COLUMN signed_ip TEXT;',
     'ALTER TABLE offers ADD COLUMN signed_pdf_url TEXT;',
     'ALTER TABLE offers ADD COLUMN declined_at DATETIME;',
+    // Project enhancements
+    'ALTER TABLE projects ADD COLUMN priority TEXT DEFAULT \'medium\';',
+    'ALTER TABLE projects ADD COLUMN strategic_notes TEXT;',
+    `CREATE TABLE IF NOT EXISTS project_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        event_type TEXT, -- 'status_change', 'deadline_update', 'note_added'
+        comment TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );`,
+    'CREATE INDEX IF NOT EXISTS idx_project_events_project_id ON project_events(project_id);',
 ];
 
 migrations.forEach(sql => {

@@ -186,6 +186,11 @@ export const dataService = {
         return res.json();
     },
 
+    getProjectActivity: async (id) => {
+        const res = await fetch(`${API_URL}/projects/${id}/activity`);
+        return res.json();
+    },
+
     // --- TASKS ---
     createTask: async (projectId, task) => {
         const res = await fetch(`${API_URL}/projects/${projectId}/tasks`, {

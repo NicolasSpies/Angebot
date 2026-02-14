@@ -455,7 +455,8 @@ const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNote
     let targetStatus = null;
     if (status === 'signed') targetStatus = 'todo';
     else if (status === 'declined') targetStatus = 'cancelled';
-    else if (status === 'sent') targetStatus = 'pending';
+    // 'sent' no longer force-updates existing project status to 'pending' if it's already in progress
+    // But if we are creating a new project, it defaults to 'pending'
 
     // 2. Check if Project exists
     const existingProject = db.prepare('SELECT id, status, internal_notes FROM projects WHERE offer_id = ?').get(offerId);
@@ -464,10 +465,15 @@ const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNote
         let updateFields = [];
         let params = [];
 
+        // Only update status if the offer is signed or declined (final states)
+        // OR if the project is currently 'pending' and the offer is 'sent' (initial state)
         if (targetStatus) {
             updateFields.push('status = ?');
             params.push(targetStatus);
+        } else if (status === 'sent' && existingProject.status === 'pending') {
+            // Keep it pending
         }
+
         if (offerName) {
             updateFields.push('name = ?');
             params.push(offerName);
@@ -476,32 +482,28 @@ const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNote
             updateFields.push('deadline = ?');
             params.push(dueDate);
         }
-        // Append strategic notes with timestamp header instead of overwriting
+        // Sync strategic notes to dedicated column
         if (strategicNotes) {
-            const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
-            const header = `\n\n--- Offer Notes (${timestamp}) ---\n`;
-            const existingNotes = existingProject.internal_notes || '';
-            const appendedNotes = existingNotes + header + strategicNotes;
-            updateFields.push('internal_notes = ?');
-            params.push(appendedNotes);
+            updateFields.push('strategic_notes = ?');
+            params.push(strategicNotes);
         }
 
         if (updateFields.length > 0) {
             params.push(existingProject.id);
-            db.prepare(`UPDATE projects SET ${updateFields.join(', ')} WHERE id = ?`).run(...params);
+            updateFields.push('id = ?'); // Oops, syntax error in my logic, prepare params correctly
+            // Standard update
+            const setClause = updateFields.map(f => f.split(' ')[0] + ' = ?').join(', ');
+            // params already has values
+            params.push(existingProject.id);
+            db.prepare(`UPDATE projects SET ${setClause} WHERE id = ?`).run(...params);
         }
     } else if ((status === 'sent' || status === 'signed' || status === 'pending') && customerId) {
         // Auto-Create Project if missing
         const initialStatus = targetStatus || 'pending';
-        let initialNotes = null;
-        if (strategicNotes) {
-            const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
-            initialNotes = `--- Offer Notes (${timestamp}) ---\n${strategicNotes}`;
-        }
         db.prepare(`
-            INSERT INTO projects (offer_id, customer_id, name, status, deadline, internal_notes)
+            INSERT INTO projects (offer_id, customer_id, name, status, deadline, strategic_notes)
             VALUES (?, ?, ?, ?, ?, ?)
-        `).run(offerId, customerId, offerName || 'Untitled Project', initialStatus, dueDate || null, initialNotes);
+        `).run(offerId, customerId, offerName || 'Untitled Project', initialStatus, dueDate || null, strategicNotes || null);
     }
 };
 
@@ -756,12 +758,25 @@ app.put('/api/offers/:id/status', (req, res) => {
 
 // --- PROJECTS ---
 app.post('/api/projects', (req, res) => {
-    const { name, customer_id, deadline, status, internal_notes } = req.body;
+    const { name, customer_id, deadline, status, internal_notes, priority, strategic_notes } = req.body;
     try {
+        // Insert project
         const result = db.prepare(`
-            INSERT INTO projects (customer_id, name, status, deadline, internal_notes)
-            VALUES (?, ?, ?, ?, ?)
-        `).run(customer_id || null, name || 'New Project', status || 'todo', deadline || null, internal_notes || null);
+            INSERT INTO projects (customer_id, name, status, deadline, internal_notes, priority, strategic_notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            customer_id || null,
+            name || 'New Project',
+            status || 'todo',
+            deadline || null,
+            internal_notes || null,
+            priority || 'medium',
+            strategic_notes || null
+        );
+
+        // Log creation event
+        db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(result.lastInsertRowid, 'created', 'Project created');
+
         res.json({ id: result.lastInsertRowid });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -803,21 +818,70 @@ app.get('/api/projects/:id', (req, res) => {
 });
 
 app.put('/api/projects/:id', (req, res) => {
-    const { name, status, deadline, internal_notes, customer_id, offer_id } = req.body;
+    const { name, status, deadline, internal_notes, customer_id, offer_id, priority, strategic_notes } = req.body;
+    const projectId = req.params.id;
     try {
+        const currentProject = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId);
+        if (!currentProject) return res.status(404).json({ error: 'Project not found' });
+
         // Block manual status change if linked offer is still pending/sent
         if (status) {
-            const project = db.prepare('SELECT p.*, o.status as offer_status FROM projects p LEFT JOIN offers o ON p.offer_id = o.id WHERE p.id = ?').get(req.params.id);
+            const project = db.prepare('SELECT p.*, o.status as offer_status FROM projects p LEFT JOIN offers o ON p.offer_id = o.id WHERE p.id = ?').get(projectId);
             if (project && project.offer_id && ['pending', 'sent', 'draft'].includes(project.offer_status)) {
                 if (status !== project.status) {
                     return res.status(400).json({ error: 'Cannot change project status while the linked offer is still pending. The project status will update automatically when the offer is signed or declined.' });
                 }
             }
         }
-        db.prepare(`
-            UPDATE projects SET name = ?, status = ?, deadline = ?, internal_notes = ?, customer_id = ?, offer_id = ? WHERE id = ?
-        `).run(name, status, deadline || null, internal_notes || null, customer_id || null, offer_id || null, req.params.id);
-        res.json({ success: true });
+
+        db.transaction(() => {
+            db.prepare(`
+                UPDATE projects SET name = ?, status = ?, deadline = ?, internal_notes = ?, customer_id = ?, offer_id = ?, priority = ?, strategic_notes = ? WHERE id = ?
+            `).run(name, status, deadline || null, internal_notes || null, customer_id || null, offer_id || null, priority || 'medium', strategic_notes || null, projectId);
+
+            // Sync Offer Name if Project Name changed and Offer Name matches previous Project Name (heuristic for manual edits)
+            if (name && name !== currentProject.name && currentProject.offer_id) {
+                const offer = db.prepare('SELECT offer_name FROM offers WHERE id = ?').get(currentProject.offer_id);
+                if (offer && offer.offer_name === currentProject.name) {
+                    db.prepare('UPDATE offers SET offer_name = ? WHERE id = ?').run(name, currentProject.offer_id);
+                }
+            }
+
+            // Log events for changes
+            if (status && status !== currentProject.status) {
+                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'status_change', `Status changed from ${currentProject.status} to ${status}`);
+            }
+            if (deadline && deadline !== currentProject.deadline) {
+                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'deadline_update', `Deadline updated to ${deadline}`);
+            }
+            if (priority && priority !== currentProject.priority) {
+                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'priority_change', `Priority updated to ${priority}`);
+            }
+            if (strategic_notes && strategic_notes !== currentProject.strategic_notes) {
+                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'notes_update', `Strategic notes updated`);
+            }
+        })();
+
+        res.json({ success: true, ...req.body });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+
+// Activity Timeline
+app.get('/api/projects/:id/activity', (req, res) => {
+    try {
+        const projectId = req.params.id;
+        const project = db.prepare('SELECT offer_id FROM projects WHERE id = ?').get(projectId);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const projectEvents = db.prepare('SELECT p.*, "project" as source FROM project_events p WHERE project_id = ?').all(projectId);
+        const offerEvents = project.offer_id ? db.prepare('SELECT o.*, "offer" as source FROM offer_events o WHERE offer_id = ?').all(project.offer_id) : [];
+
+        const combined = [...projectEvents, ...offerEvents].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        res.json(combined);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

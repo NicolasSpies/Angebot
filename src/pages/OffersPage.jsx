@@ -18,6 +18,7 @@ import ListPageToolbar from '../components/layout/ListPageToolbar';
 import StatusPill from '../components/ui/StatusPill';
 import DueStatusIndicator from '../components/ui/DueStatusIndicator';
 import EmptyState from '../components/ui/EmptyState';
+import { getStatusColor } from '../utils/statusColors';
 
 const OffersPage = () => {
     const { t } = useI18n();
@@ -117,18 +118,29 @@ const OffersPage = () => {
                     placeholder: "Search by name, customer or project..."
                 }}
                 filters={
-                    STATUS_OPTIONS.map(opt => (
-                        <button
-                            key={opt.value}
-                            onClick={() => setStatusFilter(opt.value)}
-                            className={`px-3 py-1.5 rounded-[var(--radius-md)] text-[13px] font-medium transition-all border ${statusFilter === opt.value
-                                ? 'bg-[var(--primary)] text-white border-[var(--primary)] shadow-[var(--shadow-sm)]'
-                                : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-medium)] hover:text-[var(--text-main)]'
-                                }`}
-                        >
-                            {opt.label}
-                        </button>
-                    ))
+                    STATUS_OPTIONS.map(opt => {
+                        const isActive = statusFilter === opt.value;
+                        const statusColor = getStatusColor(opt.value);
+
+                        return (
+                            <button
+                                key={opt.value}
+                                onClick={() => setStatusFilter(opt.value)}
+                                className={`px-3 py-1.5 rounded-full text-[13px] font-bold transition-all border flex items-center gap-2 ${isActive
+                                    ? 'shadow-sm'
+                                    : 'bg-transparent border-transparent hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-main)]'
+                                    }`}
+                                style={isActive ? {
+                                    backgroundColor: statusColor.bg,
+                                    color: statusColor.text,
+                                    borderColor: statusColor.bg
+                                } : {}}
+                            >
+                                {isActive && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: statusColor.dot }} />}
+                                {opt.label}
+                            </button>
+                        );
+                    })
                 }
             />
 
@@ -181,8 +193,9 @@ const OffersPage = () => {
                             <td className="py-3 px-6">
                                 <DropdownMenu
                                     trigger={<button className="hover:opacity-80 transition-opacity"><StatusPill status={offer.status} /></button>}
-                                    actions={STATUS_OPTIONS.map(s => ({
+                                    actions={STATUS_OPTIONS.filter(s => s.value !== 'all').map(s => ({
                                         label: s.label,
+                                        status: s.value,
                                         onClick: () => handleUpdateStatus(offer.id, s.value)
                                     }))}
                                 />

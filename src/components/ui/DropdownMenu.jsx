@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { MoreVertical } from 'lucide-react';
+import { getStatusColor } from '../../utils/statusColors';
 
 const DropdownMenu = ({ actions, trigger }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -88,24 +89,49 @@ const DropdownMenu = ({ actions, trigger }) => {
                     }}
                 >
                     <div className="py-1">
-                        {actions.map((action, index) => (
-                            <button
-                                key={index}
-                                disabled={action.disabled}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleAction(action);
-                                }}
-                                className={`w-full text-left px-4 py-2.5 text-[13px] font-medium transition-colors flex items-center gap-2
-                                    ${action.isDestructive ? 'text-[var(--danger)] hover:bg-[var(--danger-bg)]' : 'text-[var(--text-main)] hover:bg-[var(--bg-app)]'}
-                                    ${action.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                                `}
-                                title={action.title}
-                            >
-                                {action.icon && <action.icon size={14} className={action.isDestructive ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'} />}
-                                {action.label}
-                            </button>
-                        ))}
+                        <div className="py-1">
+                            {actions.map((action, index) => {
+                                let statusAuthColor = null;
+                                if (action.status) {
+                                    statusAuthColor = getStatusColor(action.status);
+                                }
+
+                                return (
+                                    <button
+                                        key={index}
+                                        disabled={action.disabled}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleAction(action);
+                                        }}
+                                        className={`w-full text-left px-4 py-2.5 text-[13px] font-medium transition-colors flex items-center gap-2
+                                        ${action.isDestructive ? 'text-[var(--danger)] hover:bg-[var(--danger-bg)]' : ''}
+                                        ${!action.isDestructive && !action.status ? 'text-[var(--text-main)] hover:bg-[var(--bg-app)]' : ''}
+                                        ${action.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                                    `}
+                                        style={action.status ? {
+                                            color: statusAuthColor.text,
+                                            backgroundColor: 'transparent' // Default, hover handled below or via style
+                                        } : {}}
+                                        onMouseEnter={(e) => {
+                                            if (action.status) e.currentTarget.style.backgroundColor = statusAuthColor.bg;
+                                            if (!action.status && !action.isDestructive) e.currentTarget.style.backgroundColor = 'var(--bg-app)';
+                                            if (action.isDestructive) e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.backgroundColor = 'transparent';
+                                        }}
+                                        title={action.title}
+                                    >
+                                        {action.status && (
+                                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: statusAuthColor.dot }} />
+                                        )}
+                                        {action.icon && <action.icon size={14} className={action.isDestructive ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'} />}
+                                        {action.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>,
                 document.body

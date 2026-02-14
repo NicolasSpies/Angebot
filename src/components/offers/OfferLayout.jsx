@@ -89,9 +89,17 @@ const OfferLayout = ({ offer, settings, hideInternal = false }) => {
             </div>
 
             {offer.due_date && (
-                <div className="mb-12 no-print">
-                    <DeadlineIndicator dueDate={offer.due_date} createdAt={offer.sent_at || offer.created_at} />
-                </div>
+                <>
+                    <div className="mb-12 no-print">
+                        <DeadlineIndicator dueDate={offer.due_date} createdAt={offer.sent_at || offer.created_at} />
+                    </div>
+                    <div className="mb-8 hidden print:block">
+                        <div className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest mb-1">Offer Valid Until</div>
+                        <div className="text-[14px] font-bold text-[var(--text-main)]">
+                            {new Date(offer.due_date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        </div>
+                    </div>
+                </>
             )}
 
             {/* Items Tables Grouped by Billing Cycle */}
@@ -140,7 +148,7 @@ const OfferLayout = ({ offer, settings, hideInternal = false }) => {
 
                         {/* Totals Block */}
                         <div className="flex justify-end mt-8">
-                            <div className="w-[300px] p-6 rounded-[var(--radius-lg)] bg-[var(--bg-main)]/50 border border-[var(--border)]">
+                            <div className="w-[300px] p-6 rounded-[var(--radius-lg)] bg-[var(--bg-main)]/50 border border-[var(--border)] break-inside-avoid">
                                 <div className="flex justify-between items-center mb-3">
                                     <span className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-tight">{lang === 'de' ? 'Netto' : 'Sous-total'}</span>
                                     <span className="text-[14px] font-bold text-[var(--text-main)]">{formatCurrency(groupTotals.subtotal)}</span>
@@ -165,7 +173,7 @@ const OfferLayout = ({ offer, settings, hideInternal = false }) => {
 
             {/* Strategic Notes (if present) */}
             {(!hideInternal && (offer.strategic_notes || offer.internal_notes)) && (
-                <div className="mt-12 mb-8 p-6 bg-[var(--bg-main)]/50 rounded-[var(--radius-lg)] border border-[var(--border)]">
+                <div className="mt-12 mb-8 p-6 bg-[var(--bg-main)]/50 rounded-[var(--radius-lg)] border border-[var(--border)] break-inside-avoid">
                     <h4 className="text-[11px] font-extrabold text-[var(--text-secondary)] uppercase tracking-[0.2em] mb-4">
                         {lang === 'de' ? 'Strategische Hinweise' : 'Notes Stratégiques'}
                     </h4>
@@ -176,7 +184,7 @@ const OfferLayout = ({ offer, settings, hideInternal = false }) => {
             )}
 
             {/* Terms & Footer */}
-            <div className="mt-20 pt-16 border-t border-[var(--border)]">
+            <div className="mt-20 pt-16 border-t border-[var(--border)] break-inside-avoid">
                 <div className="grid grid-2 gap-12 mb-12">
                     {settings?.payment_terms && (
                         <div>
@@ -188,7 +196,7 @@ const OfferLayout = ({ offer, settings, hideInternal = false }) => {
                     )}
                     <div className="flex flex-column items-end justify-end">
                         {signatureToDisplay ? (
-                            <div className="flex flex-col items-end">
+                            <div className="flex flex-col items-end break-inside-avoid">
                                 <div className="mb-2">
                                     <img src={signatureToDisplay.image} alt="Signature" className="h-16 object-contain" style={{ maxWidth: '200px' }} />
                                 </div>
@@ -202,10 +210,10 @@ const OfferLayout = ({ offer, settings, hideInternal = false }) => {
                                 </div>
                             </div>
                         ) : (
-                            <>
+                            <div className="break-inside-avoid">
                                 <div className="w-48 h-[1px] bg-[var(--text-main)] mb-4" />
                                 <div className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest">Digital Signature Panel</div>
-                            </>
+                            </div>
                         )}
                     </div>
                 </div>

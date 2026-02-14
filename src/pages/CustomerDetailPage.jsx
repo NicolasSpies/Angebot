@@ -17,6 +17,7 @@ import Badge from '../components/ui/Badge';
 import StatusPill from '../components/ui/StatusPill';
 import DueStatusIndicator from '../components/ui/DueStatusIndicator';
 import DropdownMenu from '../components/ui/DropdownMenu';
+import TableCard from '../components/ui/TableCard';
 
 const CustomerDetailPage = () => {
     const { id } = useParams();
@@ -52,9 +53,10 @@ const CustomerDetailPage = () => {
         }
     };
 
-    if (isLoading || !data) return <div className="page-container">Loading customer...</div>;
+    if (isLoading) return <div className="page-container">Loading customer...</div>;
+    if (!data || !data.customer) return <div className="page-container">Customer not found.</div>;
 
-    const { customer, offers, projects, stats } = data;
+    const { customer, offers = [], projects = [], stats = {} } = data;
 
     return (
         <div className="page-container" style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -70,7 +72,7 @@ const CustomerDetailPage = () => {
                             <Badge variant="neutral" className="mt-1 shadow-sm px-3 py-1">#{customer.id}</Badge>
                         </div>
                         <div className="flex items-center gap-6 text-[14px] text-[var(--text-secondary)] font-medium">
-                            <span className="flex items-center gap-2"><MapPin size={16} className="text-[var(--text-muted)]" /> {customer.city}, {customer.country}</span>
+                            <span className="flex items-center gap-2"><MapPin size={16} className="text-[var(--text-muted)]" /> {customer.city || 'N/A'}, {customer.country || 'N/A'}</span>
                             <span className="flex items-center gap-2"><FileText size={16} className="text-[var(--text-muted)]" /> <span className="uppercase font-bold text-[12px]">{customer.vat_number || 'VAT Exempt'}</span></span>
                             <span className="flex items-center gap-2">
                                 <Globe size={16} className="text-[var(--text-muted)]" />
@@ -98,8 +100,8 @@ const CustomerDetailPage = () => {
                         </div>
                         <div>
                             <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">Open Offers</p>
-                            <h2 className="text-[24px] font-black text-[var(--text-main)] tracking-tight">{stats.openOffersCount}</h2>
-                            <p className="text-[13px] text-[var(--text-secondary)] font-medium mt-0.5">Value: {formatCurrency(stats.openOffersValue)}</p>
+                            <h2 className="text-[24px] font-black text-[var(--text-main)] tracking-tight">{stats.openOffersCount || 0}</h2>
+                            <p className="text-[13px] text-[var(--text-secondary)] font-medium mt-0.5">Value: {formatCurrency(stats.openOffersValue || 0)}</p>
                         </div>
                     </div>
                 </Card>
@@ -110,9 +112,9 @@ const CustomerDetailPage = () => {
                         </div>
                         <div>
                             <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">Active Projects</p>
-                            <h2 className="text-[24px] font-black text-[var(--text-main)] tracking-tight">{stats.activeProjectsCount}</h2>
+                            <h2 className="text-[24px] font-black text-[var(--text-main)] tracking-tight">{stats.activeProjectsCount || 0}</h2>
                             <div className="flex items-center gap-2 mt-1 text-[11px] font-bold text-[var(--text-muted)]">
-                                {stats.projectStatusBreakdown && (
+                                {stats.projectStatusBreakdown ? (
                                     <>
                                         <span>{stats.projectStatusBreakdown.pending || 0} pending</span>
                                         <span className="opacity-30">·</span>
@@ -120,7 +122,7 @@ const CustomerDetailPage = () => {
                                         <span className="opacity-30">·</span>
                                         <span>{stats.projectStatusBreakdown.in_progress || 0} active</span>
                                     </>
-                                )}
+                                ) : <span>No active work</span>}
                             </div>
                         </div>
                     </div>
@@ -132,20 +134,19 @@ const CustomerDetailPage = () => {
                         </div>
                         <div>
                             <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">Total Revenue</p>
-                            <h2 className="text-[24px] font-black text-[var(--text-main)] tracking-tight">{formatCurrency(stats.totalRevenue)}</h2>
-                            <p className="text-[13px] text-[var(--text-secondary)] font-medium mt-0.5">{stats.signedCount} signed contracts</p>
+                            <h2 className="text-[24px] font-black text-[var(--text-main)] tracking-tight">{formatCurrency(stats.totalRevenue || 0)}</h2>
+                            <p className="text-[13px] text-[var(--text-secondary)] font-medium mt-0.5">{stats.signedCount || 0} signed contracts</p>
                         </div>
                     </div>
                 </Card>
             </div>
 
+
+
             {/* Offer History */}
-            <Card padding="0" className="border-[var(--border)] shadow-sm overflow-hidden mb-10">
-                <div className="px-6 py-5 border-b border-[var(--border)] bg-[var(--bg-main)]/50 flex justify-between items-center">
-                    <div>
-                        <h3 className="text-[16px] font-bold text-[var(--text-main)]">Financial Pipeline</h3>
-                        <p className="text-[13px] text-[var(--text-secondary)] font-medium mt-1">Timeline of all proposals and signed agreements.</p>
-                    </div>
+            < TableCard
+                title="Financial Pipeline"
+                action={
                     <Button
                         variant="ghost"
                         size="sm"
@@ -155,7 +156,9 @@ const CustomerDetailPage = () => {
                     >
                         <Copy size={16} className="mr-2" /> Clone Recent
                     </Button>
-                </div>
+                }
+                className="mb-10"
+            >
                 <Table headers={['Offer Name', 'Creation Date', 'Contract Value', 'Status', 'Actions']}>
                     {offers.length > 0 ? offers.map(offer => (
                         <tr key={offer.id} className="group hover:bg-[var(--bg-main)] transition-colors h-14">
@@ -201,16 +204,10 @@ const CustomerDetailPage = () => {
                         </td></tr>
                     )}
                 </Table>
-            </Card>
+            </TableCard>
 
             {/* Projects Table */}
-            <Card padding="0" className="border-[var(--border)] shadow-sm overflow-hidden">
-                <div className="px-6 py-5 border-b border-[var(--border)] bg-[var(--bg-main)]/50 flex justify-between items-center">
-                    <div>
-                        <h3 className="text-[16px] font-bold text-[var(--text-main)]">Projects</h3>
-                        <p className="text-[13px] text-[var(--text-secondary)] font-medium mt-1">Active and completed projects for this customer.</p>
-                    </div>
-                </div>
+            <TableCard title="Projects">
                 <Table headers={['Project Name', 'Status', 'Deadline', 'Linked Offer']}>
                     {(projects || []).length > 0 ? (projects || []).map(project => (
                         <tr key={project.id} className="group hover:bg-[var(--bg-main)] transition-colors h-14">
@@ -240,7 +237,7 @@ const CustomerDetailPage = () => {
                         </td></tr>
                     )}
                 </Table>
-            </Card>
+            </TableCard>
 
             <Modal
                 isOpen={isEditModalOpen}
@@ -253,7 +250,7 @@ const CustomerDetailPage = () => {
                     onCancel={() => setIsEditModalOpen(false)}
                 />
             </Modal>
-        </div>
+        </div >
     );
 };
 

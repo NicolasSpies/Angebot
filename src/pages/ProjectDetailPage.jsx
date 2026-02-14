@@ -166,14 +166,61 @@ const ProjectDetailPage = () => {
                     <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back to Workspace
                 </Link>
                 <div className="flex justify-between items-start gap-6">
-                    <div>
-                        <div className="flex items-center gap-3 mb-2">
-                            <h1 className="text-3xl font-extrabold text-[var(--text-main)]">{project.name}</h1>
-                            <Badge variant={project.status === 'done' ? 'success' : 'warning'} className="mt-1 shadow-sm">
-                                {STATUS_LABELS[project.status]}
-                            </Badge>
+                    <div className="flex-1">
+                        <div className="group relative">
+                            <input
+                                type="text"
+                                value={project.name}
+                                onChange={(e) => setProject(prev => ({ ...prev, name: e.target.value }))}
+                                onBlur={async (e) => {
+                                    const newName = e.target.value.trim();
+                                    if (newName !== project.name) {
+                                        // Revert if empty
+                                        if (!newName) {
+                                            const original = await dataService.getProject(id);
+                                            setProject(prev => ({ ...prev, name: original.name }));
+                                            return;
+                                        }
+
+                                        // Save changes to Project
+                                        await dataService.updateProject(id, { ...project, name: newName });
+
+                                        // Sync to Offer if linked
+                                        if (project.offer_id) {
+                                            const linkedOffer = offers.find(o => o.id === project.offer_id);
+                                            if (linkedOffer) {
+                                                await dataService.updateOffer(project.offer_id, {
+                                                    ...linkedOffer,
+                                                    offer_name: newName
+                                                });
+                                                // Refresh offers to reflect change
+                                                const updatedOffers = await dataService.getOffers();
+                                                setOffers(updatedOffers);
+                                            }
+                                        }
+                                    }
+                                }}
+                                className="text-3xl font-extrabold text-[var(--text-main)] w-full bg-transparent border-b-2 border-transparent hover:border-[var(--border)] focus:border-[var(--primary)] focus:outline-none transition-colors py-1"
+                            />
+                            <Pencil size={16} className="absolute top-1/2 -translate-y-1/2 -left-6 opacity-0 group-hover:opacity-50 text-[var(--text-muted)]" />
                         </div>
-                        <p className="text-[14px] text-[var(--text-secondary)] font-medium">Project ID: <span className="text-[var(--text-main)] font-bold">#{project.id}</span> • Managed by Nicolas</p>
+                        <div className="flex items-center gap-6 mt-2 text-[14px] text-[var(--text-secondary)] font-medium">
+                            <span className="flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full ${project.status === 'done' ? 'bg-[var(--success)]' :
+                                    project.status === 'in_progress' ? 'bg-[var(--primary)]' :
+                                        project.status === 'cancelled' ? 'bg-[var(--danger)]' : 'bg-[var(--warning)]'
+                                    }`} />
+                                {(STATUS_LABELS[project.status] || project.status).toUpperCase()}
+                            </span>
+                            {project.customer_name && (
+                                <Link to={`/customers/${project.customer_id}`} className="flex items-center gap-2 hover:text-[var(--primary)] transition-colors">
+                                    <Globe size={16} className="text-[var(--text-muted)]" /> {project.customer_name}
+                                </Link>
+                            )}
+                            <span className="flex items-center gap-2">
+                                <Clock size={16} className="text-[var(--text-muted)]" /> Created {new Date(project.created_at).toLocaleDateString()}
+                            </span>
+                        </div>
                     </div>
                     <div className="flex gap-3">
                         <Button variant="ghost" className="text-[var(--danger)] hover:bg-[var(--danger-bg)] font-bold" onClick={() => setIsDeleteModalOpen(true)}>
@@ -188,34 +235,52 @@ const ProjectDetailPage = () => {
 
             {/* Main Content Grid */}
             <div className="grid" style={{ gridTemplateColumns: '1fr 360px', gap: '2rem', alignItems: 'start' }}>
-                <div className="flex flex-column gap-6">
-                    {/* Progress Overview (Mock Task Stats since section was missing) */}
+                <div className="flex flex-col gap-6">
+                    {/* Progress Overview */}
                     <Card padding="1.5rem">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-[15px] font-bold text-[var(--text-main)]">Project Roadmap</h3>
-                            <Badge variant="neutral">{completedTasks}/{totalTasks} Tasks</Badge>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[12px] font-bold text-[var(--text-secondary)]">{Math.round(totalTasks > 0 ? (completedTasks / totalTasks * 100) : 0)}% Complete</span>
+                                <Badge variant="neutral">{completedTasks}/{totalTasks} Tasks</Badge>
+                            </div>
                         </div>
-                        <div className="w-full bg-[var(--secondary-light)] h-2 rounded-full overflow-hidden mb-6">
-                            <div
-                                className="h-full bg-[var(--primary)] rounded-full transition-all duration-500"
-                                style={{ width: `${totalTasks > 0 ? (completedTasks / totalTasks * 100) : 0}%` }}
-                            />
+                        {/* Segmented Progress Bar */}
+                        <div className="flex gap-1 h-2 w-full mb-6">
+                            {Array.from({ length: totalTasks || 1 }).map((_, i) => (
+                                <div
+                                    key={i}
+                                    className={`flex-1 rounded-full ${i < completedTasks ? 'bg-[var(--primary)]' : 'bg-[var(--secondary-light)]'}`}
+                                />
+                            ))}
                         </div>
-                        <div className="flex flex-column gap-3">
+
+                        {/* Task List Placeholder or Implementation */}
+                        <div className="flex flex-col gap-3">
                             <div className="flex items-center gap-3 p-3 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] opacity-60">
                                 <Box size={18} className="text-[var(--text-muted)]" />
-                                <span className="text-[13px] font-medium text-[var(--text-muted)]">No active milestones defined. Start adding tasks to track progress.</span>
+                                <span className="text-[13px] font-medium text-[var(--text-muted)]">Task list management coming soon.</span>
                             </div>
                         </div>
                     </Card>
 
-                    {/* Internal Notes */}
+                    {/* Strategic Notes */}
                     <Card padding="2rem" className="border-[var(--border)]">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="w-8 h-8 rounded-lg bg-[var(--primary-light)] text-[var(--primary)] flex items-center justify-center">
-                                <FileText size={18} />
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-[var(--primary-light)] text-[var(--primary)] flex items-center justify-center">
+                                    <FileText size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-[15px] font-bold text-[var(--text-main)]">Strategic Notes</h3>
+                                    <p className="text-[11px] text-[var(--text-muted)]">Internal only • Auto-saves</p>
+                                </div>
                             </div>
-                            <h3 className="text-[15px] font-bold text-[var(--text-main)]">Strategic Notes</h3>
+                            {project.updated_at && (
+                                <span className="text-[11px] text-[var(--text-muted)]">
+                                    Last update: {new Date().toLocaleTimeString()}
+                                </span>
+                            )}
                         </div>
                         <Textarea
                             value={notes}
@@ -225,15 +290,21 @@ const ProjectDetailPage = () => {
                             className="bg-[var(--bg-main)]/30 border-[var(--border)] focus:bg-white text-[14px] leading-relaxed"
                         />
                     </Card>
+
+                    {/* Activity Timeline */}
+                    <Card padding="2rem" className="border-[var(--border)]">
+                        <h3 className="text-[15px] font-bold text-[var(--text-main)] mb-6">Project Activity</h3>
+                        <ActivityTimeline projectId={id} />
+                    </Card>
                 </div>
 
                 {/* Sidebar Column */}
-                <div className="flex flex-column gap-6">
+                <div className="flex flex-col gap-6">
                     {/* Core Lifecycle */}
                     <Card padding="1.5rem" className="border-[var(--border)] shadow-sm">
                         <h3 className="text-[13px] font-bold uppercase text-[var(--text-muted)] tracking-wider mb-6">Execution & Cycle</h3>
-                        <div className="flex flex-column gap-6">
-                            <div className="flex flex-column gap-2">
+                        <div className="flex flex-col gap-6">
+                            <div className="flex flex-col gap-2">
                                 <label className="text-[12px] font-bold text-[var(--text-secondary)] uppercase">Current Phase</label>
                                 <Select
                                     value={project.status}
@@ -242,8 +313,36 @@ const ProjectDetailPage = () => {
                                     className="bg-[var(--secondary-light)]/50 border-transparent hover:border-[var(--border)]"
                                 />
                             </div>
-                            <div className="flex flex-column gap-2">
-                                <label className="text-[12px] font-bold text-[var(--text-secondary)] uppercase">Target Delivery</label>
+
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[12px] font-bold text-[var(--text-secondary)] uppercase">Priority</label>
+                                <Select
+                                    value={project.priority || 'medium'}
+                                    onChange={async (e) => {
+                                        const newPriority = e.target.value;
+                                        await dataService.updateProject(id, { ...project, priority: newPriority });
+                                        setProject(prev => ({ ...prev, priority: newPriority }));
+                                    }}
+                                    options={[
+                                        { value: 'low', label: 'Low Priority' },
+                                        { value: 'medium', label: 'Medium Priority' },
+                                        { value: 'high', label: 'High Priority' }
+                                    ]}
+                                    className="bg-[var(--secondary-light)]/50 border-transparent hover:border-[var(--border)]"
+                                />
+                            </div>
+
+                            <div className="flex flex-col gap-2">
+                                <div className="flex justify-between items-center">
+                                    <label className="text-[12px] font-bold text-[var(--text-secondary)] uppercase">Target Delivery</label>
+                                    {project.deadline && (
+                                        <Badge variant={
+                                            new Date(project.deadline) < new Date() && project.status !== 'done' ? 'danger' : 'neutral'
+                                        } size="sm">
+                                            {Math.ceil((new Date(project.deadline) - new Date()) / (1000 * 60 * 60 * 24))} days left
+                                        </Badge>
+                                    )}
+                                </div>
                                 <div className="relative group">
                                     <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
                                     <Input
@@ -254,7 +353,8 @@ const ProjectDetailPage = () => {
                                     />
                                 </div>
                             </div>
-                            <div className="flex flex-column gap-2">
+
+                            <div className="flex flex-col gap-2">
                                 <label className="text-[12px] font-bold text-[var(--text-secondary)] uppercase">Lead Client</label>
                                 <Select
                                     value={project.customer_id || ''}
@@ -270,64 +370,56 @@ const ProjectDetailPage = () => {
                     </Card>
 
                     {/* Linked Offer Pipeline */}
-                    <Card padding="1.5rem" className="border-[var(--border)] shadow-sm overflow-hidden">
-                        <div className="flex justify-between items-center mb-6">
+                    <Card padding="0" className="border-[var(--border)] shadow-sm overflow-hidden group hover:shadow-md transition-shadow">
+                        <div className="p-6 border-b border-[var(--border-subtle)] bg-[var(--bg-subtle)] flex justify-between items-center">
                             <h3 className="text-[13px] font-bold uppercase text-[var(--text-muted)] tracking-wider">Financial Link</h3>
                             {project.offer_id && (
-                                <Link to={`/offer/preview/${project.offer_id}`} className="p-2 rounded-full hover:bg-[var(--secondary-light)] text-[var(--primary)] transition-colors">
-                                    <ExternalLink size={16} />
+                                <Link to={`/offer/preview/${project.offer_id}`} className="text-[var(--primary)] hover:underline text-[12px] font-bold">
+                                    Open Proposal <ExternalLink size={12} className="inline ml-1" />
                                 </Link>
                             )}
                         </div>
 
-                        <div className="flex flex-column gap-4">
-                            <Select
-                                value={project.offer_id || ''}
-                                onChange={e => handleOfferChange(e.target.value)}
-                                options={[
-                                    { value: '', label: 'Select Financial Proposal' },
-                                    ...availableOffers.map(o => ({ value: o.id, label: o.offer_name || `#${o.id}` }))
-                                ]}
-                                className="bg-[var(--bg-main)]"
-                            />
-
+                        <div className="p-6 flex flex-col gap-4">
                             {project.offer_id ? (
-                                <div className="p-4 rounded-[var(--radius-lg)] bg-[var(--primary-light)]/30 border border-[var(--primary)]/10">
-                                    <div className="flex flex-column">
-                                        <span className="text-[11px] font-bold text-[var(--text-muted)] uppercase mb-1">Signed Contract Value</span>
-                                        <div className="text-2xl font-extrabold text-[var(--text-main)] mb-3">{formatCurrency(project.offer_total)}</div>
-                                        <div className="flex items-center gap-2">
-                                            <Badge variant={project.offer_status === 'signed' ? 'success' : 'warning'} size="sm">
-                                                {project.offer_status === 'signed' ? 'Confirmed' : 'Awaiting Signature'}
-                                            </Badge>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-[14px] font-bold text-[var(--text-main)]">{project.offer_name || 'Unnamed Offer'}</p>
+                                            <p className="text-[12px] text-[var(--text-muted)]">ID: #{project.offer_id}</p>
                                         </div>
+                                        <Badge variant={project.offer_status === 'signed' ? 'success' : 'warning'}>
+                                            {project.offer_status === 'signed' ? 'Signed' : 'Pending'}
+                                        </Badge>
+                                    </div>
+                                    <div className="text-2xl font-extrabold text-[var(--text-main)]">
+                                        {formatCurrency(project.offer_total)}
                                     </div>
                                 </div>
                             ) : (
-                                <div className="text-center py-6 px-4 bg-[var(--bg-main)]/50 rounded-[var(--radius-lg)] border border-dashed border-[var(--border)]">
-                                    <p className="text-[13px] text-[var(--text-secondary)] font-medium mb-4">No active proposal linked to this project pipeline.</p>
+                                <div className="text-center py-4">
+                                    <p className="text-[13px] text-[var(--text-muted)] mb-3">No proposal linked.</p>
+                                    <Select
+                                        value={project.offer_id || ''}
+                                        onChange={e => handleOfferChange(e.target.value)}
+                                        options={[
+                                            { value: '', label: 'Link Existing Proposal' },
+                                            ...availableOffers.map(o => ({ value: o.id, label: o.offer_name || `#${o.id}` }))
+                                        ]}
+                                        className="bg-[var(--bg-main)]"
+                                    />
+                                    <div className="mt-3 relative py-2">
+                                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[var(--border-subtle)]"></div></div>
+                                        <span className="relative bg-white px-2 text-[10px] text-[var(--text-muted)] uppercase">Or</span>
+                                    </div>
                                     <Link to={`/offer/wizard?projectId=${id}${project.customer_id ? `&customerId=${project.customer_id}` : ''}`}>
-                                        <Button variant="primary" size="sm" className="w-full">
-                                            Initialize Proposal
+                                        <Button variant="outline" size="sm" className="w-full mt-2">
+                                            Create New Proposal
                                         </Button>
                                     </Link>
                                 </div>
                             )}
                         </div>
-                    </Card>
-
-                    {/* Quick Insight */}
-                    <Card padding="1.25rem" className="bg-[var(--primary)] border-none text-white shadow-lg overflow-hidden relative">
-                        <div className="absolute -right-4 -top-4 opacity-10">
-                            <Zap size={80} />
-                        </div>
-                        <h4 className="flex items-center gap-2 text-[12px] font-bold uppercase mb-2">
-                            <Zap size={14} className="fill-white" /> Smart Advice
-                        </h4>
-                        <p className="text-[12px] leading-relaxed opacity-90 mb-4">You have {totalTasks - completedTasks} pending tasks for this milestone. Consider allocating more resources.</p>
-                        <Button variant="secondary" size="sm" className="w-full bg-white text-[var(--primary)] hover:bg-[var(--secondary-light)] border-none font-bold" onClick={() => navigate(`/offer/preview/${project.offer_id}`)} disabled={!project.offer_id}>
-                            Review Project Scope
-                        </Button>
                     </Card>
                 </div>
             </div>
@@ -342,6 +434,33 @@ const ProjectDetailPage = () => {
                 cancelText="Cancel"
                 isDestructive={true}
             />
+        </div>
+    );
+};
+
+// Simple Activity Timeline Component
+const ActivityTimeline = ({ projectId }) => {
+    const [events, setEvents] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        dataService.getProjectActivity(projectId).then(setEvents).finally(() => setLoading(false));
+    }, [projectId]);
+
+    if (loading) return <div className="text-[13px] text-[var(--text-muted)]">Loading activity...</div>;
+    if (events.length === 0) return <div className="text-[13px] text-[var(--text-muted)]">No activity recorded.</div>;
+
+    return (
+        <div className="relative pl-4 border-l border-[var(--border-subtle)] space-y-6">
+            {events.map((e, i) => (
+                <div key={i} className="relative">
+                    <div className={`absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-white ${e.event_type === 'signed' ? 'bg-[var(--success)]' :
+                        e.event_type === 'status_change' ? 'bg-[var(--primary)]' : 'bg-[var(--text-muted)]'
+                        }`}></div>
+                    <p className="text-[13px] font-medium text-[var(--text-main)]">{e.comment || e.event_type}</p>
+                    <p className="text-[11px] text-[var(--text-muted)]">{new Date(e.created_at).toLocaleString()}</p>
+                </div>
+            ))}
         </div>
     );
 };
