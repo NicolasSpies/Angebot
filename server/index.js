@@ -489,11 +489,8 @@ const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNote
         }
 
         if (updateFields.length > 0) {
-            params.push(existingProject.id);
-            updateFields.push('id = ?'); // Oops, syntax error in my logic, prepare params correctly
             // Standard update
             const setClause = updateFields.map(f => f.split(' ')[0] + ' = ?').join(', ');
-            // params already has values
             params.push(existingProject.id);
             db.prepare(`UPDATE projects SET ${setClause} WHERE id = ?`).run(...params);
         }
