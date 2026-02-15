@@ -205,6 +205,110 @@ export const dataService = {
         return res.json();
     },
 
+    // --- REVIEWS ---
+    getReviews: async () => {
+        const res = await fetch(`${API_URL}/reviews`);
+        return res.json();
+    },
+
+    getReview: async (id) => {
+        const res = await fetch(`${API_URL}/reviews/${id}`);
+        return res.json();
+    },
+
+    getProjectReviews: async (projectId) => {
+        const res = await fetch(`${API_URL}/projects/${projectId}/reviews`);
+        return res.json();
+    },
+
+    // --- PUBLIC REVIEWS ---
+    getPublicReview: async (token) => {
+        const res = await fetch(`${API_URL}/public/review/${token}`);
+        return res.json();
+    },
+
+    getPublicComments: async (reviewId) => {
+        const res = await fetch(`${API_URL}/public/reviews/${reviewId}/comments`);
+        return res.json();
+    },
+
+    createPublicComment: async (reviewId, commentData) => {
+        const res = await fetch(`${API_URL}/public/reviews/${reviewId}/comments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(commentData)
+        });
+        return res.json();
+    },
+
+    approveReview: async (reviewId, authorData) => {
+        const res = await fetch(`${API_URL}/public/reviews/${reviewId}/approve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(authorData)
+        });
+        return res.json();
+    },
+
+    createReview: async (reviewData) => {
+        const res = await fetch(`${API_URL}/reviews`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reviewData)
+        });
+        return res.json();
+    },
+
+    uploadReview: async (projectId, file) => {
+        const formData = new FormData();
+        formData.append('project_id', projectId);
+        formData.append('file', file);
+        formData.append('created_by', 'System'); // Placeholder for auth context
+
+        const res = await fetch(`${API_URL}/reviews/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        return res.json();
+    },
+
+    getReviewComments: async (reviewId) => {
+        const res = await fetch(`${API_URL}/reviews/${reviewId}/comments`);
+        return res.json();
+    },
+
+    createReviewComment: async (reviewId, commentData) => {
+        const res = await fetch(`${API_URL}/reviews/${reviewId}/comments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(commentData)
+        });
+        return res.json();
+    },
+
+    deleteReviewComment: async (commentId) => {
+        const res = await fetch(`${API_URL}/review-comments/${commentId}`, {
+            method: 'DELETE'
+        });
+        return res.json();
+    },
+
+    resolveReviewComment: async (commentId, resolvedBy) => {
+        const res = await fetch(`${API_URL}/reviews/comments/${commentId}/resolve`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ resolved_by: resolvedBy })
+        });
+        return res.json();
+    },
+
+    convertCommentToTask: async (commentId) => {
+        const res = await fetch(`${API_URL}/reviews/comments/${commentId}/convert-task`, {
+            method: 'POST'
+        });
+        return res.json();
+    },
+
     // --- TASKS ---
     createTask: async (projectId, task) => {
         const res = await fetch(`${API_URL}/projects/${projectId}/tasks`, {
@@ -487,39 +591,12 @@ dataService.updateOfferStatus = async (id, status) => {
 
 const originalSignOffer = dataService.signOffer;
 dataService.signOffer = async (token, data) => {
-    const res = await originalSignOffer(token, data);
-    // Need offer ID. If res has it (it should), use it.
-    // If not, we might need to fetch by token logic (already have helper)
-    let offerId = res.id;
-    if (!offerId && token) {
-        // Try to get offer by token to find ID
-        try {
-            const offer = await dataService.getOfferByToken(token);
-            if (offer) offerId = offer.id;
-        } catch (e) { /* ignore */ }
-    }
-
-    if (offerId) {
-        await dataService.syncProjectWithOffer(offerId, { status: 'signed' });
-    }
-    return res;
+    return await originalSignOffer(token, data);
 };
 
 const originalDeclineOffer = dataService.declineOffer;
 dataService.declineOffer = async (token, reason) => {
-    const res = await originalDeclineOffer(token, reason);
-    let offerId = res.id;
-    if (!offerId && token) {
-        try {
-            const offer = await dataService.getOfferByToken(token);
-            if (offer) offerId = offer.id;
-        } catch (e) { /* ignore */ }
-    }
-
-    if (offerId) {
-        await dataService.syncProjectWithOffer(offerId, { status: 'declined' });
-    }
-    return res;
+    return await originalDeclineOffer(token, reason);
 };
 
 const originalSendOffer = dataService.sendOffer;

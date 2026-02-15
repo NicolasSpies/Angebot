@@ -21,6 +21,7 @@ import Textarea from '../components/ui/Textarea';
 import Badge from '../components/ui/Badge';
 import StatusPill from '../components/ui/StatusPill';
 import AttachmentSection from '../components/common/AttachmentSection';
+import ReviewsCard from '../components/projects/ReviewsCard';
 
 const STATUS_OPTIONS = ['todo', 'in_progress', 'feedback', 'done', 'cancelled'];
 const STATUS_LABELS = {
@@ -543,6 +544,9 @@ const ProjectDetailPage = () => {
                             </div>
                         )}
                     </Card>
+
+                    {/* Reviews Management */}
+                    <ReviewsCard projectId={id} />
 
                     {/* Attachments Section */}
                     <AttachmentSection entityType="projects" entityId={id} />

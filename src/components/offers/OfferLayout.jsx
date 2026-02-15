@@ -8,7 +8,7 @@ const cycleTitles = {
     monthly: { de: 'Monatliche Kosten', fr: 'Frais mensuels' }
 };
 
-const OfferLayout = ({ offer, settings, hideInternal = false }) => {
+const OfferLayout = ({ offer, settings, hideInternal = false, tempSignature = null }) => {
     // Group items by billing cycle
     const groups = { one_time: [], yearly: [], monthly: [] };
     const items = Array.isArray(offer?.items) ? offer.items : [];

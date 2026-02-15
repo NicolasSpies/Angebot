@@ -13,10 +13,9 @@ import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 const OfferWizardPage = () => {
     const { t, locale } = useI18n();
     const navigate = useNavigate();
-    const location = useLocation(); // Imported from react-router-dom
+    const location = useLocation();
 
     const { editId } = useParams();
-    // Use editId directly or map to id if needed for consistency with rest of code
     const id = editId;
 
     const [step, setStep] = useState(1);
@@ -27,7 +26,6 @@ const OfferWizardPage = () => {
     const [customers, setCustomers] = useState([]);
     const [servicesList, setServicesList] = useState([]);
     const [packagesList, setPackagesList] = useState([]);
-
 
     // Form State
     const [offerName, setOfferName] = useState('');
@@ -54,7 +52,6 @@ const OfferWizardPage = () => {
             setServicesList(sData);
             setPackagesList(pData || []);
 
-
             if (editId) {
                 const existingOffer = await dataService.getOffer(editId);
                 if (existingOffer) {
@@ -74,7 +71,6 @@ const OfferWizardPage = () => {
                         });
                     }
 
-                    // Map existing items...
                     const mappedItems = existingOffer.items.map(item => {
                         const originalService = sData.find(s => s.id === item.service_id);
                         if (!originalService) return null;
@@ -91,7 +87,6 @@ const OfferWizardPage = () => {
                     setSelectedPackage('custom');
                 }
             } else {
-                // Creation Logic
                 const defaults = sData
                     .filter(s => s.default_selected)
                     .map(s => ({ ...s, quantity: 1, unit_price: s.price }));
@@ -119,17 +114,12 @@ const OfferWizardPage = () => {
         loadData();
     }, [loadData]);
 
-
-
     const handleSave = async (e) => {
         if (e) e.preventDefault();
-
-        // If offer is already sent/signed, warn about versioning
         if (editId && (offerStatus === 'sent' || offerStatus === 'signed')) {
             setShowVersionModal(true);
             return;
         }
-
         await executeSave();
     };
 
@@ -173,8 +163,6 @@ const OfferWizardPage = () => {
         setIsSaving(false);
     };
 
-
-
     const handlePackageChange = (pkgId) => {
         setSelectedPackage(pkgId);
         if (pkgId !== 'custom') {
@@ -184,8 +172,6 @@ const OfferWizardPage = () => {
             const pkgServices = pkg.items.map(item => {
                 const baseService = servicesList.find(s => s.id === item.service_id);
                 if (!baseService) return null;
-
-                // If the package defines a specific variant, use it
                 const variant = item.variant_id
                     ? baseService.variants?.find(v => v.id === item.variant_id)
                     : (baseService.variants?.find(v => v.is_default) || baseService.variants?.[0]);
@@ -200,7 +186,6 @@ const OfferWizardPage = () => {
                     billing_cycle: variant ? variant.billing_cycle : 'one_time'
                 };
             }).filter(Boolean);
-
             setSelectedServices(pkgServices);
         } else {
             const defaults = servicesList
@@ -212,10 +197,8 @@ const OfferWizardPage = () => {
 
     const suggestions = useMemo(() => {
         const newSuggestions = [];
-        // Note: IDs are numbers in SQLite
         const hasWebsite = selectedServices.some(s => s.id === 1);
         const hasHosting = selectedServices.some(s => s.id === 3);
-
         if (hasWebsite && !hasHosting) {
             newSuggestions.push({
                 id: 3,
@@ -230,9 +213,7 @@ const OfferWizardPage = () => {
             const exists = prev.find(s => s.id === service.id);
             if (exists) return prev.filter(s => s.id !== service.id);
 
-            // Handle variants
             if (service.variants && service.variants.length > 0) {
-                // Select default or first variant
                 const v = service.variants.find(v => v.is_default) || service.variants[0];
                 return [...prev, {
                     ...service,
@@ -244,7 +225,6 @@ const OfferWizardPage = () => {
                     item_description: v.description
                 }];
             }
-
             return [...prev, { ...service, quantity: 1, unit_price: service.price }];
         });
     };
@@ -261,7 +241,7 @@ const OfferWizardPage = () => {
                 item_name: `${offerLanguage === 'de' ? service.name_de : service.name_fr}: ${variant.name}`,
                 billing_cycle: variant.billing_cycle,
                 item_description: variant.description
-            }].sort((a, b) => a.id - b.id); // Keep order roughly? Or just append. sorting by ID is safer for UI stability
+            }].sort((a, b) => a.id - b.id);
         });
     };
 
@@ -272,6 +252,24 @@ const OfferWizardPage = () => {
     };
 
     const totals = calculateTotals(selectedServices, discountPercent, selectedCustomer?.country || 'DE');
+
+    const groupedServices = useMemo(() => {
+        const groups = {};
+        servicesList.forEach(s => {
+            const cat = s.category || 'Uncategorized';
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(s);
+        });
+        // Sort categories and services within them
+        return Object.keys(groups).sort().reduce((acc, cat) => {
+            acc[cat] = groups[cat].sort((a, b) => {
+                const nameA = (offerLanguage === 'de' ? a.name_de : a.name_fr) || '';
+                const nameB = (offerLanguage === 'de' ? b.name_de : b.name_fr) || '';
+                return nameA.localeCompare(nameB);
+            });
+            return acc;
+        }, {});
+    }, [servicesList, offerLanguage]);
 
     if (isLoading) return <div className="page-container">Loading...</div>;
 
@@ -287,7 +285,7 @@ const OfferWizardPage = () => {
                                     {s}
                                 </div>
                                 <span className={`font-bold text-[14px] uppercase tracking-wider ${step >= s ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)]'}`}>
-                                    {t(`offer.step_${s}`) || (s === 2 ? "Strategy" : s === 3 ? "Services" : s === 4 ? "Finalize" : "Basics")}
+                                    {s === 1 ? "Basics" : s === 2 ? "Context" : s === 3 ? "Services" : "Finalize"}
                                 </span>
                                 {s < 4 && <div className="w-8 h-[2px] bg-[var(--border)] opacity-50 ml-2" />}
                             </div>
@@ -307,7 +305,6 @@ const OfferWizardPage = () => {
                                             </div>
                                         )}
                                     </div>
-
                                 </div>
                                 <Card className="border-[var(--border)] shadow-sm p-8">
                                     <div className="grid grid-cols-1 gap-12">
@@ -390,8 +387,6 @@ const OfferWizardPage = () => {
                             </div>
                         )}
 
-
-
                         {step === 3 && (
                             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <div className="mb-8 flex justify-between items-end">
@@ -400,7 +395,7 @@ const OfferWizardPage = () => {
                                         <p className="text-[var(--text-secondary)] font-medium">Engineer the value proposition by selecting core modules.</p>
                                     </div>
                                     {suggestions.length > 0 && (
-                                        <div className="flex items-center gap-3 p-3 rounded-xl bg-[var(--primary-light)] border border-[var(--primary)]/10 animate-pulse">
+                                        <div className="flex items-center gap-3 p-3 rounded-xl bg-[var(--primary-light)] border border-[var(--primary)]/10">
                                             <Zap size={18} className="text-[var(--primary)]" />
                                             <span className="text-[13px] text-[var(--primary)] font-bold">{suggestions[0].text}</span>
                                             <Button variant="primary" size="sm" className="h-8 py-0 shadow-sm" onClick={() => toggleService(servicesList.find(s => s.id === suggestions[0].id))}>
@@ -410,76 +405,87 @@ const OfferWizardPage = () => {
                                     )}
                                 </div>
 
-                                <div className="space-y-4">
-                                    {servicesList.map(s => {
-                                        const isSelected = !!selectedServices.find(ss => ss.id === s.id);
-                                        const selectedVariantId = isSelected ? selectedServices.find(ss => ss.id === s.id).variant_id : null;
-                                        const hasVariants = s.variants && s.variants.length > 0;
+                                <div className="space-y-12">
+                                    {Object.entries(groupedServices).map(([category, services]) => (
+                                        <div key={category} className="space-y-4">
+                                            <div className="flex items-center gap-3 px-2">
+                                                <div className="h-[1px] flex-1 bg-[var(--border)]" />
+                                                <span className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em]">{category}</span>
+                                                <div className="h-[1px] flex-1 bg-[var(--border)]" />
+                                            </div>
+                                            <div className="space-y-3">
+                                                {services.map(s => {
+                                                    const isSelected = !!selectedServices.find(ss => ss.id === s.id);
+                                                    const selectedVariantId = isSelected ? selectedServices.find(ss => ss.id === s.id).variant_id : null;
+                                                    const hasVariants = s.variants && s.variants.length > 0;
 
-                                        return (
-                                            <div key={s.id} className={`group border-[2px] rounded-2xl transition-all duration-300 ${isSelected ? 'border-[var(--primary)] bg-[var(--primary-light)]/30 shadow-md' : 'border-[var(--border)] hover:border-[var(--primary)]/40 hover:bg-[var(--bg-main)]'}`}>
-                                                <div className="p-6 flex items-center gap-6">
-                                                    <div
-                                                        onClick={() => toggleService(s)}
-                                                        className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center cursor-pointer transition-all ${isSelected ? 'bg-[var(--primary)] border-[var(--primary)]' : 'border-[var(--border)] bg-white group-hover:border-[var(--primary)]/50'}`}
-                                                    >
-                                                        {isSelected && <Check size={16} className="text-white" />}
-                                                    </div>
-                                                    <div className="flex-1 cursor-pointer" onClick={() => toggleService(s)}>
-                                                        <div className="font-extrabold text-[var(--text-main)] text-[16px] mb-1">{offerLanguage === 'de' ? s.name_de : s.name_fr}</div>
-                                                        <div className="text-[12px] text-[var(--text-muted)] font-bold flex items-center gap-2 uppercase tracking-tight">
-                                                            <span className="px-2 py-0.5 rounded bg-white border border-[var(--border)] shadow-xs">{s.category}</span>
-                                                            {!hasVariants && <span className="text-[var(--primary)] font-extrabold">• {formatCurrency(s.price)}</span>}
-                                                        </div>
-                                                    </div>
-                                                    {isSelected && !hasVariants && (
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="text-[11px] font-bold text-[var(--text-muted)] uppercase">Quantity</span>
-                                                            <input
-                                                                type="number"
-                                                                min="1"
-                                                                className="w-20 bg-white border border-[var(--border)] rounded-lg py-2 px-3 text-[14px] font-bold focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
-                                                                value={selectedServices.find(ss => ss.id === s.id).quantity}
-                                                                onChange={(e) => updateQuantity(s.id, e.target.value)}
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {hasVariants && isSelected && (
-                                                    <div className="px-14 pb-6 space-y-4">
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                            {s.variants.map(v => (
+                                                    return (
+                                                        <div key={s.id} className={`group border-[2px] rounded-2xl transition-all duration-300 ${isSelected ? 'border-[var(--primary)] bg-[var(--primary-light)]/30 shadow-md' : 'border-[var(--border)] hover:border-[var(--primary)]/40 hover:bg-[var(--bg-main)]'}`}>
+                                                            <div className="p-6 flex items-center gap-6">
                                                                 <div
-                                                                    key={v.id}
-                                                                    onClick={() => selectVariant(s, v)}
-                                                                    className={`flex items-start gap-4 p-4 rounded-xl cursor-pointer transition-all border-[2px] ${selectedVariantId === v.id ? 'bg-white border-[var(--primary)] shadow-sm' : 'bg-transparent border-transparent hover:bg-white/50'}`}
+                                                                    onClick={() => toggleService(s)}
+                                                                    className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center cursor-pointer transition-all ${isSelected ? 'bg-[var(--primary)] border-[var(--primary)]' : 'border-[var(--border)] bg-white group-hover:border-[var(--primary)]/50'}`}
                                                                 >
-                                                                    <div className={`mt-1 w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedVariantId === v.id ? 'border-[var(--primary)]' : 'border-[var(--border)]'}`}>
-                                                                        {selectedVariantId === v.id && <div className="w-2.5 h-2.5 rounded-full bg-[var(--primary)]" />}
-                                                                    </div>
-                                                                    <div className="flex-1">
-                                                                        <div className="text-[14px] font-extrabold text-[var(--text-main)] mb-1">{v.name}</div>
-                                                                        <div className="text-[12px] text-[var(--text-secondary)] font-bold">{formatCurrency(v.price)} <span className="opacity-50 mx-1">•</span> <span className="uppercase text-[10px] tracking-wider">{v.billing_cycle}</span></div>
+                                                                    {isSelected && <Check size={16} className="text-white" />}
+                                                                </div>
+                                                                <div className="flex-1 cursor-pointer" onClick={() => toggleService(s)}>
+                                                                    <div className="font-extrabold text-[var(--text-main)] text-[16px] mb-1">{offerLanguage === 'de' ? s.name_de : s.name_fr}</div>
+                                                                    <div className="text-[12px] text-[var(--text-muted)] font-bold flex items-center gap-2 uppercase tracking-tight">
+                                                                        {!hasVariants && <span className="text-[var(--primary)] font-extrabold">{formatCurrency(s.price)}</span>}
+                                                                        {hasVariants && <span className="text-[var(--text-muted)] italic">Multiple tiers available</span>}
                                                                     </div>
                                                                 </div>
-                                                            ))}
+                                                                {isSelected && !hasVariants && (
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="text-[11px] font-bold text-[var(--text-muted)] uppercase">Quantity</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            min="1"
+                                                                            className="w-20 bg-white border border-[var(--border)] rounded-lg py-2 px-3 text-[14px] font-bold focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
+                                                                            value={selectedServices.find(ss => ss.id === s.id).quantity}
+                                                                            onChange={(e) => updateQuantity(s.id, e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {hasVariants && isSelected && (
+                                                                <div className="px-14 pb-6 space-y-4">
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                        {s.variants.map(v => (
+                                                                            <div
+                                                                                key={v.id}
+                                                                                onClick={() => selectVariant(s, v)}
+                                                                                className={`flex items-start gap-4 p-4 rounded-xl cursor-pointer transition-all border-[2px] ${selectedVariantId === v.id ? 'bg-white border-[var(--primary)] shadow-sm' : 'bg-transparent border-transparent hover:bg-white/50'}`}
+                                                                            >
+                                                                                <div className={`mt-1 w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedVariantId === v.id ? 'border-[var(--primary)]' : 'border-[var(--border)]'}`}>
+                                                                                    {selectedVariantId === v.id && <div className="w-2.5 h-2.5 rounded-full bg-[var(--primary)]" />}
+                                                                                </div>
+                                                                                <div className="flex-1">
+                                                                                    <div className="text-[14px] font-extrabold text-[var(--text-main)] mb-1">{v.name}</div>
+                                                                                    <div className="text-[12px] text-[var(--text-secondary)] font-bold">{formatCurrency(v.price)} <span className="opacity-50 mx-1">•</span> <span className="uppercase text-[10px] tracking-wider">{v.billing_cycle}</span></div>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-4 py-3 border-t border-[var(--primary)]/10">
+                                                                        <span className="text-[12px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest">Adjust Allocation:</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            min="1"
+                                                                            className="w-20 bg-white border border-[var(--border)] rounded-lg py-2 px-3 text-[14px] font-bold"
+                                                                            value={selectedServices.find(ss => ss.id === s.id).quantity}
+                                                                            onChange={(e) => updateQuantity(s.id, e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                        <div className="flex items-center gap-4 py-3 border-t border-[var(--primary)]/10">
-                                                            <span className="text-[12px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest">Adjust Allocation:</span>
-                                                            <input
-                                                                type="number"
-                                                                min="1"
-                                                                className="w-20 bg-white border border-[var(--border)] rounded-lg py-2 px-3 text-[14px] font-bold"
-                                                                value={selectedServices.find(ss => ss.id === s.id).quantity}
-                                                                onChange={(e) => updateQuantity(s.id, e.target.value)}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                )}
+                                                    );
+                                                })}
                                             </div>
-                                        );
-                                    })}
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}
@@ -508,8 +514,6 @@ const OfferWizardPage = () => {
                                         />
                                         <p className="text-[13px] text-[var(--text-muted)] font-medium leading-relaxed max-w-[480px]">Apply a competitive discount to incentivize signing. This will be visible on the final contract as a 'Strategic Rebate'.</p>
                                     </div>
-
-
                                 </Card>
                             </div>
                         )}
@@ -517,7 +521,7 @@ const OfferWizardPage = () => {
                         <div className="pt-10 border-t border-[var(--border)] flex items-center justify-between">
                             {step > 1 ? (
                                 <Button variant="ghost" className="font-extrabold px-8 group" onClick={() => setStep(step - 1)}>
-                                    <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" /> {step === 2 ? "Back to Basics" : "Previous Step"}
+                                    <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" /> Previous Step
                                 </Button>
                             ) : <div />}
 
@@ -543,61 +547,92 @@ const OfferWizardPage = () => {
                     </div>
                 </main>
 
+
                 <aside className="w-[400px] shrink-0">
                     <div className="sticky top-[100px] space-y-8">
-                        <div className="bg-white rounded-3xl p-8 border border-[var(--border)] shadow-2xl relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--primary)]/5 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-700" />
-                            <h3 className="text-[12px] font-extrabold text-[var(--text-muted)] uppercase tracking-[0.2em] mb-8 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" /> Proposal Metrics
-                            </h3>
-                            <div className="space-y-5 mb-10">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-[14px] text-[var(--text-secondary)] font-bold">Volume Subtotal</span>
-                                    <span className="font-extrabold text-[var(--text-main)] text-[16px]">{formatCurrency(totals.subtotal)}</span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-[14px] text-[var(--text-secondary)] font-bold">Est. Tax Capacity</span>
-                                    <span className="font-extrabold text-[var(--text-main)] text-[16px]">{formatCurrency(totals.vat)}</span>
-                                </div>
-                                {discountPercent > 0 && (
-                                    <div className="flex justify-between items-center p-3 rounded-lg bg-[var(--danger-bg)] text-[var(--danger)]">
-                                        <span className="text-[13px] font-bold">Applied Discount ({discountPercent}%)</span>
-                                        <span className="font-extrabold text-[15px]">-{formatCurrency(totals.subtotal * (discountPercent / 100))}</span>
+                        <Card className="border-[var(--border)] shadow-xl overflow-hidden bg-white">
+                            <div className="p-8 space-y-8">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-[12px] font-black text-[var(--text-main)] uppercase tracking-[0.2em]">Live Configuration Metrics</h3>
+                                    <div className="px-3 py-1 bg-[var(--primary-light)] text-[var(--primary)] rounded-full text-[11px] font-black uppercase tracking-wider">
+                                        Real-time
                                     </div>
-                                )}
-                            </div>
-                            <div className="pt-8 border-t border-[var(--border)] border-dashed flex justify-between items-baseline">
-                                <span className="text-[16px] font-extrabold text-[var(--text-main)] uppercase tracking-wider">Net Contract</span>
-                                <span className="text-[36px] font-black text-[var(--text-main)] tracking-tighter tabular-nums">{formatCurrency(totals.total)}</span>
-                            </div>
-                        </div>
+                                </div>
 
-                        <Card className="p-6 bg-[var(--bg-main)]/50 border-[2px] border-dashed border-[var(--border)] rounded-2xl">
-                            <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border)]/50">
-                                <div className="w-2.5 h-2.5 rounded-full bg-[var(--primary)] animate-pulse" />
-                                <span className="text-[11px] font-extrabold text-[var(--text-main)] uppercase tracking-[0.15em]">Live Selection Architecture</span>
-                            </div>
-                            <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                                {selectedServices.length === 0 ? (
-                                    <div className="py-8 text-center">
-                                        <Plus size={32} className="mx-auto text-[var(--text-muted)] opacity-20 mb-3" />
-                                        <p className="text-[13px] text-[var(--text-muted)] font-medium italic">Architect your solution by selecting services from the directory.</p>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center text-[14px]">
+                                        <span className="text-[var(--text-secondary)] font-bold">Volume Total</span>
+                                        <span className="font-extrabold text-[var(--text-main)] tabular-nums">{formatCurrency(totals.subtotal)}</span>
                                     </div>
-                                ) : (
-                                    selectedServices.map(s => (
-                                        <div key={s.id} className="flex justify-between items-start text-[14px] p-2 hover:bg-white rounded-lg transition-colors group/item">
-                                            <div className="min-w-0 pr-4">
-                                                <div className="font-extrabold text-[var(--text-main)] truncate group-hover/item:text-[var(--primary)] transition-colors">{s.item_name || (offerLanguage === 'de' ? s.name_de : s.name_fr)}</div>
-                                                <div className="text-[12px] text-[var(--text-muted)] font-bold mt-0.5">{s.quantity} units <span className="opacity-50 mx-1">@</span> {formatCurrency(s.unit_price)}</div>
-                                            </div>
-                                            <div className="font-black text-[var(--text-main)] whitespace-nowrap mt-0.5">
-                                                {formatCurrency(s.quantity * s.unit_price)}
+                                    {discountPercent > 0 && (
+                                        <div className="flex justify-between items-center text-[14px] text-[var(--danger)]">
+                                            <span className="font-bold flex items-center gap-2">
+                                                Strategic Rebate <span className="text-[11px] px-1.5 py-0.5 bg-red-50 rounded-lg">-{discountPercent}%</span>
+                                            </span>
+                                            <span className="font-extrabold tabular-nums">-{formatCurrency(totals.discount)}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between items-center text-[14px] text-[var(--text-secondary)]">
+                                        <span className="font-bold">Taxation ({selectedCustomer?.country === 'BE' ? '21%' : '0%'})</span>
+                                        <span className="font-extrabold tabular-nums">{formatCurrency(totals.vat)}</span>
+                                    </div>
+                                    <div className="pt-6 border-t border-[var(--border)] flex justify-between items-end">
+                                        <div>
+                                            <div className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1">Total Strategic Value</div>
+                                            <div className="text-4xl font-black text-[var(--text-main)] tabular-nums tracking-tighter">
+                                                {formatCurrency(totals.total)}
                                             </div>
                                         </div>
-                                    ))
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-[var(--bg-main)] p-8 border-t border-[var(--border)]">
+                                <h4 className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-6">Manifest Summary</h4>
+                                <div className="space-y-6">
+                                    {selectedServices.length === 0 ? (
+                                        <div className="py-4 text-center border-2 border-dashed border-[var(--border)] rounded-2xl">
+                                            <p className="text-[13px] text-[var(--text-muted)] font-bold">No modules selected.</p>
+                                        </div>
+                                    ) : (
+                                        selectedServices.map(s => (
+                                            <div key={s.id} className="flex justify-between items-start group">
+                                                <div className="flex-1">
+                                                    <div className="text-[14px] font-extrabold text-[var(--text-main)] mb-0.5 leading-tight">{s.item_name || (offerLanguage === 'de' ? s.name_de : s.name_fr)}</div>
+                                                    <div className="text-[12px] text-[var(--text-muted)] font-bold uppercase tracking-tight">
+                                                        {s.quantity}x {formatCurrency(s.unit_price)} <span className="opacity-40 select-none mx-1">•</span> {s.billing_cycle || 'one_time'}
+                                                    </div>
+                                                </div>
+                                                <div className="text-[14px] font-black text-[var(--text-main)] tabular-nums">
+                                                    {formatCurrency(s.quantity * s.unit_price)}
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+
+                                {selectedCustomer && (
+                                    <div className="mt-8 pt-8 border-t border-[var(--border)] border-dashed">
+                                        <div className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-3">Client Engagement</div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-white border border-[var(--border)] flex items-center justify-center text-[var(--primary)] font-black text-[14px] shadow-sm">
+                                                {selectedCustomer.company_name?.charAt(0)}
+                                            </div>
+                                            <div>
+                                                <div className="text-[14px] font-extrabold text-[var(--text-main)]">{selectedCustomer.company_name}</div>
+                                                <div className="text-[12px] text-[var(--text-muted)] font-bold">{selectedCustomer.contact_person}</div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         </Card>
+
+                        {/* Validation helper */}
+                        <div className="px-4 flex items-center gap-3 text-[12px] text-[var(--text-muted)] font-bold">
+                            <div className={`w-2 h-2 rounded-full ${selectedCustomer ? 'bg-[var(--success)] shadow-[0_0_8px_var(--success)]' : 'bg-[var(--danger)] animate-pulse'}`} />
+                            {selectedCustomer ? 'Configuration valid for sync' : 'Selection required for sync'}
+                        </div>
                     </div>
                 </aside>
             </div>

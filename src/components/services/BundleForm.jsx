@@ -3,12 +3,12 @@ import { useI18n } from '../../i18n/I18nContext';
 import { dataService } from '../../data/dataService';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
-import { Search } from 'lucide-react';
+import { Search, Package, Check } from 'lucide-react';
 import Select from '../ui/Select';
 
 const BundleForm = ({ initialData, onSave, onCancel }) => {
     const { t, locale } = useI18n();
-    const [formData, setFormData] = useState(initialData || {
+    const [formData, setFormData] = useState({
         name: '',
         description: '',
         discount_type: 'percent',
@@ -39,13 +39,13 @@ const BundleForm = ({ initialData, onSave, onCancel }) => {
         loadData();
     }, [initialData]);
 
-    const handleServiceToggle = (serviceId, checked) => {
+    const handleServiceToggle = (serviceId) => {
         setFormData(prev => {
-            const currentItems = prev.items || [];
-            if (checked) {
-                return { ...prev, items: [...currentItems, { service_id: serviceId, variant_name: null, discount_percent: 0 }] };
+            const isSelected = prev.items.some(item => item.service_id === serviceId);
+            if (isSelected) {
+                return { ...prev, items: prev.items.filter(item => item.service_id !== serviceId) };
             } else {
-                return { ...prev, items: currentItems.filter(item => item.service_id !== serviceId) };
+                return { ...prev, items: [...prev.items, { service_id: serviceId, variant_name: null, discount_percent: 0 }] };
             }
         });
     };
@@ -105,19 +105,21 @@ const BundleForm = ({ initialData, onSave, onCancel }) => {
     );
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-column gap-4">
-            <div className="grid grid-2 gap-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
                 <Input
                     label="Bundle Name"
                     value={formData.name}
                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                     required
                 />
-                <div>
-                    <label className="form-label mb-1">Bundle Discount</label>
+                <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider ml-1">
+                        Bundle Discount
+                    </label>
                     <div className="flex gap-2">
                         <Select
-                            className="w-24 h-[42px]"
+                            className="w-24"
                             value={formData.discount_type}
                             onChange={e => setFormData({ ...formData, discount_type: e.target.value })}
                             options={[
@@ -142,71 +144,70 @@ const BundleForm = ({ initialData, onSave, onCancel }) => {
                 onChange={e => setFormData({ ...formData, description: e.target.value })}
             />
 
-            <div>
-                <label className="form-label mb-2">Services in Bundle</label>
+            <div className="space-y-3">
+                <label className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider ml-1">
+                    Services in Bundle
+                </label>
 
-                <div className="relative mb-2">
-                    <Search size={14} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted" />
+                <div className="relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                     <input
                         type="text"
                         placeholder="Search services..."
-                        className="form-input pl-9 py-1 text-sm"
+                        className="w-full pl-10 pr-4 py-2 text-[14px] bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-[var(--radius-md)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/10 focus:border-[var(--primary)] transition-all"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                     />
                 </div>
 
-                <div className="border rounded-md bg-white p-2 flex flex-column gap-1" style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                <div className="border border-[var(--border-subtle)] rounded-[var(--radius-lg)] bg-[var(--bg-app)] divide-y divide-[var(--border-subtle)] max-h-[300px] overflow-y-auto custom-scrollbar">
                     {filteredServices.length === 0 ? (
-                        <p className="text-sm text-muted p-2 text-center">No services found.</p>
+                        <div className="py-8 text-center text-[var(--text-muted)] text-[13px] font-medium">
+                            No services found matching your search.
+                        </div>
                     ) : (
                         filteredServices.map(s => {
                             const selectedItem = formData.items?.find(item => item.service_id === s.id);
                             const isSelected = !!selectedItem;
 
                             return (
-                                <div key={s.id} className={`flex flex-col p-2 rounded border border-transparent ${isSelected ? 'bg-primary-light border-primary/20' : 'hover:bg-gray-50'}`}>
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="checkbox"
-                                            id={`srv-${s.id}`}
-                                            checked={isSelected}
-                                            onChange={e => handleServiceToggle(s.id, e.target.checked)}
-                                            className="cursor-pointer"
-                                        />
-                                        <label htmlFor={`srv-${s.id}`} className="cursor-pointer flex-1 text-sm font-medium">
-                                            {locale === 'de' ? s.name_de : s.name_fr}
-                                        </label>
-                                        <span className="text-xs font-bold whitespace-nowrap">{s.price}€</span>
+                                <div key={s.id} className={`p-4 transition-colors ${isSelected ? 'bg-white shadow-[var(--shadow-sm)]' : 'hover:bg-[var(--bg-surface)]'}`}>
+                                    <div className="flex items-center gap-3">
+                                        <div
+                                            onClick={() => handleServiceToggle(s.id)}
+                                            className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${isSelected ? 'bg-[var(--primary)] border-[var(--primary)]' : 'border-[var(--border-medium)] bg-white hover:border-[var(--primary)]/50'}`}
+                                        >
+                                            {isSelected && <Check size={14} className="text-white" />}
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="text-[14px] font-bold text-[var(--text-main)]">
+                                                {locale === 'de' ? s.name_de : s.name_fr}
+                                            </div>
+                                            <div className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-tight">
+                                                {s.category} • {s.price}€
+                                            </div>
+                                        </div>
                                     </div>
 
                                     {isSelected && (
-                                        <div className="ml-6 mt-2 flex flex-wrap items-center gap-4">
+                                        <div className="ml-8 mt-4 pt-4 border-t border-[var(--border-subtle)] border-dashed border-t-[1px] grid grid-cols-2 gap-4">
                                             {s.variants && s.variants.length > 0 && (
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs text-muted">Variant:</span>
-                                                    <Select
-                                                        className="w-48"
-                                                        value={selectedItem?.variant_name || ''}
-                                                        onChange={e => handleVariantChange(s.id, e.target.value || null)}
-                                                        options={[
-                                                            { value: '', label: `Default (${s.price}€)` },
-                                                            ...(s.variants?.map(v => ({ value: v.name, label: `${v.name} (${v.price}€)` })) || [])
-                                                        ]}
-                                                    />
-                                                </div>
-                                            )}
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-xs text-muted">Discount:</span>
-                                                <input
-                                                    type="number"
-                                                    className="form-input text-xs py-1 px-2 h-auto w-16"
-                                                    placeholder="0"
-                                                    value={selectedItem.discount_percent}
-                                                    onChange={e => handleItemDiscountChange(s.id, e.target.value)}
+                                                <Select
+                                                    label="Variant"
+                                                    value={selectedItem?.variant_name || ''}
+                                                    onChange={e => handleVariantChange(s.id, e.target.value || null)}
+                                                    options={[
+                                                        { value: '', label: `Default (${s.price}€)` },
+                                                        ...(s.variants?.map(v => ({ value: v.name, label: `${v.name} (${v.price}€)` })) || [])
+                                                    ]}
                                                 />
-                                                <span className="text-xs text-muted">%</span>
-                                            </div>
+                                            )}
+                                            <Input
+                                                label="Item Discount (%)"
+                                                type="number"
+                                                value={selectedItem.discount_percent}
+                                                onChange={e => handleItemDiscountChange(s.id, e.target.value)}
+                                            />
                                         </div>
                                     )}
                                 </div>
@@ -216,35 +217,40 @@ const BundleForm = ({ initialData, onSave, onCancel }) => {
                 </div>
             </div>
 
-            <div className="bg-muted p-4 rounded-lg mt-2">
-                <h4 className="text-xs font-bold uppercase text-muted mb-3">Bundle Price Breakdown</h4>
-                <div className="flex flex-column gap-2">
-                    <div className="flex justify-between text-sm">
-                        <span>Original Total:</span>
-                        <span className="font-mono">{totals.originalTotal.toFixed(2)}€</span>
+            <div className="bg-[var(--bg-app)] border border-[var(--border-subtle)] p-5 rounded-[var(--radius-lg)]">
+                <div className="flex items-center gap-2 mb-4">
+                    <Package size={16} className="text-[var(--primary)]" />
+                    <h4 className="text-[11px] font-bold uppercase tracking-widest text-[var(--text-main)]">Bundle Breakdown</h4>
+                </div>
+                <div className="space-y-2.5">
+                    <div className="flex justify-between items-center text-[13px]">
+                        <span className="text-[var(--text-secondary)] font-medium">Original Total</span>
+                        <span className="font-bold text-[var(--text-main)] tabular-nums">{totals.originalTotal.toFixed(2)}€</span>
                     </div>
                     {totals.originalTotal !== totals.itemsTotalAfterItemDiscounts && (
-                        <div className="flex justify-between text-sm text-primary">
-                            <span>After Item Discounts:</span>
-                            <span className="font-mono">{totals.itemsTotalAfterItemDiscounts.toFixed(2)}€</span>
+                        <div className="flex justify-between items-center text-[13px]">
+                            <span className="text-[var(--primary)] font-medium">After Item Discounts</span>
+                            <span className="font-bold text-[var(--primary)] tabular-nums">{totals.itemsTotalAfterItemDiscounts.toFixed(2)}€</span>
                         </div>
                     )}
                     {(formData.discount_value > 0) && (
-                        <div className="flex justify-between text-sm text-primary">
-                            <span>Bundle Discount ({formData.discount_type === 'percent' ? `${formData.discount_value}%` : `${formData.discount_value}€`}):</span>
-                            <span className="font-mono">-{(totals.itemsTotalAfterItemDiscounts - totals.finalTotal).toFixed(2)}€</span>
+                        <div className="flex justify-between items-center text-[13px]">
+                            <span className="text-[var(--success)] font-medium">
+                                Bundle Discount ({formData.discount_type === 'percent' ? `${formData.discount_value}%` : `${formData.discount_value}€`})
+                            </span>
+                            <span className="font-bold text-[var(--success)] tabular-nums">-{(totals.itemsTotalAfterItemDiscounts - totals.finalTotal).toFixed(2)}€</span>
                         </div>
                     )}
-                    <div className="flex justify-between text-base font-bold pt-2 border-t mt-1">
-                        <span>Final Bundle Price:</span>
-                        <span className="text-primary">{totals.finalTotal.toFixed(2)}€</span>
+                    <div className="pt-3 border-t border-[var(--border-subtle)] border-dashed border-t-[1px] flex justify-between items-center">
+                        <span className="text-[14px] font-extrabold text-[var(--text-main)]">Final Bundle Price</span>
+                        <span className="text-[20px] font-black text-[var(--primary)] tabular-nums">{totals.finalTotal.toFixed(2)}€</span>
                     </div>
                 </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-3 pt-6 border-t border-[var(--border-subtle)]">
                 <Button variant="ghost" onClick={onCancel}>{t('common.cancel')}</Button>
-                <Button type="submit">{t('common.save')}</Button>
+                <Button type="submit" className="px-8">{t('common.save')}</Button>
             </div>
         </form>
     );

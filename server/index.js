@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import db from './db.js';
 import multer from 'multer';
+import { PDFDocument } from 'pdf-lib';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -11,6 +12,62 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const port = 3001;
+
+app.get('/api/status', (req, res) => {
+    res.json({ status: 'ok', version: '1.0.1-phase3', time: new Date().toISOString() });
+});
+
+// --- REMINDERS BACKGROUND JOB ---
+function checkReminders() {
+    console.log('[Background] Checking for reminders...');
+    try {
+        // 1. Expiring Offers (in 3 days)
+        const expiringOffers = db.prepare(`
+            SELECT o.id, o.offer_name, c.company_name, o.due_date 
+            FROM offers o
+            JOIN customers c ON o.customer_id = c.id
+            WHERE o.status = 'sent' 
+            AND o.due_date = date('now', '+3 days')
+        `).all();
+
+        expiringOffers.forEach(off => {
+            const dedupKey = `reminder_expiring_${off.id}_${off.due_date}`;
+            createNotification(
+                'warning',
+                'Offer Expiring',
+                `The offer "${off.offer_name}" for ${off.company_name} expires in 3 days.`,
+                `/offers/${off.id}`,
+                dedupKey
+            );
+        });
+
+        // 2. Overdue Projects
+        const overdueProjects = db.prepare(`
+            SELECT p.id, p.name, c.company_name, p.deadline
+            FROM projects p
+            JOIN customers c ON p.customer_id = c.id
+            WHERE p.status IN ('todo', 'in_progress', 'feedback')
+            AND p.deadline < date('now')
+        `).all();
+
+        overdueProjects.forEach(proj => {
+            const dedupKey = `reminder_overdue_${proj.id}_${proj.deadline}`;
+            createNotification(
+                'danger',
+                'Project Overdue',
+                `Project "${proj.name}" for ${proj.company_name} is overdue.`,
+                `/projects/${proj.id}`,
+                dedupKey
+            );
+        });
+
+        console.log(`[Background] Check complete. Expiring: ${expiringOffers.length}, Overdue: ${overdueProjects.length}`);
+        return { expiring: expiringOffers.length, overdue: overdueProjects.length };
+    } catch (err) {
+        console.error('[Background] Reminder check failed:', err);
+        return { expiring: 0, overdue: 0 };
+    }
+}
 
 // --- NOTIFICATION HELPER (with dedup) ---
 function createNotification(type, title, message, link, dedupKey) {
@@ -45,6 +102,7 @@ function logActivity(entityType, entityId, action, metadata = {}) {
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // --- ACTIVITY API ---
 app.get('/api/activities', (req, res) => {
@@ -686,6 +744,7 @@ app.post('/api/offers/public/:token/sign', (req, res) => {
 
 app.post('/api/offers', (req, res) => {
     const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date, internal_notes, strategic_notes, linked_project_id } = req.body;
+    const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
     const transaction = db.transaction(() => {
         const offerResult = db.prepare(`
@@ -700,30 +759,30 @@ app.post('/api/offers', (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
-        for (const item of items) {
-            insertItem.run(
-                offerId,
-                item.service_id,
-                item.quantity,
-                item.unit_price,
-                item.total_price,
-                item.billing_cycle || 'one_time',
-                item.item_name || null,
-                item.item_description || null
-            );
+        if (items && Array.isArray(items)) {
+            for (const item of items) {
+                insertItem.run(
+                    offerId,
+                    item.service_id,
+                    item.quantity,
+                    item.unit_price,
+                    item.total_price,
+                    item.billing_cycle || 'one_time',
+                    item.item_name || null,
+                    item.item_description || null
+                );
+            }
         }
 
         // Project Synchronization Logic
         if (linked_project_id) {
             db.prepare('UPDATE projects SET offer_id = ? WHERE id = ?').run(offerId, linked_project_id);
-            syncProjectWithOffer(offerId, status || 'draft', offer_name, due_date, strategic_notes);
+            syncProjectWithOffer(offerId, status || 'draft', offer_name, due_date, strategic_notes, customer_id);
         } else {
             syncProjectWithOffer(offerId, status || 'draft', offer_name, due_date, strategic_notes, customer_id);
         }
 
-        // No notification for drafts — only trigger on meaningful status changes
-
-        logActivity('offer', offerId, 'created', { name: offer_name, status: status || 'draft', total });
+        logActivity('offer', offerId, 'created', { name: offer_name, status: status || 'draft', total: total });
         if (status === 'sent') logActivity('offer', offerId, 'sent', {});
 
         return offerId;
@@ -1023,8 +1082,8 @@ app.get('/api/projects/:id/activity', (req, res) => {
         const project = db.prepare('SELECT offer_id FROM projects WHERE id = ?').get(projectId);
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
-        const projectEvents = db.prepare('SELECT p.*, "project" as source FROM project_events p WHERE project_id = ?').all(projectId);
-        const offerEvents = project.offer_id ? db.prepare('SELECT o.*, "offer" as source FROM offer_events o WHERE offer_id = ?').all(project.offer_id) : [];
+        const projectEvents = db.prepare("SELECT p.*, 'project' as source FROM project_events p WHERE project_id = ?").all(projectId);
+        const offerEvents = project.offer_id ? db.prepare("SELECT o.*, 'offer' as source FROM offer_events o WHERE offer_id = ?").all(project.offer_id) : [];
 
         const combined = [...projectEvents, ...offerEvents].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         res.json(combined);
@@ -1037,6 +1096,315 @@ app.delete('/api/projects/:id', (req, res) => {
     try {
         db.prepare('UPDATE projects SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
         res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- REVIEWS ---
+app.get('/api/viewer-test', (req, res) => {
+    res.json({ message: 'Viewer test route active', timestamp: new Date().toISOString() });
+});
+
+app.get('/api/reviews/:id', (req, res) => {
+    try {
+        const review = db.prepare(`
+            SELECT r.*, p.name as project_name 
+            FROM reviews r
+            JOIN projects p ON r.project_id = p.id
+            WHERE r.id = ?
+        `).get(req.params.id);
+
+        if (!review) {
+            return res.status(404).json({ error: 'Review not found' });
+        }
+
+        res.json(review);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/reviews', (req, res) => {
+    try {
+        const reviews = db.prepare(`
+            SELECT r.*, p.name as project_name 
+            FROM reviews r
+            JOIN projects p ON r.project_id = p.id
+            WHERE p.deleted_at IS NULL
+            ORDER BY r.created_at DESC
+        `).all();
+        res.json(reviews);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- PUBLIC REVIEWS (Unauthenticated) ---
+app.get('/api/public/review/:token', (req, res) => {
+    try {
+        const review = db.prepare(`
+            SELECT r.*, p.name as project_name 
+            FROM reviews r
+            JOIN projects p ON r.project_id = p.id
+            WHERE r.token = ?
+        `).get(req.params.token);
+
+        if (!review) {
+            return res.status(404).json({ error: 'Review not found or inactive' });
+        }
+
+        res.json(review);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/reviews/token/:token', (req, res) => {
+    try {
+        const review = db.prepare(`
+            SELECT r.*, p.name as project_name 
+            FROM reviews r
+            JOIN projects p ON r.project_id = p.id
+            WHERE r.token = ?
+        `).get(req.params.token);
+
+        if (!review) {
+            return res.status(404).json({ error: 'Review not found' });
+        }
+
+        res.json(review);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/projects/:id/reviews', (req, res) => {
+    try {
+        const reviews = db.prepare('SELECT * FROM reviews WHERE project_id = ? ORDER BY version DESC').all(req.params.id);
+        res.json(reviews);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/reviews/upload', upload.single('file'), async (req, res) => {
+    const { project_id, created_by } = req.body;
+    const file = req.file;
+
+    if (!file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const fullOriginalPath = path.join(__dirname, '..', 'uploads', file.filename);
+    const compressedFilename = `compressed-${file.filename}`;
+    const fullCompressedPath = path.join(__dirname, '..', 'uploads', compressedFilename);
+    const originalPath = `/uploads/${file.filename}`;
+    const compressedPath = `/uploads/${compressedFilename}`;
+
+    const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
+    try {
+        // Perform compression using pdf-lib
+        const pdfDoc = await PDFDocument.load(fs.readFileSync(fullOriginalPath));
+        const compressedPdfBytes = await pdfDoc.save({ useObjectStreams: true });
+        fs.writeFileSync(fullCompressedPath, compressedPdfBytes);
+
+        const originalSize = fs.statSync(fullOriginalPath).size;
+        const compressedSize = fs.statSync(fullCompressedPath).size;
+
+        // Find current max version
+        const lastReview = db.prepare('SELECT MAX(version) as lastVersion FROM reviews WHERE project_id = ?').get(project_id);
+        const nextVersion = (lastReview?.lastVersion || 0) + 1;
+
+        const result = db.prepare(`
+            INSERT INTO reviews (project_id, file_url, compressed_file_url, file_size_original, file_size_compressed, version, status, token, is_token_active, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(project_id, originalPath, compressedPath, originalSize, compressedSize, nextVersion, 'open', token, 1, created_by || 'System');
+
+        const newReview = db.prepare('SELECT * FROM reviews WHERE id = ?').get(result.lastInsertRowid);
+
+        // Log Activity
+        logActivity('project', project_id, 'review_created', { reviewId: result.lastInsertRowid, version: nextVersion });
+
+        res.json(newReview);
+    } catch (err) {
+        console.error('Upload error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// --- REVIEW COMMENTS ---
+app.get('/api/public/reviews/:id/comments', (req, res) => {
+    try {
+        const comments = db.prepare('SELECT * FROM review_comments WHERE review_id = ? ORDER BY created_at ASC').all(req.params.id);
+        res.json(comments);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/public/reviews/:id/comments', (req, res) => {
+    const { page_number, x, y, width, height, type, content, author_name, author_email, parent_id } = req.body;
+    const reviewId = req.params.id;
+
+    try {
+        const result = db.prepare(`
+            INSERT INTO review_comments (review_id, page_number, x, y, width, height, type, content, author_name, author_email, parent_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(reviewId, page_number, x, y, width || null, height || null, type || 'comment', content, author_name, author_email, parent_id || null);
+
+        // Update review status to changes_requested if it was open
+        db.prepare("UPDATE reviews SET status = 'changes_requested' WHERE id = ? AND status = 'open'").run(reviewId);
+
+        const newComment = db.prepare('SELECT * FROM review_comments WHERE id = ?').get(result.lastInsertRowid);
+
+        // Log activity and create notification
+        const review = db.prepare(`
+            SELECT r.*, p.name as project_name 
+            FROM reviews r
+            JOIN projects p ON r.project_id = p.id
+            WHERE r.id = ?
+        `).get(reviewId);
+
+        logActivity('project', review.project_id, 'review_comment_added', { reviewId, author: author_name });
+
+        createNotification(
+            'project',
+            'Review Comment',
+            `${author_name} added feedback on ${review.project_name} (Version ${review.version})`,
+            `/projects/${review.project_id}`
+        );
+
+        res.json(newComment);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/public/reviews/:id/approve', (req, res) => {
+    const { name: author_name, email: author_email } = req.body;
+    const reviewId = req.params.id;
+
+    try {
+        db.prepare(`
+            UPDATE reviews 
+            SET status = 'approved', 
+                approved_at = CURRENT_TIMESTAMP,
+                approved_by_name = ?,
+                approved_by_email = ?
+            WHERE id = ?
+        `).run(author_name, author_email, reviewId);
+
+        const review = db.prepare(`
+            SELECT r.*, p.name as project_name 
+            FROM reviews r
+            JOIN projects p ON r.project_id = p.id
+            WHERE r.id = ?
+        `).get(reviewId);
+
+        logActivity('project', review.project_id, 'review_approved', { reviewId, approvedBy: author_name });
+
+        createNotification(
+            'project',
+            'Review Approved',
+            `${author_name} approved ${review.project_name} (Version ${review.version})`,
+            `/projects/${review.project_id}`
+        );
+
+        // Also notify about project update if needed
+        createNotification(
+            'project',
+            'Project Updated',
+            `Review for ${review.project_name} has been approved.`,
+            `/projects/${review.project_id}`
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/reviews/:id/comments', (req, res) => {
+    try {
+        const comments = db.prepare('SELECT * FROM review_comments WHERE review_id = ? ORDER BY created_at ASC').all(req.params.id);
+        res.json(comments);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/reviews/:id/comments', (req, res) => {
+    const { page_number, x, y, width, height, type, content, created_by, parent_id } = req.body;
+    const reviewId = req.params.id;
+
+    try {
+        const result = db.prepare(`
+            INSERT INTO review_comments (review_id, page_number, x, y, width, height, type, content, created_by, parent_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(reviewId, page_number, x, y, width || null, height || null, type || 'comment', content, created_by || 'System', parent_id || null);
+
+        const newComment = db.prepare('SELECT * FROM review_comments WHERE id = ?').get(result.lastInsertRowid);
+        res.json(newComment);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/review-comments/:id', (req, res) => {
+    try {
+        db.prepare('DELETE FROM review_comments WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/reviews/comments/:id/resolve', (req, res) => {
+    const { resolved_by } = req.body;
+    try {
+        db.prepare(`
+            UPDATE review_comments 
+            SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP, resolved_by = ? 
+            WHERE id = ?
+        `).run(resolved_by || 'System', req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/reviews/comments/:id/convert-task', (req, res) => {
+    try {
+        const comment = db.prepare(`
+            SELECT rc.*, r.project_id 
+            FROM review_comments rc
+            JOIN reviews r ON rc.review_id = r.id
+            WHERE rc.id = ?
+        `).get(req.params.id);
+
+        if (!comment) return res.status(404).json({ error: 'Comment not found' });
+
+        const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM tasks WHERE project_id = ?').get(comment.project_id).max || 0;
+        const result = db.prepare(`
+            INSERT INTO tasks (project_id, title, description, status, due_date, priority, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            comment.project_id,
+            `Review Task: ${comment.content.substring(0, 50)}${comment.content.length > 50 ? '...' : ''}`,
+            comment.content,
+            'todo',
+            null,
+            'medium',
+            maxOrder + 1
+        );
+
+        // Mark comment as resolved when converted to task
+        db.prepare('UPDATE review_comments SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP, resolved_by = "System (Task Conversion)" WHERE id = ?').run(req.params.id);
+
+        res.json({ success: true, taskId: result.lastInsertRowid });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -1207,53 +1575,6 @@ app.get('/api/dashboard/stats', (req, res) => {
         const activeProjectCount = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status IN ('todo', 'in_progress', 'feedback')").get().count;
         const overdueProjectCount = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status IN ('todo', 'in_progress', 'feedback') AND deadline IS NOT NULL AND deadline < date('now')").get().count;
         const projectsByStatus = db.prepare("SELECT status, COUNT(*) as count FROM projects GROUP BY status").all();
-
-        // --- Reminders Check ---
-        const checkReminders = () => {
-            const checks = [];
-
-            // 1. Expiring Offers (in 3 days)
-            const expiringOffers = db.prepare(`
-                SELECT o.id, o.offer_name, c.company_name, o.due_date 
-                FROM offers o
-                JOIN customers c ON o.customer_id = c.id
-                WHERE o.status = 'sent' 
-                AND o.due_date = date('now', '+3 days')
-                `).all();
-
-            expiringOffers.forEach(off => {
-                const dedupKey = `reminder_expiring_${off.id}_${off.due_date} `;
-                createNotification(
-                    'warning',
-                    'Offer Expiring',
-                    `The offer "${off.offer_name}" for ${off.company_name} expires in 3 days.`,
-                    `/ offers / ${off.id} `,
-                    dedupKey
-                );
-            });
-
-            // 2. Overdue Projects
-            const overdueProjects = db.prepare(`
-                SELECT p.id, p.name, c.company_name, p.deadline
-                FROM projects p
-                JOIN customers c ON p.customer_id = c.id
-                WHERE p.status IN('todo', 'in_progress', 'feedback')
-                AND p.deadline < date('now')
-                `).all();
-
-            overdueProjects.forEach(proj => {
-                const dedupKey = `reminder_overdue_${proj.id}_${proj.deadline} `;
-                createNotification(
-                    'danger',
-                    'Project Overdue',
-                    `Project "${proj.name}" for ${proj.company_name} is overdue.`,
-                    `/ projects / ${proj.id} `,
-                    dedupKey
-                );
-            });
-
-            return { expiring: expiringOffers.length, overdue: overdueProjects.length };
-        };
 
         const reminderStats = checkReminders();
 
@@ -1717,4 +2038,10 @@ app.delete('/api/attachments/:id', (req, res) => {
 
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
+
+    // Initial reminder check
+    setTimeout(checkReminders, 5000);
+
+    // Daily reminder check (every 24 hours)
+    setInterval(checkReminders, 24 * 60 * 60 * 1000);
 });
