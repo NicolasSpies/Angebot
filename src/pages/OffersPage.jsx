@@ -11,6 +11,7 @@ import Card from '../components/ui/Card';
 import Table from '../components/ui/Table';
 import Skeleton from '../components/ui/Skeleton';
 import DropdownMenu from '../components/ui/DropdownMenu';
+import Select from '../components/ui/Select';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 import { formatDateDot } from '../utils/dateUtils';
 import ListPageHeader from '../components/layout/ListPageHeader';
@@ -118,29 +119,16 @@ const OffersPage = () => {
                     placeholder: "Search by name, customer or project..."
                 }}
                 filters={
-                    STATUS_OPTIONS.map(opt => {
-                        const isActive = statusFilter === opt.value;
-                        const statusColor = getStatusColor(opt.value);
-
-                        return (
-                            <button
-                                key={opt.value}
-                                onClick={() => setStatusFilter(opt.value)}
-                                className={`px-3 py-1.5 rounded-full text-[13px] font-bold transition-all border flex items-center gap-2 ${isActive
-                                    ? 'shadow-sm'
-                                    : 'bg-transparent border-transparent hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-main)]'
-                                    }`}
-                                style={isActive ? {
-                                    backgroundColor: statusColor.bg,
-                                    color: statusColor.text,
-                                    borderColor: statusColor.bg
-                                } : {}}
-                            >
-                                {isActive && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: statusColor.dot }} />}
-                                {opt.label}
-                            </button>
-                        );
-                    })
+                    <div className="flex items-center gap-3">
+                        <span className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider">Status Filter</span>
+                        <Select
+                            className="w-48"
+                            containerStyle={{ gap: 0 }}
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            options={STATUS_OPTIONS}
+                        />
+                    </div>
                 }
             />
 

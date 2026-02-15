@@ -6,6 +6,7 @@ import OfferLayout from '../components/offers/OfferLayout';
 import { AlertTriangle, ChevronLeft, Pencil, FileText } from 'lucide-react';
 import Button from '../components/ui/Button';
 import DeadlineIndicator from '../components/ui/DeadlineIndicator';
+import AttachmentSection from '../components/common/AttachmentSection';
 
 const OfferPreviewPage = () => {
     const { id } = useParams();
@@ -88,6 +89,10 @@ const OfferPreviewPage = () => {
 
             <div className="premium-document-shadow rounded-[var(--radius-lg)] overflow-hidden">
                 <OfferLayout offer={offer} settings={settings} />
+            </div>
+
+            <div className="mt-10 no-print">
+                <AttachmentSection entityType="offers" entityId={id} />
             </div>
         </div>
     );

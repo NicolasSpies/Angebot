@@ -6,7 +6,8 @@
     "services": "Leistungen",
     "projects": "Projekte",
     "settings": "Einstellungen",
-    "trash": "Papierkorb"
+    "trash": "Papierkorb",
+    "activity": "Aktivität"
   },
   "common": {
     "add": "Hinzufügen",

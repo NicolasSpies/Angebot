@@ -20,6 +20,7 @@ import Select from '../components/ui/Select';
 import Textarea from '../components/ui/Textarea';
 import Badge from '../components/ui/Badge';
 import StatusPill from '../components/ui/StatusPill';
+import AttachmentSection from '../components/common/AttachmentSection';
 
 const STATUS_OPTIONS = ['todo', 'in_progress', 'feedback', 'done', 'cancelled'];
 const STATUS_LABELS = {
@@ -543,6 +544,8 @@ const ProjectDetailPage = () => {
                         )}
                     </Card>
 
+                    {/* Attachments Section */}
+                    <AttachmentSection entityType="projects" entityId={id} />
                 </div>
             </div>
 

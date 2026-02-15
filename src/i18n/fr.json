@@ -3,9 +3,11 @@
         "dashboard": "Tableau de Bord",
         "offers": "Offres",
         "customers": "Clients",
-        "services": "Leistungen",
-        "projects": "Projekte",
-        "settings": "Paramètres"
+        "services": "Prestations",
+        "projects": "Projets",
+        "settings": "Paramètres",
+        "trash": "Corbeille",
+        "activity": "Activité"
     },
     "common": {
         "add": "Ajouter",

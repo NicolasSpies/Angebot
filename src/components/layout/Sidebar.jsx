@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useI18n } from '../../i18n/I18nContext';
-import { LayoutDashboard, FileText, Briefcase, Users, Zap, Settings, Command, Trash2, Activity } from 'lucide-react';
+import { LayoutDashboard, FileText, Briefcase, Users, Zap, Settings, Command, Trash2, Activity, ShieldCheck } from 'lucide-react';
 
 const Sidebar = () => {
     const { t } = useI18n();
@@ -16,6 +16,7 @@ const Sidebar = () => {
     ];
 
     const systemItems = [
+        { to: "/settings/audit", icon: ShieldCheck, label: 'Audit Mode' },
         { to: "/trash", icon: Trash2, label: t('nav.trash') || 'Trash' },
         { to: "/settings", icon: Settings, label: t('nav.settings') },
     ];

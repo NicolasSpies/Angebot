@@ -1,8 +1,81 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronDown } from 'lucide-react';
 
-const Select = ({ label, options, error, className = '', containerStyle = {}, ...props }) => {
-    // Ensure value is never null for controlled select
-    const selectValue = props.value === null ? '' : props.value;
+const Select = ({ label, options = [], value, onChange, error, className = '', containerStyle = {}, placeholder = 'Select option...', ...props }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [activeIndex, setActiveIndex] = useState(-1);
+    const triggerRef = useRef(null);
+    const menuRef = useRef(null);
+
+    const selectedOption = options.find(opt => opt.value === value);
+
+    useEffect(() => {
+        const handleScroll = () => { if (isOpen) setIsOpen(false); };
+        const handleResize = () => { if (isOpen) setIsOpen(false); };
+        window.addEventListener('scroll', handleScroll, true);
+        window.addEventListener('resize', handleResize);
+        return () => {
+            window.removeEventListener('scroll', handleScroll, true);
+            window.removeEventListener('resize', handleResize);
+        };
+    }, [isOpen]);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (
+                triggerRef.current && !triggerRef.current.contains(event.target) &&
+                menuRef.current && !menuRef.current.contains(event.target)
+            ) {
+                setIsOpen(false);
+            }
+        };
+        if (isOpen) document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isOpen]);
+
+    const handleKeyDown = (e) => {
+        if (!isOpen) {
+            if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                setIsOpen(true);
+            }
+            return;
+        }
+
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                setActiveIndex(prev => (prev < options.length - 1 ? prev + 1 : prev));
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                setActiveIndex(prev => (prev > 0 ? prev - 1 : 0));
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (activeIndex >= 0 && activeIndex < options.length) {
+                    onChange({ target: { value: options[activeIndex].value, name: props.name } });
+                    setIsOpen(false);
+                }
+                break;
+            case 'Escape':
+                setIsOpen(false);
+                break;
+            case 'Tab':
+                setIsOpen(false);
+                break;
+            default:
+                break;
+        }
+    };
+
+    useEffect(() => {
+        if (isOpen) {
+            const initialIndex = options.findIndex(opt => opt.value === value);
+            setActiveIndex(initialIndex >= 0 ? initialIndex : 0);
+        }
+    }, [isOpen, options, value]);
 
     return (
         <div className={`flex flex-col gap-1.5 ${className}`} style={containerStyle}>
@@ -11,21 +84,62 @@ const Select = ({ label, options, error, className = '', containerStyle = {}, ..
                     {label}
                 </label>
             )}
-            <div className="relative group">
-                <select
-                    {...props}
-                    value={selectValue}
-                    className={`w-full px-3 py-2.5 pr-8 text-[14px] font-medium bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-[var(--radius-md)] shadow-[var(--shadow-sm)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/10 focus:border-[var(--primary)] transition-all cursor-pointer appearance-none ${error ? '!border-[var(--danger)]' : ''}`}
+            <div className="relative">
+                <div
+                    ref={triggerRef}
+                    tabIndex={0}
+                    onClick={() => setIsOpen(!isOpen)}
+                    onKeyDown={handleKeyDown}
+                    className={`w-full h-[42px] px-3 flex items-center justify-between text-[14px] font-medium bg-[var(--bg-surface)] border rounded-[var(--radius-md)] shadow-[var(--shadow-sm)] outline-none transition-all cursor-pointer select-none
+                        ${isOpen ? 'border-[var(--primary)] ring-2 ring-[var(--primary)]/10' : 'border-[var(--border-subtle)] hover:border-[var(--border-medium)]'}
+                        ${error ? '!border-[var(--danger)] focus:ring-[var(--danger)]/10' : ''}
+                        ${props.disabled ? 'opacity-50 cursor-not-allowed bg-[var(--bg-app)]' : ''}
+                    `}
                 >
-                    {options.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                        </option>
-                    ))}
-                </select>
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-muted)] group-hover:text-[var(--text-main)] transition-colors">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                    <span className={selectedOption ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)]'}>
+                        {selectedOption ? selectedOption.label : placeholder}
+                    </span>
+                    <ChevronDown
+                        size={16}
+                        className={`text-[var(--text-muted)] transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                    />
                 </div>
+
+                {isOpen && !props.disabled && createPortal(
+                    <div
+                        ref={menuRef}
+                        className="fixed z-[var(--z-popover)] bg-[var(--bg-surface)] border border-[var(--border-medium)] rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-1.5 space-y-0.5"
+                        style={{
+                            top: triggerRef.current ? triggerRef.current.getBoundingClientRect().bottom + 4 : 0,
+                            left: triggerRef.current ? triggerRef.current.getBoundingClientRect().left : 0,
+                            width: triggerRef.current ? triggerRef.current.getBoundingClientRect().width : 'auto',
+                            maxHeight: '300px',
+                            overflowY: 'auto'
+                        }}
+                    >
+                        {options.map((opt, index) => (
+                            <div
+                                key={opt.value}
+                                onClick={() => {
+                                    onChange({ target: { value: opt.value, name: props.name } });
+                                    setIsOpen(false);
+                                }}
+                                onMouseEnter={() => setActiveIndex(index)}
+                                className={`px-3 py-2 text-[14px] font-medium rounded-[var(--radius-md)] cursor-pointer transition-colors
+                                    ${value === opt.value ? 'bg-[var(--primary)] text-white' : index === activeIndex ? 'bg-[var(--bg-app)] text-[var(--text-main)]' : 'text-[var(--text-main)]'}
+                                `}
+                            >
+                                {opt.label}
+                            </div>
+                        ))}
+                        {options.length === 0 && (
+                            <div className="px-3 py-4 text-[13px] text-[var(--text-muted)] text-center">
+                                No options available
+                            </div>
+                        )}
+                    </div>,
+                    document.body
+                )}
             </div>
             {error && <p className="text-[var(--danger)] text-[11px] font-medium mt-1 ml-1">{error}</p>}
         </div>

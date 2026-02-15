@@ -78,9 +78,9 @@ const CustomersPage = () => {
                 }}
             />
 
-            <Table headers={['Customer Name', 'Location', 'VAT ID', 'Actions']}>
+            <Table headers={['Customer Name', 'Location', 'VAT ID', 'Health', 'Actions']}>
                 {isLoading ? (
-                    <tr><td colSpan="4" className="py-20 text-center text-[var(--text-muted)]">Loading customers...</td></tr>
+                    <tr><td colSpan="5" className="py-20 text-center text-[var(--text-muted)]">Loading customers...</td></tr>
                 ) : filteredCustomers.length > 0 ? (
                     filteredCustomers.map(customer => (
                         <tr key={customer.id} className="hover:bg-[var(--bg-app)] transition-colors group border-b border-[var(--border-subtle)] last:border-0 text-left align-middle h-14">
@@ -107,6 +107,32 @@ const CustomersPage = () => {
                                 </span>
                             </td>
                             <td className="py-3 px-6">
+                                {customer.health === 'stable' && (
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-50 text-green-700 border border-green-100 uppercase tracking-tight">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                                        Stable
+                                    </span>
+                                )}
+                                {customer.health === 'overdue' && (
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-700 border border-red-100 uppercase tracking-tight">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                                        Overdue
+                                    </span>
+                                )}
+                                {customer.health === 'risk' && (
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-100 uppercase tracking-tight">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                        Risk
+                                    </span>
+                                )}
+                                {customer.health === 'inactive' && (
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-gray-50 text-gray-500 border border-gray-100 uppercase tracking-tight">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                                        Inactive
+                                    </span>
+                                )}
+                            </td>
+                            <td className="py-3 px-6">
                                 <div className="flex justify-end pr-2">
                                     <Button variant="ghost" size="sm" onClick={() => handleEdit(customer)} className="text-[var(--primary)] font-bold hover:bg-[var(--bg-app)]">
                                         Manage
@@ -117,7 +143,7 @@ const CustomersPage = () => {
                     ))
                 ) : (
                     <tr>
-                        <td colSpan={4}>
+                        <td colSpan={5}>
                             <EmptyState
                                 icon={User}
                                 title="No customers found"

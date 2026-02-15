@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useI18n } from '../../i18n/I18nContext';
 import { dataService } from '../../data/dataService';
+import Select from '../ui/Select';
 
 const ServiceForm = ({ initialData, onSave, onCancel }) => {
     const { t } = useI18n();
@@ -87,14 +88,13 @@ const ServiceForm = ({ initialData, onSave, onCancel }) => {
 
     return (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Category</label>
-                <select name="category" value={formData.category} onChange={handleChange} style={{ width: '100%' }}>
-                    {categories.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                </select>
-            </div>
+            <Select
+                label="Category"
+                name="category"
+                value={formData.category}
+                onChange={handleChange}
+                options={categories.map(cat => ({ value: cat, label: cat }))}
+            />
 
             <div className="grid grid-2">
                 <div>
@@ -121,20 +121,26 @@ const ServiceForm = ({ initialData, onSave, onCancel }) => {
                     <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Price (€)</label>
                     <input type="number" name="price" value={formData.price} onChange={handleChange} style={{ width: '100%' }} required />
                 </div>
-                <div>
-                    <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Unit</label>
-                    <select name="unit_type" value={formData.unit_type} onChange={handleChange} style={{ width: '100%' }}>
-                        <option value="flat">Flat Fee</option>
-                        <option value="hourly">Hourly</option>
-                    </select>
-                </div>
-                <div>
-                    <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Billing Cycle</label>
-                    <select name="billing_cycle" value={formData.billing_cycle || 'one_time'} onChange={handleChange} style={{ width: '100%' }}>
-                        <option value="one_time">One-time</option>
-                        <option value="yearly">Yearly</option>
-                    </select>
-                </div>
+                <Select
+                    label="Unit"
+                    name="unit_type"
+                    value={formData.unit_type}
+                    onChange={handleChange}
+                    options={[
+                        { value: 'flat', label: 'Flat Fee' },
+                        { value: 'hourly', label: 'Hourly' }
+                    ]}
+                />
+                <Select
+                    label="Billing Cycle"
+                    name="billing_cycle"
+                    value={formData.billing_cycle || 'one_time'}
+                    onChange={handleChange}
+                    options={[
+                        { value: 'one_time', label: 'One-time' },
+                        { value: 'yearly', label: 'Yearly' }
+                    ]}
+                />
             </div>
 
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', marginTop: '1rem' }}>
@@ -249,25 +255,23 @@ const ServiceForm = ({ initialData, onSave, onCancel }) => {
                                         style={{ width: '100%' }}
                                     />
                                 </div>
-                                <div>
-                                    <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Billing Cycle</label>
-                                    <select
-                                        value={variant.billing_cycle || 'one_time'}
-                                        onChange={e => {
-                                            const val = e.target.value;
-                                            setFormData(prev => {
-                                                const newVariants = [...prev.variants];
-                                                newVariants[index] = { ...newVariants[index], billing_cycle: val };
-                                                return { ...prev, variants: newVariants };
-                                            });
-                                        }}
-                                        style={{ width: '100%' }}
-                                    >
-                                        <option value="one_time">One-time</option>
-                                        <option value="yearly">Yearly</option>
-                                        <option value="monthly">Monthly</option>
-                                    </select>
-                                </div>
+                                <Select
+                                    label="Billing Cycle"
+                                    value={variant.billing_cycle || 'one_time'}
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        setFormData(prev => {
+                                            const newVariants = [...prev.variants];
+                                            newVariants[index] = { ...newVariants[index], billing_cycle: val };
+                                            return { ...prev, variants: newVariants };
+                                        });
+                                    }}
+                                    options={[
+                                        { value: 'one_time', label: 'One-time' },
+                                        { value: 'yearly', label: 'Yearly' },
+                                        { value: 'monthly', label: 'Monthly' }
+                                    ]}
+                                />
                             </div>
 
                             <div style={{ display: 'flex', gap: '1rem' }}>

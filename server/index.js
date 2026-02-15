@@ -44,8 +44,7 @@ function logActivity(entityType, entityId, action, metadata = {}) {
 }
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use(express.json({ limit: '50mb' }));
 
 // --- ACTIVITY API ---
 app.get('/api/activities', (req, res) => {
@@ -208,7 +207,13 @@ app.post('/api/upload', upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'f
         return res.status(400).json({ error: 'No file uploaded' });
     }
     const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
-    res.json({ url: fileUrl });
+    res.json({
+        url: fileUrl,
+        filePath: `/uploads/${file.filename}`,
+        fileName: file.originalname,
+        fileSize: file.size,
+        fileType: file.mimetype
+    });
 });
 
 // --- SETTINGS ---
@@ -344,16 +349,50 @@ app.delete('/api/services/:id', (req, res) => {
 
 // --- CUSTOMERS ---
 app.get('/api/customers', (req, res) => {
-    const customers = db.prepare('SELECT * FROM customers WHERE deleted_at IS NULL').all();
-    res.json(customers);
+    try {
+        const customers = db.prepare("SELECT * FROM customers WHERE archived_at IS NULL AND deleted_at IS NULL ORDER BY company_name ASC").all();
+
+        // Enrich with health status
+        const enrichedCustomers = customers.map(c => {
+            const overdueCount = db.prepare(`
+                SELECT COUNT(*) as count FROM projects 
+                WHERE customer_id = ? AND status IN ('todo', 'in_progress', 'feedback') 
+                AND deadline IS NOT NULL AND deadline < date('now')
+            `).get(c.id).count;
+
+            const lastSigned = db.prepare(`
+                SELECT MAX(signed_at) as last FROM offers 
+                WHERE customer_id = ? AND status = 'signed'
+            `).get(c.id).last;
+
+            let health = 'stable';
+            if (overdueCount > 0) {
+                health = 'overdue';
+            } else if (!lastSigned) {
+                health = 'inactive';
+            } else {
+                const sixMonthsAgo = new Date();
+                sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+                if (new Date(lastSigned) < sixMonthsAgo) {
+                    health = 'risk';
+                }
+            }
+
+            return { ...c, health };
+        });
+
+        res.json(enrichedCustomers);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.post('/api/customers', (req, res) => {
     const { company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number } = req.body;
     const result = db.prepare(`
-        INSERT INTO customers (company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number);
+        INSERT INTO customers (company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number, created_by, updated_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number, 'System', 'System');
     logActivity('customer', result.lastInsertRowid, 'created', { name: company_name || `${first_name} ${last_name}` });
     res.json({ id: result.lastInsertRowid });
 });
@@ -361,9 +400,9 @@ app.post('/api/customers', (req, res) => {
 app.put('/api/customers/:id', (req, res) => {
     const { company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number } = req.body;
     db.prepare(`
-        UPDATE customers SET company_name = ?, first_name = ?, last_name = ?, email = ?, phone = ?, address = ?, city = ?, postal_code = ?, language = ?, country = ?, vat_number = ?
+        UPDATE customers SET company_name = ?, first_name = ?, last_name = ?, email = ?, phone = ?, address = ?, city = ?, postal_code = ?, language = ?, country = ?, vat_number = ?, updated_by = ?
         WHERE id = ?
-    `).run(company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number, req.params.id);
+    `).run(company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number, 'System', req.params.id);
     res.json({ success: true });
 });
 
@@ -430,13 +469,16 @@ app.get('/api/customers/:id/dashboard', (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
 // --- OFFERS ---
+
+
 app.get('/api/offers', (req, res) => {
     const offers = db.prepare(`
         SELECT o.*, c.company_name as customer_name 
         FROM offers o 
         LEFT JOIN customers c ON o.customer_id = c.id
-        WHERE o.deleted_at IS NULL
+        WHERE o.archived_at IS NULL AND o.deleted_at IS NULL
         ORDER BY o.created_at DESC
     `).all();
     res.json(offers);
@@ -646,11 +688,10 @@ app.post('/api/offers', (req, res) => {
     const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date, internal_notes, strategic_notes, linked_project_id } = req.body;
 
     const transaction = db.transaction(() => {
-        const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
         const offerResult = db.prepare(`
-            INSERT INTO offers (customer_id, offer_name, language, status, subtotal, vat, total, token, due_date, internal_notes, strategic_notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(customer_id, offer_name, language, status || 'draft', subtotal, vat, total, token, due_date, internal_notes || null, strategic_notes || null);
+            INSERT INTO offers (customer_id, offer_name, language, status, subtotal, vat, total, token, due_date, internal_notes, strategic_notes, created_by, updated_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(customer_id, offer_name, language, status || 'draft', subtotal, vat, total, token, due_date, internal_notes || null, strategic_notes || null, 'System', 'System');
 
         const offerId = offerResult.lastInsertRowid;
 
@@ -700,23 +741,56 @@ app.post('/api/offers', (req, res) => {
 
 app.put('/api/offers/:id', (req, res) => {
     const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date, internal_notes, strategic_notes } = req.body;
-    const offerId = req.params.id;
+    let offerId = req.params.id;
+
+    // Versioning logic: if offer is already 'sent' or 'signed', creating a new update should forge a new version record
+    const currentOffer = db.prepare('SELECT status, version_number, parent_id, token FROM offers WHERE id = ?').get(offerId);
 
     const transaction = db.transaction(() => {
-        db.prepare(`
-            UPDATE offers SET 
-                customer_id = ?, offer_name = ?, language = ?, status = ?, 
-                subtotal = ?, vat = ?, total = ?, due_date = ?, internal_notes = ?, strategic_notes = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        `).run(customer_id, offer_name, language, status, subtotal, vat, total, due_date, internal_notes || null, strategic_notes || null, offerId);
+        if (currentOffer && (currentOffer.status === 'sent' || currentOffer.status === 'signed')) {
+            // Create a new version
+            const newVersionNumber = (currentOffer.version_number || 1) + 1;
+            const parentId = currentOffer.parent_id || offerId;
+            const newToken = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
 
-        // Replace items
+            const result = db.prepare(`
+                    INSERT INTO offers (
+                        customer_id, offer_name, language, status, 
+                        subtotal, vat, total, due_date, internal_notes, strategic_notes,
+                        parent_id, version_number, token, created_by, updated_by
+                    ) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).run(customer_id, offer_name, language, subtotal, vat, total, due_date, internal_notes || null, strategic_notes || null, parentId, newVersionNumber, newToken, 'System', 'System');
+
+            offerId = result.lastInsertRowid;
+
+            logActivity('offer', offerId, 'version_created', {
+                parentId,
+                versionNumber: newVersionNumber,
+                name: offer_name
+            });
+        } else {
+            // Normal update
+            db.prepare(`
+                UPDATE offers SET 
+                    customer_id = ?, offer_name = ?, language = ?, status = ?, 
+                    subtotal = ?, vat = ?, total = ?, due_date = ?, internal_notes = ?, strategic_notes = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
+                WHERE id = ?
+            `).run(customer_id, offer_name, language, status, subtotal, vat, total, due_date, internal_notes || null, strategic_notes || null, 'System', offerId);
+
+            logActivity('offer', offerId, 'updated', {
+                status,
+                total,
+                linkedProject: strategic_notes ? 'synced' : 'none'
+            });
+        }
+
+        // Replace items for the (potentially new) offerId
         db.prepare('DELETE FROM offer_items WHERE offer_id = ?').run(offerId);
 
         const insertItem = db.prepare(`
-            INSERT INTO offer_items (offer_id, service_id, quantity, unit_price, total_price, billing_cycle, item_name, item_description)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `);
+            INSERT INTO offer_items(offer_id, service_id, quantity, unit_price, total_price, billing_cycle, item_name, item_description)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                `);
 
         for (const item of items) {
             insertItem.run(
@@ -733,22 +807,15 @@ app.put('/api/offers/:id', (req, res) => {
 
         // Smart Sync
         syncProjectWithOffer(offerId, status, offer_name, due_date, strategic_notes, customer_id);
-
-        logActivity('offer', offerId, 'updated', {
-            status,
-            total,
-            linkedProject: strategic_notes ? 'synced' : 'none'
-        });
     });
 
     try {
         transaction();
-        res.json({ success: true });
+        res.json({ success: true, id: offerId }); // Return the (potentially new) ID
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
-
 
 
 app.post('/api/offers/:id/send', (req, res) => {
@@ -764,7 +831,7 @@ app.post('/api/offers/:id/send', (req, res) => {
         db.prepare(`
             UPDATE offers SET status = 'sent', sent_at = CURRENT_TIMESTAMP 
             WHERE id = ?
-        `).run(offerId);
+                `).run(offerId);
 
         // Smart Sync
         syncProjectWithOffer(offerId, 'sent', offerCheck.offer_name, offerCheck.due_date, offerCheck.strategic_notes, offerCheck.customer_id);
@@ -810,7 +877,7 @@ app.put('/api/offers/:id/status', (req, res) => {
 
                 // Only notify on signed status (meaningful trigger)
                 if (status === 'signed') {
-                    createNotification('offer', 'Offer Signed! ✍️', `Offer "${offer.offer_name}" has been signed.`, `/projects`, `offer_signed_${offerId}`);
+                    createNotification('offer', 'Offer Signed! ✍️', `Offer "${offer.offer_name}" has been signed.`, '/projects', `offer_signed_${offerId}`);
                 }
 
                 if (offer.status !== status) {
@@ -830,8 +897,8 @@ app.post('/api/projects', (req, res) => {
     try {
         // Insert project
         const result = db.prepare(`
-            INSERT INTO projects (customer_id, name, status, deadline, internal_notes, priority, strategic_notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO projects (customer_id, name, status, deadline, internal_notes, priority, strategic_notes, created_by, updated_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
             customer_id || null,
             name || 'New Project',
@@ -839,7 +906,9 @@ app.post('/api/projects', (req, res) => {
             deadline || null,
             internal_notes || null,
             priority || 'medium',
-            strategic_notes || null
+            strategic_notes || null,
+            'System',
+            'System'
         );
 
         // Log creation event
@@ -859,7 +928,7 @@ app.get('/api/projects', (req, res) => {
             FROM projects p
             LEFT JOIN customers c ON p.customer_id = c.id
             LEFT JOIN offers o ON p.offer_id = o.id
-            WHERE p.deleted_at IS NULL
+            WHERE p.archived_at IS NULL AND p.deleted_at IS NULL
             ORDER BY p.created_at DESC
         `).all();
         res.json(projects);
@@ -876,7 +945,7 @@ app.get('/api/projects/:id', (req, res) => {
             LEFT JOIN customers c ON p.customer_id = c.id
             LEFT JOIN offers o ON p.offer_id = o.id
             WHERE p.id = ? AND p.deleted_at IS NULL
-        `).get(req.params.id);
+                `).get(req.params.id);
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
         const tasks = db.prepare('SELECT * FROM tasks WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC').all(req.params.id);
@@ -905,8 +974,8 @@ app.put('/api/projects/:id', (req, res) => {
 
         db.transaction(() => {
             db.prepare(`
-                UPDATE projects SET name = ?, status = ?, deadline = ?, internal_notes = ?, customer_id = ?, offer_id = ?, priority = ?, strategic_notes = ? WHERE id = ?
-            `).run(name, status, deadline || null, internal_notes || null, customer_id || null, offer_id || null, priority || 'medium', strategic_notes || null, projectId);
+                UPDATE projects SET name = ?, status = ?, deadline = ?, internal_notes = ?, customer_id = ?, offer_id = ?, priority = ?, strategic_notes = ?, updated_by = ? WHERE id = ?
+            `).run(name, status, deadline || null, internal_notes || null, customer_id || null, offer_id || null, priority || 'medium', strategic_notes || null, 'System', projectId);
 
             // Sync Offer Name if Project Name changed and Offer Name matches previous Project Name (heuristic for manual edits)
             if (name && name !== currentProject.name && currentProject.offer_id) {
@@ -918,13 +987,13 @@ app.put('/api/projects/:id', (req, res) => {
 
             // Log events for changes
             if (status && status !== currentProject.status) {
-                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'status_change', `Status changed from ${currentProject.status} to ${status}`);
+                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'status_change', `Status changed from ${currentProject.status} to ${status} `);
             }
             if (deadline && deadline !== currentProject.deadline) {
-                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'deadline_update', `Deadline updated to ${deadline}`);
+                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'deadline_update', `Deadline updated to ${deadline} `);
             }
             if (priority && priority !== currentProject.priority) {
-                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'priority_change', `Priority updated to ${priority}`);
+                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'priority_change', `Priority updated to ${priority} `);
             }
             if (strategic_notes && strategic_notes !== currentProject.strategic_notes) {
                 db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'notes_update', `Strategic notes updated`);
@@ -1027,9 +1096,9 @@ app.put('/api/projects/:id/tasks/reorder', (req, res) => {
 app.get('/api/dashboard/stats', (req, res) => {
     try {
         // Basic stats
-        const draftCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'draft'").get().count;
-        const pendingCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'sent'").get().count;
-        const signedCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'signed'").get().count;
+        const draftCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'draft' AND archived_at IS NULL AND deleted_at IS NULL").get().count;
+        const pendingCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'sent' AND archived_at IS NULL AND deleted_at IS NULL").get().count;
+        const signedCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'signed' AND archived_at IS NULL AND deleted_at IS NULL").get().count;
 
         // Financials
         const totalOpenValue = db.prepare("SELECT SUM(total) as sum FROM offers WHERE status IN ('draft', 'sent')").get().sum || 0;
@@ -1042,7 +1111,7 @@ app.get('/api/dashboard/stats', (req, res) => {
             JOIN offers o ON oi.offer_id = o.id
             JOIN services s ON oi.service_id = s.id
             WHERE o.status = 'signed'
-        `).get().cost || 0;
+                `).get().cost || 0;
         const signedRevenue = db.prepare("SELECT SUM(subtotal) as sum FROM offers WHERE status = 'signed'").get().sum || 0;
         const profitEstimate = signedRevenue - signedCost;
 
@@ -1054,15 +1123,18 @@ app.get('/api/dashboard/stats', (req, res) => {
             GROUP BY month
             ORDER BY month DESC
             LIMIT 6
-        `).all().map(row => ({
+                `).all().map(row => ({
             ...row,
             month: row.month || 'Unknown'
         })).reverse();
 
         // Month specific metrics
         const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-        const signedThisMonthCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'signed' AND signed_at >= ?").get(startOfMonth).count;
-        const avgOfferValueMonth = db.prepare("SELECT AVG(total) as avg FROM offers WHERE created_at >= ?").get(startOfMonth).avg || 0;
+        const signedThisMonthCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'signed' AND signed_at >= ? AND archived_at IS NULL").get(startOfMonth).count;
+        const revenueThisMonth = db.prepare("SELECT SUM(total) as sum FROM offers WHERE status = 'signed' AND signed_at >= ? AND archived_at IS NULL").get(startOfMonth).sum || 0;
+        const projectsInProgress = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status = 'in_progress' AND archived_at IS NULL").get().count;
+        const overdueProjects = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status != 'done' AND deadline < date('now') AND archived_at IS NULL").get().count;
+        const avgOfferValueMonth = db.prepare("SELECT AVG(total) as avg FROM offers WHERE created_at >= ? AND archived_at IS NULL").get(startOfMonth).avg || 0;
 
         // Avg Monthly Income
         // Calculate months since first signed offer or use 1 if none/recent
@@ -1085,7 +1157,7 @@ app.get('/api/dashboard/stats', (req, res) => {
             AND o.due_date <= date('now', '+7 days')
             ORDER BY o.due_date ASC
             LIMIT 5
-        `).all();
+                `).all();
         const expiringSoonCount = expiringOffers.length;
 
         // Top categories
@@ -1098,21 +1170,21 @@ app.get('/api/dashboard/stats', (req, res) => {
             GROUP BY s.category
             ORDER BY revenue DESC
             LIMIT 5
-        `).all();
+                `).all();
 
         // Lead time
         const avgLeadTimeRaw = db.prepare(`
             SELECT AVG(julianday(signed_at) - julianday(created_at)) as avg_days
             FROM offers
             WHERE status = 'signed' AND signed_at IS NOT NULL
-        `).get().avg_days;
+                `).get().avg_days;
         const avgLeadTime = avgLeadTimeRaw || 0;
 
         // Old drafts
         const oldDraftsCount = db.prepare(`
             SELECT COUNT(*) as count FROM offers
             WHERE status = 'draft' AND created_at <= date('now', '-3 days')
-        `).get().count;
+                `).get().count;
 
         // Top clients
         const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
@@ -1121,10 +1193,10 @@ app.get('/api/dashboard/stats', (req, res) => {
             FROM offers o
             JOIN customers c ON o.customer_id = c.id
             WHERE o.status = 'signed' AND o.signed_at >= ?
-            GROUP BY c.id
+                GROUP BY c.id
             ORDER BY revenue DESC
             LIMIT 5
-        `).all(startOfYear);
+                `).all(startOfYear);
 
         const recentActivity = db.prepare('SELECT * FROM global_activities ORDER BY created_at DESC LIMIT 10').all().map(a => ({
             ...a,
@@ -1136,9 +1208,92 @@ app.get('/api/dashboard/stats', (req, res) => {
         const overdueProjectCount = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status IN ('todo', 'in_progress', 'feedback') AND deadline IS NOT NULL AND deadline < date('now')").get().count;
         const projectsByStatus = db.prepare("SELECT status, COUNT(*) as count FROM projects GROUP BY status").all();
 
+        // --- Reminders Check ---
+        const checkReminders = () => {
+            const checks = [];
+
+            // 1. Expiring Offers (in 3 days)
+            const expiringOffers = db.prepare(`
+                SELECT o.id, o.offer_name, c.company_name, o.due_date 
+                FROM offers o
+                JOIN customers c ON o.customer_id = c.id
+                WHERE o.status = 'sent' 
+                AND o.due_date = date('now', '+3 days')
+                `).all();
+
+            expiringOffers.forEach(off => {
+                const dedupKey = `reminder_expiring_${off.id}_${off.due_date} `;
+                createNotification(
+                    'warning',
+                    'Offer Expiring',
+                    `The offer "${off.offer_name}" for ${off.company_name} expires in 3 days.`,
+                    `/ offers / ${off.id} `,
+                    dedupKey
+                );
+            });
+
+            // 2. Overdue Projects
+            const overdueProjects = db.prepare(`
+                SELECT p.id, p.name, c.company_name, p.deadline
+                FROM projects p
+                JOIN customers c ON p.customer_id = c.id
+                WHERE p.status IN('todo', 'in_progress', 'feedback')
+                AND p.deadline < date('now')
+                `).all();
+
+            overdueProjects.forEach(proj => {
+                const dedupKey = `reminder_overdue_${proj.id}_${proj.deadline} `;
+                createNotification(
+                    'danger',
+                    'Project Overdue',
+                    `Project "${proj.name}" for ${proj.company_name} is overdue.`,
+                    `/ projects / ${proj.id} `,
+                    dedupKey
+                );
+            });
+
+            return { expiring: expiringOffers.length, overdue: overdueProjects.length };
+        };
+
+        const reminderStats = checkReminders();
+
+        // --- Smart KPIs ---
+
+        // 1. Month-over-Month Revenue Growth
+        const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+        const lastMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString();
+        const lastMonthEnd = currentMonthStart; // approximate
+
+        const currentMonthRevenue = db.prepare("SELECT SUM(total) as total FROM offers WHERE status = 'signed' AND signed_at >= ?").get(currentMonthStart).total || 0;
+        const lastMonthRevenue = db.prepare("SELECT SUM(total) as total FROM offers WHERE status = 'signed' AND signed_at >= ? AND signed_at < ?").get(lastMonthStart, lastMonthEnd).total || 0;
+
+        let momGrowth = 0;
+        if (lastMonthRevenue > 0) {
+            momGrowth = ((currentMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100;
+        } else if (currentMonthRevenue > 0) {
+            momGrowth = 100; // 100% growth if started from 0
+        }
+
+        // 2. Win Rate (Last 90 Days)
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+        const winRateStats = db.prepare(`
+            SELECT
+            COUNT(*) as total,
+                SUM(CASE WHEN status = 'signed' THEN 1 ELSE 0 END) as signed
+            FROM offers 
+            WHERE status IN('signed', 'declined')
+            AND(signed_at >= ? OR date(updated_at) >= ?)
+                `).get(ninetyDaysAgo.toISOString(), ninetyDaysAgo.toISOString());
+
+        const winRate = winRateStats.total > 0 ? Math.round((winRateStats.signed / winRateStats.total) * 100) : 0;
+
+        // 3. Average Deal Size (All time for stability, or last 12 months)
+        const avgDealSize = db.prepare("SELECT AVG(total) as avg FROM offers WHERE status = 'signed'").get().avg || 0;
+
         res.json({
-            summary: { draftCount, pendingCount, signedCount },
-            financials: { totalOpenValue, forecastPending, profitEstimate, signedRevenue },
+            summary: { draftCount, pendingCount, signedCount, winRate, avgDealSize },
+            financials: { totalOpenValue, forecastPending, profitEstimate, signedRevenue, momGrowth },
             performance: { monthlyPerformance, avgOfferValueMonth, signedThisMonthCount, avgMonthlyIncome },
             alerts: { expiringSoonCount, oldDraftsCount, expiringOffers },
             analytics: { topCategories, topClients, recentActivity },
@@ -1199,14 +1354,17 @@ app.get('/api/packages', (req, res) => {
     }
 });
 
+// --- FILE UPLOADS ---
+// (Already defined above)
+
 app.post('/api/packages', (req, res) => {
     console.log('POST /api/packages payload:', req.body);
     const { name, description, items, discount_type, discount_value } = req.body;
     try {
         const transaction = db.transaction(() => {
             const result = db.prepare(`
-                INSERT INTO packages (name, description, discount_type, discount_value)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO packages(name, description, discount_type, discount_value)
+            VALUES(?, ?, ?, ?)
             `).run(name, description || '', discount_type || 'percent', discount_value || 0);
 
             const packageId = result.lastInsertRowid;
@@ -1266,6 +1424,138 @@ app.delete('/api/packages/:id', (req, res) => {
     }
 });
 
+// --- ARCHIVING ---
+app.post('/api/:resource/:id/archive', (req, res) => {
+    const { resource, id } = req.params;
+    const validResources = ['offers', 'projects', 'customers', 'services', 'packages'];
+    if (!validResources.includes(resource)) return res.status(400).json({ error: 'Invalid resource' });
+
+    try {
+        db.prepare(`UPDATE ${resource} SET archived_at = CURRENT_TIMESTAMP WHERE id = ? `).run(id);
+        logActivity(resource.slice(0, -1), id, 'archived', {});
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/:resource/:id/restore', (req, res) => {
+    const { resource, id } = req.params;
+    const validResources = ['offers', 'projects', 'customers', 'services', 'packages'];
+    if (!validResources.includes(resource)) return res.status(400).json({ error: 'Invalid resource' });
+
+    try {
+        db.prepare(`UPDATE ${resource} SET archived_at = NULL WHERE id = ? `).run(id);
+        logActivity(resource.slice(0, -1), id, 'restored', {});
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/archive', (req, res) => {
+    try {
+        const customers = db.prepare("SELECT 'customers' as type, id, company_name as name, archived_at as date FROM customers WHERE archived_at IS NOT NULL AND deleted_at IS NULL").all();
+        const offers = db.prepare("SELECT 'offers' as type, id, offer_name as name, archived_at as date FROM offers WHERE archived_at IS NOT NULL AND deleted_at IS NULL").all();
+        const projects = db.prepare("SELECT 'projects' as type, id, name, archived_at as date FROM projects WHERE archived_at IS NOT NULL AND deleted_at IS NULL").all();
+        const services = db.prepare("SELECT 'services' as type, id, name_de as name, archived_at as date FROM services WHERE archived_at IS NOT NULL AND deleted_at IS NULL").all();
+
+        const combined = [...customers, ...offers, ...projects, ...services]
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        res.json(combined);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- AUDIT ---
+app.get('/api/audit/checks', (req, res) => {
+    try {
+        const issues = [];
+
+        // Offers without linked project
+        const offersNoProject = db.prepare(`
+            SELECT o.id, o.offer_name, o.status 
+            FROM offers o 
+            LEFT JOIN projects p ON o.id = p.offer_id 
+            WHERE o.status = 'signed' AND p.id IS NULL AND o.archived_at IS NULL
+                `).all();
+        offersNoProject.forEach(o => issues.push({
+            type: 'offer',
+            id: o.id,
+            title: o.offer_name,
+            description: 'Signed offer has no linked project',
+            severity: 'high',
+            offerId: o.id
+        }));
+
+        // Projects without customer
+        const projectsNoCustomer = db.prepare(`
+            SELECT id, name FROM projects WHERE customer_id IS NULL AND archived_at IS NULL
+                `).all();
+        projectsNoCustomer.forEach(p => issues.push({
+            type: 'project',
+            id: p.id,
+            title: p.name,
+            description: 'Project is missing a customer link',
+            severity: 'high',
+            projectId: p.id
+        }));
+
+        // Offers marked signed but missing signature data
+        const signedNoSignature = db.prepare(`
+            SELECT id, offer_name FROM offers 
+            WHERE status = 'signed' AND signature_data IS NULL AND archived_at IS NULL
+        `).all();
+
+        signedNoSignature.forEach(o => issues.push({
+            type: 'offer',
+            id: o.id,
+            title: o.offer_name,
+            description: 'Offer is signed but missing signature data',
+            severity: 'medium',
+            offerId: o.id
+        }));
+
+        // Stale Drafts (> 30 days)
+        const staleDrafts = db.prepare(`
+            SELECT id, offer_name FROM offers 
+            WHERE status = 'draft' 
+            AND date(updated_at) < date('now', '-30 days')
+            AND archived_at IS NULL
+        `).all();
+        staleDrafts.forEach(o => issues.push({
+            type: 'offer',
+            id: o.id,
+            title: o.offer_name,
+            description: 'Draft has been inactive for over 30 days',
+            severity: 'low',
+            offerId: o.id
+        }));
+
+        // Active Projects without Offer
+        const projectsNoOffer = db.prepare(`
+            SELECT id, name FROM projects 
+            WHERE status IN ('todo', 'in_progress') 
+            AND offer_id IS NULL 
+            AND archived_at IS NULL
+        `).all();
+        projectsNoOffer.forEach(p => issues.push({
+            type: 'project',
+            id: p.id,
+            title: p.name,
+            description: 'Active project has no linked financial offer',
+            severity: 'medium',
+            projectId: p.id
+        }));
+
+        res.json({ issues });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // --- TRASH BIN & RESTORE ---
 app.get('/api/trash', (req, res) => {
     try {
@@ -1303,7 +1593,22 @@ app.delete('/api/:resource/:id/permanent', (req, res) => {
     if (!allowed.includes(resource)) return res.status(400).json({ error: 'Invalid resource' });
 
     try {
-        db.prepare(`DELETE FROM ${resource} WHERE id = ?`).run(id);
+        const trans = db.transaction(() => {
+            // Cleanup references to avoid FK constraints
+            if (resource === 'offers') {
+                db.prepare('UPDATE projects SET offer_id = NULL WHERE offer_id = ?').run(id);
+            }
+            if (resource === 'customers') {
+                db.prepare('UPDATE offers SET customer_id = NULL WHERE customer_id = ?').run(id);
+                db.prepare('UPDATE projects SET customer_id = NULL WHERE customer_id = ?').run(id);
+            }
+            if (resource === 'services') {
+                db.prepare('DELETE FROM offer_items WHERE service_id = ?').run(id);
+            }
+
+            db.prepare(`DELETE FROM ${resource} WHERE id = ?`).run(id);
+        });
+        trans();
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1312,24 +1617,45 @@ app.delete('/api/:resource/:id/permanent', (req, res) => {
 
 app.delete('/api/trash/empty', (req, res) => {
     try {
-        const transaction = db.transaction(() => {
-            db.prepare('DELETE FROM customers WHERE deleted_at IS NOT NULL').run();
-            db.prepare('DELETE FROM offers WHERE deleted_at IS NOT NULL').run();
-            db.prepare('DELETE FROM projects WHERE deleted_at IS NOT NULL').run();
-            db.prepare('DELETE FROM services WHERE deleted_at IS NOT NULL').run();
-            db.prepare('DELETE FROM packages WHERE deleted_at IS NOT NULL').run();
-        });
-        transaction();
+        // Must be outside transaction
+        db.pragma('foreign_keys = OFF');
+
+        try {
+            const trans = db.transaction(() => {
+                // 1. Precise Cleanup of known references
+                db.prepare('UPDATE projects SET offer_id = NULL WHERE offer_id IN (SELECT id FROM offers WHERE deleted_at IS NOT NULL)').run();
+                db.prepare('UPDATE projects SET customer_id = NULL WHERE customer_id IN (SELECT id FROM customers WHERE deleted_at IS NOT NULL)').run();
+                db.prepare('UPDATE offers SET customer_id = NULL WHERE customer_id IN (SELECT id FROM customers WHERE deleted_at IS NOT NULL)').run();
+                db.prepare('DELETE FROM offer_items WHERE service_id IN (SELECT id FROM services WHERE deleted_at IS NOT NULL)').run();
+                db.prepare('DELETE FROM package_items WHERE service_id IN (SELECT id FROM services WHERE deleted_at IS NOT NULL)').run();
+                db.prepare('DELETE FROM package_items WHERE package_id IN (SELECT id FROM packages WHERE deleted_at IS NOT NULL)').run();
+
+                // 2. Repair pre-existing orphans
+                db.prepare('UPDATE offers SET customer_id = NULL WHERE customer_id > 0 AND customer_id NOT IN (SELECT id FROM customers)').run();
+                db.prepare('UPDATE projects SET customer_id = NULL WHERE customer_id > 0 AND customer_id NOT IN (SELECT id FROM customers)').run();
+
+                // 3. Purge everything in trash
+                const tables = ['projects', 'offers', 'customers', 'services', 'packages'];
+                for (const table of tables) {
+                    db.prepare(`DELETE FROM ${table} WHERE deleted_at IS NOT NULL`).run();
+                }
+            });
+            trans();
+        } finally {
+            db.pragma('foreign_keys = ON');
+        }
         res.json({ success: true });
     } catch (err) {
+        console.error('Trash Purge Error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
+
 app.get('/api/search', (req, res) => {
     const q = req.query.q;
     if (!q) return res.json([]);
-    const term = `%${q}%`;
+    const term = `% ${q}% `;
     try {
         const results = [];
         // Projects
@@ -1353,6 +1679,40 @@ app.get('/api/search', (req, res) => {
 app.use((err, req, res, next) => {
     console.error('Unhandled Error:', err);
     res.status(500).json({ error: err.message, stack: err.stack });
+});
+
+// --- ATTACHMENTS ---
+app.get('/api/:entityType/:entityId/attachments', (req, res) => {
+    const { entityType, entityId } = req.params;
+    try {
+        const items = db.prepare('SELECT * FROM attachments WHERE entity_type = ? AND entity_id = ? ORDER BY created_at DESC').all(entityType, entityId);
+        res.json(items);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/:entityType/:entityId/attachments', (req, res) => {
+    const { entityType, entityId } = req.params;
+    const { fileName, filePath, fileSize, fileType } = req.body;
+    try {
+        const result = db.prepare(`
+            INSERT INTO attachments(entity_type, entity_id, file_name, file_path, file_size, file_type, created_by)
+            VALUES(?, ?, ?, ?, ?, ?, ?)
+        `).run(entityType, entityId, fileName, filePath, fileSize, fileType, 'System');
+        res.json({ id: result.lastInsertRowid });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/attachments/:id', (req, res) => {
+    try {
+        db.prepare('DELETE FROM attachments WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.listen(port, () => {

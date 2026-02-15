@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n/I18nContext';
 import { Globe, Bell, X } from 'lucide-react';
 import { dataService } from '../../data/dataService';
 import { useNavigate } from 'react-router-dom';
+import Select from '../ui/Select';
 
 const TopBar = () => {
     const { locale, setLocale } = useI18n();
@@ -99,16 +100,18 @@ const TopBar = () => {
             {/* Right Actions */}
             <div className="flex items-center gap-4">
                 {/* Locale Selector */}
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] hover:bg-[var(--bg-app)] transition-colors cursor-pointer border border-transparent hover:border-[var(--border-subtle)]">
+                <div className="flex items-center gap-2">
                     <Globe size={16} className="text-[var(--text-secondary)]" />
-                    <select
+                    <Select
+                        className="w-28"
+                        containerStyle={{ gap: 0 }}
                         value={locale}
                         onChange={(e) => setLocale(e.target.value)}
-                        className="bg-transparent border-none text-[13px] font-medium text-[var(--text-main)] cursor-pointer focus:outline-none appearance-none"
-                    >
-                        <option value="de">Deutsch</option>
-                        <option value="fr">Français</option>
-                    </select>
+                        options={[
+                            { value: 'de', label: 'Deutsch' },
+                            { value: 'fr', label: 'Français' }
+                        ]}
+                    />
                 </div>
 
                 {/* Notifications */}

@@ -2,14 +2,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import StatusPill from './StatusPill';
 import { ChevronDown } from 'lucide-react';
-import { getStatusColor } from '../../utils/statusColors';
 
 const StatusSelect = ({ value, onChange, options, className = '' }) => {
     const [isOpen, setIsOpen] = useState(false);
     const triggerRef = useRef(null);
     const menuRef = useRef(null);
 
-    // Close on scroll/resize/click-outside (Copied from DropdownMenu pattern)
     useEffect(() => {
         const handleScroll = () => { if (isOpen) setIsOpen(false); };
         const handleResize = () => { if (isOpen) setIsOpen(false); };
@@ -41,26 +39,23 @@ const StatusSelect = ({ value, onChange, options, className = '' }) => {
         setIsOpen(false);
     };
 
-    // Get current config for styling trigger hover
-    const currentConfig = getStatusColor(value);
-
     return (
-        <>
+        <div className="relative inline-block">
             <div
                 ref={triggerRef}
                 onClick={toggleMenu}
-                className={`inline-flex items-center cursor-pointer group hover:opacity-80 transition-opacity ${className}`}
+                className={`h-[42px] px-3.5 inline-flex items-center gap-2 cursor-pointer bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-[var(--radius-md)] hover:border-[var(--border-medium)] hover:shadow-sm transition-all select-none ${isOpen ? 'ring-2 ring-[var(--primary)]/10 border-[var(--primary)]' : ''} ${className}`}
             >
                 <StatusPill status={value} />
-                <ChevronDown size={14} className="ml-1 text-[var(--text-muted)] group-hover:text-[var(--text-main)] transition-colors" />
+                <ChevronDown size={14} className={`text-[var(--text-muted)] transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
             </div>
 
             {isOpen && createPortal(
                 <div
                     ref={menuRef}
-                    className="fixed z-[var(--z-popover)] bg-[var(--bg-surface)] border border-[var(--border-medium)] rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] min-w-[160px] overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-1.5 space-y-1"
+                    className="fixed z-[var(--z-popover)] bg-[var(--bg-surface)] border border-[var(--border-medium)] rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] min-w-[160px] overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-1.5 space-y-0.5"
                     style={{
-                        top: triggerRef.current ? triggerRef.current.getBoundingClientRect().bottom + 8 : 0,
+                        top: triggerRef.current ? triggerRef.current.getBoundingClientRect().bottom + 4 : 0,
                         left: triggerRef.current ? triggerRef.current.getBoundingClientRect().left : 0
                     }}
                 >
@@ -82,7 +77,7 @@ const StatusSelect = ({ value, onChange, options, className = '' }) => {
                 </div>,
                 document.body
             )}
-        </>
+        </div>
     );
 };
 

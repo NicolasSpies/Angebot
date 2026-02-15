@@ -241,6 +241,36 @@ const migrations = [
     );`,
     'CREATE INDEX IF NOT EXISTS idx_global_activities_entity ON global_activities(entity_type, entity_id);',
     'CREATE INDEX IF NOT EXISTS idx_global_activities_created_at ON global_activities(created_at);',
+    'ALTER TABLE offers ADD COLUMN parent_id INTEGER;',
+    'ALTER TABLE offers ADD COLUMN version_number INTEGER DEFAULT 1;',
+    'ALTER TABLE offers ADD COLUMN is_template INTEGER DEFAULT 0;',
+    'ALTER TABLE offers ADD COLUMN archived_at DATETIME;',
+    'ALTER TABLE projects ADD COLUMN archived_at DATETIME;',
+    'ALTER TABLE customers ADD COLUMN archived_at DATETIME;',
+    'ALTER TABLE services ADD COLUMN archived_at DATETIME;',
+    'ALTER TABLE packages ADD COLUMN archived_at DATETIME;',
+    'ALTER TABLE offers ADD COLUMN created_by TEXT;',
+    'ALTER TABLE offers ADD COLUMN updated_by TEXT;',
+    'ALTER TABLE projects ADD COLUMN created_by TEXT;',
+    'ALTER TABLE projects ADD COLUMN updated_by TEXT;',
+    'ALTER TABLE customers ADD COLUMN created_by TEXT;',
+    'ALTER TABLE customers ADD COLUMN updated_by TEXT;',
+    'ALTER TABLE services ADD COLUMN created_by TEXT;',
+    'ALTER TABLE services ADD COLUMN updated_by TEXT;',
+    'ALTER TABLE global_activities ADD COLUMN created_by TEXT;',
+    'ALTER TABLE global_activities ADD COLUMN updated_by TEXT;',
+    `CREATE TABLE IF NOT EXISTS attachments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL, -- 'offer', 'project'
+        entity_id INTEGER NOT NULL,
+        file_name TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        file_size INTEGER,
+        file_type TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_by TEXT
+    );`,
+    'CREATE INDEX IF NOT EXISTS idx_attachments_entity ON attachments(entity_type, entity_id);',
 ];
 
 migrations.forEach(sql => {

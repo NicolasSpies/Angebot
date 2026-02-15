@@ -4,6 +4,7 @@ import { dataService } from '../../data/dataService';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { Search } from 'lucide-react';
+import Select from '../ui/Select';
 
 const BundleForm = ({ initialData, onSave, onCancel }) => {
     const { t, locale } = useI18n();
@@ -115,14 +116,15 @@ const BundleForm = ({ initialData, onSave, onCancel }) => {
                 <div>
                     <label className="form-label mb-1">Bundle Discount</label>
                     <div className="flex gap-2">
-                        <select
-                            className="form-select w-24"
+                        <Select
+                            className="w-24 h-[42px]"
                             value={formData.discount_type}
                             onChange={e => setFormData({ ...formData, discount_type: e.target.value })}
-                        >
-                            <option value="percent">%</option>
-                            <option value="fixed">€</option>
-                        </select>
+                            options={[
+                                { value: 'percent', label: '%' },
+                                { value: 'fixed', label: '€' }
+                            ]}
+                        />
                         <Input
                             type="number"
                             step="0.01"
@@ -183,18 +185,15 @@ const BundleForm = ({ initialData, onSave, onCancel }) => {
                                             {s.variants && s.variants.length > 0 && (
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-xs text-muted">Variant:</span>
-                                                    <select
-                                                        className="form-select text-xs py-1 px-2 h-auto"
+                                                    <Select
+                                                        className="w-48"
                                                         value={selectedItem?.variant_name || ''}
                                                         onChange={e => handleVariantChange(s.id, e.target.value || null)}
-                                                    >
-                                                        <option value="">Default ({s.price}€)</option>
-                                                        {s.variants.map((v, idx) => (
-                                                            <option key={idx} value={v.name}>
-                                                                {v.name} ({v.price}€)
-                                                            </option>
-                                                        ))}
-                                                    </select>
+                                                        options={[
+                                                            { value: '', label: `Default (${s.price}€)` },
+                                                            ...(s.variants?.map(v => ({ value: v.name, label: `${v.name} (${v.price}€)` })) || [])
+                                                        ]}
+                                                    />
                                                 </div>
                                             )}
                                             <div className="flex items-center gap-2">

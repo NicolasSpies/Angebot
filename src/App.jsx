@@ -17,6 +17,7 @@ const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
 const ServicesPage = lazy(() => import('./pages/ServicesPage'));
 const TrashPage = lazy(() => import('./pages/TrashPage'));
+const AuditPage = lazy(() => import('./pages/AuditPage'));
 
 // Loading Fallback
 const PageLoader = () => (
@@ -51,6 +52,7 @@ function App() {
               <Route path="services" element={<ServicesPage />} />
               <Route path="trash" element={<TrashPage />} />
               <Route path="settings" element={<SettingsPage />} />
+              <Route path="settings/audit" element={<AuditPage />} />
             </Route>
           </Routes>
         </Suspense>

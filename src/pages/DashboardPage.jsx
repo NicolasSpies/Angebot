@@ -4,7 +4,7 @@ import { dataService } from '../data/dataService';
 import { formatCurrency } from '../utils/pricingEngine';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Link, useNavigate } from 'react-router-dom';
-import { TrendingUp, Users, FileText, AlertTriangle, Plus, ArrowRight, Zap, Clock, CheckCircle, Briefcase, Calendar, Search } from 'lucide-react';
+import { TrendingUp, Users, FileText, AlertTriangle, Plus, ArrowRight, Zap, Clock, CheckCircle, Briefcase, Calendar, Search, Activity } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
@@ -14,21 +14,39 @@ const DashboardPage = () => {
     const { t } = useI18n();
     const navigate = useNavigate();
     const [stats, setStats] = useState({
-        summary: { draftCount: 0, pendingCount: 0, signedCount: 0 },
-        financials: { totalOpenValue: 0, forecastPending: 0, profitEstimate: 0 },
-        performance: { monthlyPerformance: [], avgOfferValueMonth: 0, signedThisMonthCount: 0 },
-        alerts: { expiringSoonCount: 0, oldDraftsCount: 0 },
+        summary: { draftCount: 0, pendingCount: 0, signedCount: 0, winRate: 0, avgDealSize: 0 },
+        financials: { totalOpenValue: 0, forecastPending: 0, profitEstimate: 0, signedRevenue: 0, momGrowth: 0 },
+        performance: { monthlyPerformance: [], avgOfferValueMonth: 0, signedThisMonthCount: 0, avgMonthlyIncome: 0 },
+        alerts: { expiringSoonCount: 0, oldDraftsCount: 0, expiringOffers: [] },
         analytics: { topCategories: [], topClients: [], recentActivity: [] },
-        projects: { activeProjectCount: 0, overdueProjectCount: 0 }
+        projects: { activeProjectCount: 0, overdueProjectCount: 0, projectsByStatus: [] }
     });
+    const [auditIssues, setAuditIssues] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const loadDashboard = async () => {
             try {
-                const data = await dataService.getDashboardStats();
+                const [data, auditData] = await Promise.all([
+                    dataService.getDashboardStats(),
+                    dataService.getAuditChecks()
+                ]);
+
                 if (data && !data.error) {
-                    setStats(data);
+                    setStats(prev => ({
+                        ...prev,
+                        ...data,
+                        summary: { ...prev.summary, ...data.summary },
+                        financials: { ...prev.financials, ...data.financials },
+                        performance: { ...prev.performance, ...data.performance },
+                        alerts: { ...prev.alerts, ...data.alerts },
+                        analytics: { ...prev.analytics, ...data.analytics },
+                        projects: { ...prev.projects, ...data.projects }
+                    }));
+                }
+
+                if (auditData && !auditData.error) {
+                    setAuditIssues(auditData.issues || []);
                 }
             } catch (err) {
                 console.error('Failed to load dashboard stats', err);
@@ -54,13 +72,32 @@ const DashboardPage = () => {
                     <Button variant="ghost" onClick={() => window.location.reload()}>
                         <Zap size={16} className="mr-2 text-[var(--primary)]" /> Refresh
                     </Button>
-                    <div className="flex bg-[var(--bg-surface)] p-1 rounded-lg border border-[var(--border-subtle)]">
-                        <kbd className="px-2 py-1 text-[11px] font-bold text-[var(--text-muted)] bg-[var(--bg-subtle)] rounded border border-[var(--border-subtle)] flex items-center gap-2">
-                            <Command size={10} /> K
-                        </kbd>
-                    </div>
                 </div>
             </div>
+
+            {/* Audit Alerts Section */}
+            {auditIssues.length > 0 && (
+                <div className="mb-10 bg-amber-50 border border-amber-200 rounded-xl p-5">
+                    <div className="flex items-center gap-3 mb-4">
+                        <AlertTriangle className="text-amber-600" size={20} />
+                        <h2 className="text-[16px] font-bold text-amber-900">System Health Alerts</h2>
+                        <Badge variant="warning" className="ml-auto">{auditIssues.length} issues found</Badge>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {auditIssues.slice(0, 3).map((issue, idx) => (
+                            <div key={idx} className="bg-white/60 p-3 rounded-lg border border-amber-100 flex flex-col justify-between">
+                                <div>
+                                    <p className="text-[13px] font-bold text-amber-900 mb-1">{issue.title || 'Data Integrity Issue'}</p>
+                                    <p className="text-[11px] text-amber-700 leading-relaxed">{issue.description}</p>
+                                </div>
+                                <Button variant="ghost" size="sm" className="mt-3 text-amber-600 h-8 self-start px-0 hover:bg-transparent" onClick={() => navigate('/settings/audit')}>
+                                    Fix Issue <ArrowRight size={14} className="ml-1" />
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Quick Actions Row */}
             <div className="grid grid-cols-4 gap-4 mb-10">
@@ -91,13 +128,13 @@ const DashboardPage = () => {
                         <p className="text-[11px] text-[var(--text-muted)]">Register entity</p>
                     </div>
                 </button>
-                <button onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))} className="flex items-center gap-4 p-4 bg-white border border-[var(--border-subtle)] rounded-xl hover:border-[var(--primary)] hover:shadow-md transition-all group text-left">
+                <button onClick={() => navigate('/activity')} className="flex items-center gap-4 p-4 bg-white border border-[var(--border-subtle)] rounded-xl hover:border-[var(--primary)] hover:shadow-md transition-all group text-left">
                     <div className="w-10 h-10 rounded-full bg-[var(--bg-subtle)] text-[var(--text-main)] flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <Search size={20} />
+                        <Activity size={20} />
                     </div>
                     <div>
-                        <p className="text-[13px] font-bold text-[var(--text-main)]">Search</p>
-                        <p className="text-[11px] text-[var(--text-muted)]">Find anything...</p>
+                        <p className="text-[13px] font-bold text-[var(--text-main)]">Activity Log</p>
+                        <p className="text-[11px] text-[var(--text-muted)]">View history</p>
                     </div>
                 </button>
             </div>
@@ -107,12 +144,12 @@ const DashboardPage = () => {
                 <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm hover:shadow-md transition-all">
                     <div className="flex justify-between items-start mb-4">
                         <div className="p-2 rounded-lg bg-[var(--bg-subtle)] text-[var(--text-muted)]">
-                            <FileText size={20} />
+                            <TrendingUp size={20} />
                         </div>
-                        <StatusPill status="draft" />
+                        <Badge variant="primary" className="text-[9px]">MTD</Badge>
                     </div>
-                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums">{summary.draftCount}</p>
-                    <p className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-1">Draft Proposals</p>
+                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums">{formatCurrency(performance.revenueThisMonth || 0)}</p>
+                    <p className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-1">Revenue This Month</p>
                 </Card>
 
                 <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm hover:shadow-md transition-all">
@@ -128,24 +165,28 @@ const DashboardPage = () => {
 
                 <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm hover:shadow-md transition-all">
                     <div className="flex justify-between items-start mb-4">
-                        <div className="p-2 rounded-lg bg-[var(--success-bg)] text-[var(--success)]">
-                            <CheckCircle size={20} />
-                        </div>
-                        <StatusPill status="signed" />
-                    </div>
-                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums">{summary.signedCount}</p>
-                    <p className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-1">Closed Won</p>
-                </Card>
-
-                <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm hover:shadow-md transition-all">
-                    <div className="flex justify-between items-start mb-4">
                         <div className="p-2 rounded-lg bg-[var(--primary-light)] text-[var(--primary)]">
                             <Briefcase size={20} />
                         </div>
-                        <Badge variant="primary">ACTIVE</Badge>
+                        <Badge variant="neutral" className="text-[9px]">ACTIVE</Badge>
                     </div>
-                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums">{projects?.activeProjectCount || 0}</p>
-                    <p className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-1">Active Projects</p>
+                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums">{projects.activeProjectCount}</p>
+                    <p className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-1">Projects in Progress</p>
+                </Card>
+
+                <Card padding="1.5rem" className={`border border-[var(--border-subtle)] shadow-sm hover:shadow-md transition-all ${projects?.overdueProjectCount > 0 ? 'bg-red-50 border-red-200' : ''}`}>
+                    <div className="flex justify-between items-start mb-4">
+                        <div className={`p-2 rounded-lg ${projects?.overdueProjectCount > 0 ? 'bg-red-100 text-red-600' : 'bg-[var(--primary-light)] text-[var(--primary)]'}`}>
+                            <AlertTriangle size={20} />
+                        </div>
+                        {projects?.overdueProjectCount > 0 && (
+                            <Badge variant="danger" className="animate-pulse">CRITICAL</Badge>
+                        )}
+                    </div>
+                    <p className={`text-[28px] font-black tabular-nums ${projects?.overdueProjectCount > 0 ? 'text-red-600' : 'text-[var(--text-main)]'}`}>
+                        {projects?.overdueProjectCount || 0}
+                    </p>
+                    <p className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-1">Overdue Projects</p>
                 </Card>
             </div>
 
@@ -154,10 +195,18 @@ const DashboardPage = () => {
                 <Card padding="2rem" className="lg:col-span-2 border border-[var(--border-subtle)] shadow-sm">
                     <div className="flex justify-between items-center mb-8">
                         <div>
-                            <h3 className="text-[16px] font-extrabold text-[var(--text-main)]">Revenue Performance</h3>
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-[16px] font-extrabold text-[var(--text-main)]">Revenue Performance</h3>
+                                {financials.momGrowth !== 0 && (
+                                    <div className={`flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded ${financials.momGrowth > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                        <TrendingUp size={12} className={`mr-1 ${financials.momGrowth < 0 ? 'rotate-180' : ''}`} />
+                                        {financials.momGrowth > 0 ? '+' : ''}{financials.momGrowth.toFixed(1)}% MoM
+                                    </div>
+                                )}
+                            </div>
                             <p className="text-[12px] text-[var(--text-secondary)] font-medium">Monthly recognized revenue</p>
                         </div>
-                        <Badge variant="neutral">2024</Badge>
+                        <Badge variant="neutral">Last 6 Months</Badge>
                     </div>
                     <div style={{ height: '300px', width: '100%', marginLeft: '-20px' }}>
                         <ResponsiveContainer width="100%" height="100%">
@@ -200,10 +249,10 @@ const DashboardPage = () => {
                     <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm flex-1 flex flex-col justify-center bg-[var(--success-bg)]/10">
                         <div className="flex items-center gap-3 mb-2 text-[var(--success)]">
                             <CheckCircle size={18} />
-                            <span className="text-[12px] font-bold uppercase tracking-wider">Signed This Month</span>
+                            <span className="text-[12px] font-bold uppercase tracking-wider">Signed Total</span>
                         </div>
                         <p className="text-[32px] font-black text-[var(--success)] tracking-tight tabular-nums">
-                            {performance.signedThisMonthCount}
+                            {formatCurrency(financials.signedRevenue || 0)}
                         </p>
                     </Card>
                 </div>
@@ -220,7 +269,7 @@ const DashboardPage = () => {
                     </Button>
                 </div>
                 <div>
-                    {analytics.recentActivity.map((act, i) => {
+                    {(analytics.recentActivity || []).map((act, i) => {
                         const getIcon = (type) => {
                             if (type === 'offer') return <FileText size={16} />;
                             if (type === 'project') return <Briefcase size={16} />;
@@ -236,13 +285,18 @@ const DashboardPage = () => {
                         };
                         const getDescription = (act) => {
                             const { entity_type, action, metadata } = act;
-                            if (action === 'created') return <span>Created {entity_type} <span className="font-bold">"{metadata.name || 'Untitled'}"</span></span>;
-                            if (action === 'updated') return <span>Updated {entity_type}</span>;
-                            if (action === 'status_change') return <span>{entity_type} status: {metadata.newStatus}</span>;
-                            if (action === 'sent') return <span>Sent offer to client</span>;
-                            if (action === 'signed') return <span>Signed by {metadata.signedBy || 'Client'}</span>;
-                            if (action === 'declined') return <span>Declined by client</span>;
-                            return <span>{action.replace(/_/g, ' ')}</span>;
+                            const entityName = <span className="font-bold underline md:no-underline md:group-hover:underline">"{metadata.name || 'Untitled'}"</span>;
+
+                            if (action === 'created') return <span>Created {entity_type} {entityName}</span>;
+                            if (action === 'updated') return <span>Updated {entity_type} {entityName}</span>;
+                            if (action === 'status_change') return <span>{entity_type} {entityName} → <span className="font-extrabold">{metadata.newStatus}</span></span>;
+                            if (action === 'sent') return <span>Sent offer {entityName} to client</span>;
+                            if (action === 'signed') return <span>Offer {entityName} signed by <span className="font-extrabold">{metadata.signedBy || 'Client'}</span></span>;
+                            if (action === 'declined') return <span>Offer {entityName} declined by client</span>;
+                            if (action === 'archived') return <span>Archived {entity_type} {entityName}</span>;
+                            if (action === 'restored') return <span>Restored {entity_type} {entityName}</span>;
+                            if (action === 'linked_project') return <span>Linked offer {entityName} to project</span>;
+                            return <span>{action.replace(/_/g, ' ')} {entity_type}</span>;
                         };
 
                         return (

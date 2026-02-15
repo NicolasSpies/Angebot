@@ -15,6 +15,7 @@ import DropdownMenu from '../components/ui/DropdownMenu';
 import { getStatusColor } from '../utils/statusColors';
 import { Plus, Briefcase, FileText, LayoutGrid, List, Calendar, Zap, Rocket } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import Select from '../components/ui/Select';
 
 const ProjectsPage = () => {
     const { t } = useI18n();
@@ -145,29 +146,16 @@ const ProjectsPage = () => {
                     placeholder: "Search projects..."
                 }}
                 filters={
-                    ['all', ...STATUS_OPTIONS].map(s => {
-                        const isActive = filterStatus === s;
-                        const statusColor = s === 'all' ? { bg: 'var(--primary)', text: 'white', dot: 'white' } : getStatusColor(s);
-
-                        return (
-                            <button
-                                key={s}
-                                onClick={() => setFilterStatus(s)}
-                                className={`px-3 py-1.5 rounded-full text-[13px] font-bold transition-all border flex items-center gap-2 ${isActive
-                                    ? 'shadow-sm'
-                                    : 'bg-transparent border-transparent hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-main)]'
-                                    }`}
-                                style={isActive ? {
-                                    backgroundColor: s === 'all' ? 'var(--primary)' : statusColor.bg,
-                                    color: s === 'all' ? 'white' : statusColor.text,
-                                    borderColor: s === 'all' ? 'var(--primary)' : statusColor.bg
-                                } : {}}
-                            >
-                                {isActive && s !== 'all' && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: statusColor.dot }} />}
-                                {STATUS_LABELS[s] || s}
-                            </button>
-                        );
-                    })
+                    <div className="flex items-center gap-3">
+                        <span className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider">Status Filter</span>
+                        <Select
+                            className="w-48"
+                            containerStyle={{ gap: 0 }}
+                            value={filterStatus}
+                            onChange={(e) => setFilterStatus(e.target.value)}
+                            options={Object.entries(STATUS_LABELS).map(([val, label]) => ({ value: val, label }))}
+                        />
+                    </div>
                 }
             />
 

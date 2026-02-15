@@ -20,6 +20,10 @@ export const dataService = {
         const res = await fetch(`${API_URL}/dashboard/stats`);
         return res.json();
     },
+    getAuditChecks: async () => {
+        const res = await fetch(`${API_URL}/audit/checks`);
+        return res.json();
+    },
     getCustomerDashboard: async (id) => {
         const res = await fetch(`${API_URL}/customers/${id}/dashboard`);
         return res.json();
@@ -85,6 +89,8 @@ export const dataService = {
         return res.json();
     },
 
+
+
     // --- CUSTOMERS ---
     getCustomers: async () => {
         const res = await fetch(`${API_URL}/customers`);
@@ -131,6 +137,14 @@ export const dataService = {
 
     sendOffer: async (id) => {
         const res = await fetch(`${API_URL}/offers/${id}/send`, { method: 'POST' });
+        return res.json();
+    },
+    archiveResource: async (type, id) => {
+        const res = await fetch(`${API_URL}/${type}/${id}/archive`, { method: 'POST' });
+        return res.json();
+    },
+    restoreResource: async (type, id) => {
+        const res = await fetch(`${API_URL}/${type}/${id}/restore`, { method: 'POST' });
         return res.json();
     },
 
@@ -220,6 +234,33 @@ export const dataService = {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ taskIds })
+        });
+        return res.json();
+    },
+
+    // --- ATTACHMENTS ---
+    getAttachments: async (type, id) => {
+        const res = await fetch(`${API_URL}/${type}/${id}/attachments`);
+        return res.json();
+    },
+    addAttachment: async (type, id, fileData) => {
+        const res = await fetch(`${API_URL}/${type}/${id}/attachments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(fileData)
+        });
+        return res.json();
+    },
+    deleteAttachment: async (id) => {
+        const res = await fetch(`${API_URL}/attachments/${id}`, { method: 'DELETE' });
+        return res.json();
+    },
+    uploadFile: async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch(`${API_URL}/upload`, {
+            method: 'POST',
+            body: formData
         });
         return res.json();
     },

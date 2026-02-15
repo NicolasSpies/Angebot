@@ -7,14 +7,40 @@ import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
 import Card from '../components/ui/Card';
-import { Check, Zap, ArrowLeft, ArrowRight, Save, Plus } from 'lucide-react';
+import { Check, Zap, ArrowLeft, ArrowRight, Save, Plus, AlertCircle } from 'lucide-react';
+import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 
 const OfferWizardPage = () => {
     const { t, locale } = useI18n();
     const navigate = useNavigate();
     const location = useLocation(); // Imported from react-router-dom
 
-    // ... (rest of state)
+    const { editId } = useParams();
+    // Use editId directly or map to id if needed for consistency with rest of code
+    const id = editId;
+
+    const [step, setStep] = useState(1);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+
+    // Data handling
+    const [customers, setCustomers] = useState([]);
+    const [servicesList, setServicesList] = useState([]);
+    const [packagesList, setPackagesList] = useState([]);
+
+
+    // Form State
+    const [offerName, setOfferName] = useState('');
+    const [selectedCustomer, setSelectedCustomer] = useState(null);
+    const [selectedPackage, setSelectedPackage] = useState('custom');
+    const [offerLanguage, setOfferLanguage] = useState('de');
+    const [dueDate, setDueDate] = useState('');
+    const [internalNotes, setInternalNotes] = useState('');
+    const [selectedServices, setSelectedServices] = useState([]);
+    const [discountPercent, setDiscountPercent] = useState(0);
+    const [versionInfo, setVersionInfo] = useState(null);
+    const [offerStatus, setOfferStatus] = useState('draft');
+    const [showVersionModal, setShowVersionModal] = useState(false);
 
     const loadData = useCallback(async () => {
         try {
@@ -28,8 +54,8 @@ const OfferWizardPage = () => {
             setServicesList(sData);
             setPackagesList(pData || []);
 
+
             if (editId) {
-                // ... (existing edit logic) ...
                 const existingOffer = await dataService.getOffer(editId);
                 if (existingOffer) {
                     const customer = cData.find(c => c.id === existingOffer.customer_id);
@@ -39,6 +65,14 @@ const OfferWizardPage = () => {
                     if (existingOffer.due_date) setDueDate(existingOffer.due_date.split('T')[0]);
                     setDiscountPercent(existingOffer.discount_percent || 0);
                     setInternalNotes(existingOffer.internal_notes || '');
+                    setOfferStatus(existingOffer.status || 'draft');
+
+                    if (existingOffer.version_number > 1) {
+                        setVersionInfo({
+                            number: existingOffer.version_number,
+                            parentId: existingOffer.parent_id
+                        });
+                    }
 
                     // Map existing items...
                     const mappedItems = existingOffer.items.map(item => {
@@ -69,7 +103,6 @@ const OfferWizardPage = () => {
                     setDueDate(d.toISOString().split('T')[0]);
                 }
 
-                // Check for Pre-fill from Location State
                 if (location.state?.customerId) {
                     const preselected = cData.find(c => c.id === parseInt(location.state.customerId));
                     if (preselected) setSelectedCustomer(preselected);
@@ -86,8 +119,21 @@ const OfferWizardPage = () => {
         loadData();
     }, [loadData]);
 
+
+
     const handleSave = async (e) => {
         if (e) e.preventDefault();
+
+        // If offer is already sent/signed, warn about versioning
+        if (editId && (offerStatus === 'sent' || offerStatus === 'signed')) {
+            setShowVersionModal(true);
+            return;
+        }
+
+        await executeSave();
+    };
+
+    const executeSave = async () => {
         setIsSaving(true);
         const currentTotals = calculateTotals(selectedServices, discountPercent, selectedCustomer?.country || 'DE');
 
@@ -113,8 +159,9 @@ const OfferWizardPage = () => {
 
         try {
             if (editId) {
-                await dataService.updateOffer(editId, offerData);
-                navigate(`/offer/preview/${editId}`);
+                const res = await dataService.updateOffer(editId, offerData);
+                const finalId = res.id || editId;
+                navigate(`/offer/preview/${finalId}`);
             } else {
                 const res = await dataService.saveOffer(offerData);
                 navigate(`/offer/preview/${res.id}`);
@@ -125,6 +172,8 @@ const OfferWizardPage = () => {
         }
         setIsSaving(false);
     };
+
+
 
     const handlePackageChange = (pkgId) => {
         setSelectedPackage(pkgId);
@@ -248,9 +297,17 @@ const OfferWizardPage = () => {
                     <div className="space-y-10">
                         {step === 1 && (
                             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <div className="mb-8">
-                                    <h2 className="text-3xl font-extrabold text-[var(--text-main)] mb-2">Proposal Foundation</h2>
-                                    <p className="text-[var(--text-secondary)] font-medium">Define the core parameters and recipient for this engagement.</p>
+                                <div className="mb-8 flex justify-between items-start">
+                                    <div>
+                                        <h2 className="text-3xl font-extrabold text-[var(--text-main)] mb-2">Proposal Foundation</h2>
+                                        <p className="text-[var(--text-secondary)] font-medium">Define the core parameters and recipient for this engagement.</p>
+                                        {versionInfo && (
+                                            <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-[12px] font-bold border border-blue-100 shadow-sm">
+                                                <Zap size={14} /> Version {versionInfo.number} (Revision of #{versionInfo.parentId})
+                                            </div>
+                                        )}
+                                    </div>
+
                                 </div>
                                 <Card className="border-[var(--border)] shadow-sm p-8">
                                     <div className="grid grid-cols-1 gap-12">
@@ -544,6 +601,14 @@ const OfferWizardPage = () => {
                     </div>
                 </aside>
             </div>
+            <ConfirmationDialog
+                isOpen={showVersionModal}
+                onClose={() => setShowVersionModal(false)}
+                onConfirm={executeSave}
+                title="Create New Revision?"
+                message={`This offer has already been ${offerStatus}. Saving changes will create a new version (Revision ${versionInfo ? versionInfo.number + 1 : 2}) and reset its status to draft. The current version will be archived.`}
+                confirmText="Create Revision"
+            />
         </div>
     );
 };
