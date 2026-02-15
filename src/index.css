@@ -654,8 +654,12 @@ button {
 /* ================================================================
    PRINT STYLES
    ================================================================ */
+/* ================================================================
+   PRINT STYLES
+   ================================================================ */
 @media print {
 
+  /* Hide detailed UI elements */
   .no-print,
   .dev-debug-panel,
   .dev-debug-inspector,
@@ -671,7 +675,13 @@ button {
   .status-pill,
   [role="dialog"],
   .fixed,
-  .sticky {
+  .sticky,
+  .toast,
+  .notification,
+  .shadow-floating,
+  .shadow-lg,
+  .shadow-md,
+  .shadow-sm {
     display: none !important;
   }
 
@@ -687,25 +697,23 @@ button {
     padding: 0 !important;
     max-width: none !important;
     height: auto !important;
+    min-height: 0 !important;
+    /* Remove fixed height constraints */
     overflow: visible !important;
     box-shadow: none !important;
     border: none !important;
+    display: block !important;
   }
 
   /* Optimize Page Margins and Remove Headers */
   @page {
-    margin: 0;
+    margin: 1cm;
     size: auto;
   }
 
   body {
     color: black !important;
-    /* Minimal padding for the content itself when printed */
-    padding: 1cm !important;
-  }
-
-  /* Ensure text colors print correctly */
-  * {
+    padding: 0 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -723,7 +731,20 @@ button {
 
   .text-muted {
     color: #444 !important;
-    /* Slightly darker than strict gray for legibility */
+  }
+
+  /* Structural Cleanliness */
+  .card,
+  .a4-container,
+  #offer-content {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    border: none !important;
+  }
+
+  /* Keep borders inside tables/cards if semantic */
+  .border-b {
+    border-bottom: 1px solid #ddd !important;
   }
 
   /* Page Break Management */
@@ -732,13 +753,14 @@ button {
   td,
   th,
   .card,
-  .offer-section {
+  .offer-section,
+  .grid {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
 
-  /* Hide green deadline bar if specifically requested to be outside doc */
-  .deadline-indicator {
-    display: none !important;
+  /* Specific OfferLayout overrides for print */
+  .a4-container {
+    padding: 0 !important;
   }
 }

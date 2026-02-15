@@ -1,13 +1,14 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useI18n } from '../../i18n/I18nContext';
-import { LayoutDashboard, FileText, Briefcase, Users, Zap, Settings, Command, Trash2 } from 'lucide-react';
+import { LayoutDashboard, FileText, Briefcase, Users, Zap, Settings, Command, Trash2, Activity } from 'lucide-react';
 
 const Sidebar = () => {
     const { t } = useI18n();
 
     const workspaceItems = [
         { to: "/dashboard", icon: LayoutDashboard, label: t('nav.dashboard') },
+        { to: "/activity", icon: Activity, label: t('nav.activity') || 'Activity' },
         { to: "/offers", icon: FileText, label: t('nav.offers') },
         { to: "/projects", icon: Briefcase, label: t('nav.projects') },
         { to: "/customers", icon: Users, label: t('nav.customers') },

@@ -230,6 +230,17 @@ const migrations = [
         FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
     );`,
     'CREATE INDEX IF NOT EXISTS idx_project_events_project_id ON project_events(project_id);',
+    // Global Activity Log
+    `CREATE TABLE IF NOT EXISTS global_activities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL, -- 'offer', 'project', 'customer'
+        entity_id INTEGER NOT NULL,
+        action TEXT NOT NULL, -- 'created', 'updated', 'status_change', 'linked', etc.
+        metadata TEXT, -- JSON string for extra details (e.g. { oldStatus: 'draft', newStatus: 'sent' })
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );`,
+    'CREATE INDEX IF NOT EXISTS idx_global_activities_entity ON global_activities(entity_type, entity_id);',
+    'CREATE INDEX IF NOT EXISTS idx_global_activities_created_at ON global_activities(created_at);',
 ];
 
 migrations.forEach(sql => {

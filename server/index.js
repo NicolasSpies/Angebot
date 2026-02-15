@@ -31,9 +31,60 @@ function createNotification(type, title, message, link, dedupKey) {
     }
 }
 
+// --- ACTIVITY LOG HELPER ---
+function logActivity(entityType, entityId, action, metadata = {}) {
+    try {
+        db.prepare(`
+            INSERT INTO global_activities (entity_type, entity_id, action, metadata)
+            VALUES (?, ?, ?, ?)
+        `).run(entityType, entityId, action, JSON.stringify(metadata));
+    } catch (err) {
+        console.error('Failed to log activity:', err);
+    }
+}
+
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// --- ACTIVITY API ---
+app.get('/api/activities', (req, res) => {
+    try {
+        const { limit = 50, entityType, entityId } = req.query;
+        let query = 'SELECT * FROM global_activities';
+        const params = [];
+
+        if (entityType) {
+            query += ' WHERE entity_type = ?';
+            params.push(entityType);
+            if (entityId) {
+                query += ' AND entity_id = ?';
+                params.push(entityId);
+            }
+        }
+
+        query += ' ORDER BY created_at DESC LIMIT ?';
+        params.push(parseInt(limit));
+
+        const activities = db.prepare(query).all(...params);
+        res.json(activities.map(a => ({
+            ...a,
+            metadata: JSON.parse(a.metadata || '{}')
+        })));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/activities', (req, res) => {
+    const { entityType, entityId, action, metadata } = req.body;
+    try {
+        logActivity(entityType, entityId, action, metadata);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // --- NOTIFICATIONS API ---
 app.get('/api/notifications', (req, res) => {
@@ -303,6 +354,7 @@ app.post('/api/customers', (req, res) => {
         INSERT INTO customers (company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number);
+    logActivity('customer', result.lastInsertRowid, 'created', { name: company_name || `${first_name} ${last_name}` });
     res.json({ id: result.lastInsertRowid });
 });
 
@@ -521,6 +573,8 @@ app.post('/api/offers/public/:token/decline', (req, res) => {
 
         // Notification
         createNotification('offer', 'Offer Declined ❌', `Offer "${offer.offer_name}" has been declined by the client.`, `/offers`, `offer_declined_${offer.id}`);
+
+        logActivity('offer', offer.id, 'declined', { comment });
     })();
 
     res.json({ success: true });
@@ -578,6 +632,8 @@ app.post('/api/offers/public/:token/sign', (req, res) => {
 
             // Notification (with dedup)
             createNotification('offer', 'Offer Signed! ✍️', `Offer "${offer.offer_name}" signed by ${name}`, `/offers/${offer.id}`, `offer_signed_${offer.id}`);
+
+            logActivity('offer', offer.id, 'signed', { signedBy: name });
         })();
 
         res.json({ success: true });
@@ -625,6 +681,9 @@ app.post('/api/offers', (req, res) => {
         }
 
         // No notification for drafts — only trigger on meaningful status changes
+
+        logActivity('offer', offerId, 'created', { name: offer_name, status: status || 'draft', total });
+        if (status === 'sent') logActivity('offer', offerId, 'sent', {});
 
         return offerId;
     });
@@ -674,6 +733,12 @@ app.put('/api/offers/:id', (req, res) => {
 
         // Smart Sync
         syncProjectWithOffer(offerId, status, offer_name, due_date, strategic_notes, customer_id);
+
+        logActivity('offer', offerId, 'updated', {
+            status,
+            total,
+            linkedProject: strategic_notes ? 'synced' : 'none'
+        });
     });
 
     try {
@@ -703,6 +768,8 @@ app.post('/api/offers/:id/send', (req, res) => {
 
         // Smart Sync
         syncProjectWithOffer(offerId, 'sent', offerCheck.offer_name, offerCheck.due_date, offerCheck.strategic_notes, offerCheck.customer_id);
+
+        logActivity('offer', offerId, 'sent', {});
     })();
 
     // Return token so frontend can redirect to public page
@@ -745,6 +812,10 @@ app.put('/api/offers/:id/status', (req, res) => {
                 if (status === 'signed') {
                     createNotification('offer', 'Offer Signed! ✍️', `Offer "${offer.offer_name}" has been signed.`, `/projects`, `offer_signed_${offerId}`);
                 }
+
+                if (offer.status !== status) {
+                    logActivity('offer', offerId, 'status_change', { oldStatus: offer.status, newStatus: status });
+                }
             }
         })();
         res.json({ success: true });
@@ -773,6 +844,7 @@ app.post('/api/projects', (req, res) => {
 
         // Log creation event
         db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(result.lastInsertRowid, 'created', 'Project created');
+        logActivity('project', result.lastInsertRowid, 'created', { name: name || 'New Project' });
 
         res.json({ id: result.lastInsertRowid });
     } catch (err) {
@@ -857,6 +929,14 @@ app.put('/api/projects/:id', (req, res) => {
             if (strategic_notes && strategic_notes !== currentProject.strategic_notes) {
                 db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'notes_update', `Strategic notes updated`);
             }
+
+            // General Update Log
+            logActivity('project', projectId, 'updated', {
+                status: status !== currentProject.status ? status : undefined,
+                deadline: deadline !== currentProject.deadline ? deadline : undefined,
+                priority: priority !== currentProject.priority ? priority : undefined,
+                renamed: name !== currentProject.name
+            });
         })();
 
         res.json({ success: true, ...req.body });
@@ -1046,14 +1126,10 @@ app.get('/api/dashboard/stats', (req, res) => {
             LIMIT 5
         `).all(startOfYear);
 
-        const recentActivity = db.prepare(`
-            SELECT 'Offer ' || status || ' for ' || c.company_name as text, 
-                   COALESCE(signed_at, sent_at, created_at) as date
-            FROM offers o
-            JOIN customers c ON o.customer_id = c.id
-            ORDER BY date DESC
-            LIMIT 10
-        `).all();
+        const recentActivity = db.prepare('SELECT * FROM global_activities ORDER BY created_at DESC LIMIT 10').all().map(a => ({
+            ...a,
+            metadata: JSON.parse(a.metadata || '{}')
+        }));
 
         // Project stats
         const activeProjectCount = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status IN ('todo', 'in_progress', 'feedback')").get().count;

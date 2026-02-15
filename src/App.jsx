@@ -11,6 +11,7 @@ const OffersPage = lazy(() => import('./pages/OffersPage'));
 const OfferWizardPage = lazy(() => import('./pages/OfferWizardPage'));
 const OfferPreviewPage = lazy(() => import('./pages/OfferPreviewPage'));
 const OfferPublicPage = lazy(() => import('./pages/OfferPublicPage'));
+const ActivityPage = lazy(() => import('./pages/ActivityPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
@@ -37,6 +38,7 @@ function App() {
             <Route path="/" element={<PageShell />}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="activity" element={<ActivityPage />} />
               <Route path="customers" element={<CustomersPage />} />
               <Route path="customers/:id" element={<CustomerDetailPage />} />
               <Route path="offers" element={<OffersPage />} />

@@ -209,29 +209,70 @@ const DashboardPage = () => {
                 </div>
             </div>
 
-            {/* Recent Activity */}
-            <Card padding="0" className="border border-[var(--border-subtle)] shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-[var(--border-subtle)] flex justify-between items-center">
+            <Card padding="0" className="border border-[var(--border-subtle)] shadow-sm overflow-hidden h-full">
+                <div className="p-6 border-b border-[var(--border-subtle)] flex justify-between items-center bg-[var(--bg-surface)]">
                     <div className="flex items-center gap-3">
-                        <Calendar size={20} className="text-[var(--text-muted)]" />
+                        <Activity size={20} className="text-[var(--text-muted)]" />
                         <h3 className="text-[16px] font-extrabold text-[var(--text-main)]">Recent Activity</h3>
                     </div>
+                    <Button variant="ghost" size="sm" onClick={() => navigate('/activity')}>
+                        View All <ArrowRight size={14} className="ml-1" />
+                    </Button>
                 </div>
                 <div>
-                    {analytics.recentActivity.map((act, i) => (
-                        <div key={i} className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-subtle)] transition-colors">
-                            <div className="flex items-center gap-4">
-                                <div className="w-2 h-2 rounded-full bg-[var(--primary)]" />
-                                <span className="text-[14px] font-medium text-[var(--text-main)]">{act.text}</span>
+                    {analytics.recentActivity.map((act, i) => {
+                        const getIcon = (type) => {
+                            if (type === 'offer') return <FileText size={16} />;
+                            if (type === 'project') return <Briefcase size={16} />;
+                            if (type === 'customer') return <Users size={16} />;
+                            return <Activity size={16} />;
+                        };
+                        const getActionColor = (action) => {
+                            if (action === 'created') return 'bg-blue-50 text-blue-600';
+                            if (action === 'signed') return 'bg-green-50 text-green-600';
+                            if (action === 'declined') return 'bg-red-50 text-red-600';
+                            if (action === 'sent') return 'bg-amber-50 text-amber-600';
+                            return 'bg-gray-50 text-gray-600';
+                        };
+                        const getDescription = (act) => {
+                            const { entity_type, action, metadata } = act;
+                            if (action === 'created') return <span>Created {entity_type} <span className="font-bold">"{metadata.name || 'Untitled'}"</span></span>;
+                            if (action === 'updated') return <span>Updated {entity_type}</span>;
+                            if (action === 'status_change') return <span>{entity_type} status: {metadata.newStatus}</span>;
+                            if (action === 'sent') return <span>Sent offer to client</span>;
+                            if (action === 'signed') return <span>Signed by {metadata.signedBy || 'Client'}</span>;
+                            if (action === 'declined') return <span>Declined by client</span>;
+                            return <span>{action.replace(/_/g, ' ')}</span>;
+                        };
+
+                        return (
+                            <div key={i} onClick={() => {
+                                if (act.entity_type === 'offer') navigate(`/offers/${act.entity_id}`);
+                                else if (act.entity_type === 'project') navigate(`/projects/${act.entity_id}`);
+                                else if (act.entity_type === 'customer') navigate(`/customers`);
+                            }} className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-subtle)] transition-colors cursor-pointer group">
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${getActionColor(act.action)}`}>
+                                        {getIcon(act.entity_type)}
+                                    </div>
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-[13px] font-medium text-[var(--text-main)] truncate block">
+                                            {getDescription(act)}
+                                        </span>
+                                        <span className="text-[10px] text-[var(--text-secondary)]">
+                                            {new Date(act.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <ArrowRight size={14} />
+                                </div>
                             </div>
-                            <span className="text-[11px] font-bold text-[var(--text-muted)] tabular-nums">
-                                {new Date(act.date).toLocaleDateString()}
-                            </span>
-                        </div>
-                    ))}
+                        );
+                    })}
                     {analytics.recentActivity.length === 0 && (
                         <div className="p-8 text-center text-[var(--text-muted)] text-[13px]">
-                            No recent activity recorded.
+                            No activity recorded yet.
                         </div>
                     )}
                 </div>

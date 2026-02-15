@@ -14,6 +14,8 @@ import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
+import LinkOfferModal from '../components/LinkOfferModal';
+import StatusSelect from '../components/ui/StatusSelect';
 import Select from '../components/ui/Select';
 import Textarea from '../components/ui/Textarea';
 import Badge from '../components/ui/Badge';
@@ -35,10 +37,13 @@ const ProjectDetailPage = () => {
     const [project, setProject] = useState(null);
     const [customer, setCustomer] = useState(null);
     const [offer, setOffer] = useState(null);
+    const [allCustomers, setAllCustomers] = useState([]);
+    const [allOffers, setAllOffers] = useState([]);
 
     // UI State
     const [isLoading, setIsLoading] = useState(true);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [isLinkOfferModalOpen, setIsLinkOfferModalOpen] = useState(false);
 
     // Notes State
     const [notes, setNotes] = useState('');
@@ -58,8 +63,14 @@ const ProjectDetailPage = () => {
             setLastSaved(projectData.updated_at);
 
             // Load Linked Data
+            const [customers, offers] = await Promise.all([
+                dataService.getCustomers(),
+                dataService.getOffers()
+            ]);
+            setAllCustomers(customers);
+            setAllOffers(offers);
+
             if (projectData.customer_id) {
-                const customers = await dataService.getCustomers();
                 setCustomer(customers.find(c => c.id === projectData.customer_id));
             }
             if (projectData.offer_id) {
@@ -84,6 +95,49 @@ const ProjectDetailPage = () => {
         } catch (error) {
             console.error('Update failed', error);
             loadProject(); // Revert on error
+        }
+    };
+
+    const handleLinkOffer = async (selectedOffer) => {
+        setIsLinkOfferModalOpen(false);
+        setIsLoading(true);
+
+        try {
+            // Customer Mismatch Check
+            if (selectedOffer.customer_id && project.customer_id && selectedOffer.customer_id !== project.customer_id) {
+                const proceed = window.confirm(
+                    `The offer "${selectedOffer.offer_name}" belongs to a different client. Do you want to link it anyway?\n\nThis will update the project's client to match the offer.`
+                );
+                if (!proceed) {
+                    setIsLoading(false);
+                    return;
+                }
+            }
+
+            // Atomic-like update (Sequential for MVP)
+            // 1. Update Project (Link Offer & Update Customer if needed)
+            const projectUpdates = {
+                offer_id: selectedOffer.id,
+                ...(selectedOffer.customer_id ? { customer_id: selectedOffer.customer_id } : {})
+            };
+            await dataService.updateProject(id, projectUpdates);
+
+            // 2. Update Offer (Link Project)
+            await dataService.updateOffer(selectedOffer.id, { project_id: id });
+
+            // 3. Trigger Sync explicitly to ensure status updates (Sent -> Pending, etc)
+            // The updateProject call above already triggers syncOfferWithProject (notes)
+            // But we need to ensure the PROJECT status reacts to the OFFER status
+            // dataService.syncProjectWithOffer contains the logic: if offer.status -> update project.status
+            // We can simulate this by re-triggering a sync or just relying on the fact that we loaded the offer data
+
+            // Re-fetch everything to ensure consistent state
+            await loadProject();
+
+        } catch (error) {
+            console.error("Failed to link offer:", error);
+            alert("Failed to link offer. Please try again.");
+            setIsLoading(false);
         }
     };
 
@@ -374,9 +428,31 @@ const ProjectDetailPage = () => {
 
                     {/* Linked Customer */}
                     <Card padding="1.5rem" className="border-[var(--border)] shadow-sm">
-                        <div className="flex items-center gap-3 mb-4 text-[var(--primary)]">
-                            <User size={18} />
-                            <h3 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-main)]">Client Entity</h3>
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3 text-[var(--primary)]">
+                                <User size={18} />
+                                <h3 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-main)]">Client Entity</h3>
+                            </div>
+                            {!customer && (
+                                <Select
+                                    className="w-40 text-[11px]"
+                                    value=""
+                                    onChange={async (e) => {
+                                        if (!e.target.value) return;
+                                        await handleUpdateProject({ customer_id: parseInt(e.target.value) });
+                                        loadProject();
+                                    }}
+                                    options={[
+                                        { value: '', label: 'Link Client...' },
+                                        ...allCustomers.map(c => ({ value: c.id, label: c.company_name }))
+                                    ]}
+                                />
+                            )}
+                            {customer && (
+                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-[var(--text-muted)] hover:text-[var(--danger)]" onClick={() => handleUpdateProject({ customer_id: null }).then(loadProject)}>
+                                    <Trash2 size={12} />
+                                </Button>
+                            )}
                         </div>
                         {customer ? (
                             <div>
@@ -391,15 +467,22 @@ const ProjectDetailPage = () => {
                                 </div>
                             </div>
                         ) : (
-                            <div className="text-[13px] text-[var(--text-muted)] italic">No client linked.</div>
+                            <div className="text-[13px] text-[var(--text-muted)] italic">No client linked. Select a client to enable offer creation.</div>
                         )}
                     </Card>
 
                     {/* Linked Offer */}
                     <Card padding="1.5rem" className="border-[var(--border)] shadow-sm">
-                        <div className="flex items-center gap-3 mb-4 text-[var(--primary)]">
-                            <FileText size={18} />
-                            <h3 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-main)]">Strategic Basis</h3>
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3 text-[var(--primary)]">
+                                <FileText size={18} />
+                                <h3 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-main)]">Strategic Basis</h3>
+                            </div>
+                            {offer && (
+                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-[var(--text-muted)] hover:text-[var(--danger)]" onClick={() => handleUpdateProject({ offer_id: null }).then(() => { setOffer(null); loadProject(); })}>
+                                    <Trash2 size={12} />
+                                </Button>
+                            )}
                         </div>
                         {offer ? (
                             <div>
@@ -432,7 +515,31 @@ const ProjectDetailPage = () => {
                                 </div>
                             </div>
                         ) : (
-                            <div className="text-[13px] text-[var(--text-muted)] italic">No offer linked.</div>
+                            <div className="space-y-4">
+                                <div className="text-[13px] text-[var(--text-muted)] italic">No offer linked.</div>
+                                <div className="flex flex-col gap-2">
+                                    <Button
+                                        onClick={async () => {
+                                            if (!customer) { alert('Please link a client first.'); return; }
+                                            const newOffer = await dataService.createOfferFromProject(project);
+                                            navigate(`/offer/edit/${newOffer.id}`);
+                                        }}
+                                        className="w-full btn-primary text-[13px]"
+                                        disabled={!customer}
+                                        title={!customer ? "Link a client first" : ""}
+                                    >
+                                        <Plus size={14} className="mr-2" /> Create New Offer
+                                    </Button>
+
+                                    <Button
+                                        variant="secondary"
+                                        className="w-full text-[13px] bg-white border-[var(--border)] shadow-sm hover:bg-[var(--bg-app)]"
+                                        onClick={() => setIsLinkOfferModalOpen(true)}
+                                    >
+                                        <LinkIcon size={14} className="mr-2" /> Link Existing Offer
+                                    </Button>
+                                </div>
+                            </div>
                         )}
                     </Card>
 
@@ -447,6 +554,15 @@ const ProjectDetailPage = () => {
                 message={`Are you sure you want to archive "${project.name}"? This action cannot be undone.`}
                 confirmText="Archive Project"
                 isDestructive={true}
+            />
+
+            <LinkOfferModal
+                isOpen={isLinkOfferModalOpen}
+                onClose={() => setIsLinkOfferModalOpen(false)}
+                onLink={handleLinkOffer}
+                offers={allOffers}
+                customerId={customer?.id}
+                currentOfferId={project.offer_id}
             />
         </div>
     );
@@ -474,8 +590,8 @@ const ActivityTimeline = ({ projectId }) => {
             {events.map((e, i) => (
                 <div key={i} className="relative">
                     <div className={`absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-white ${e.event_type === 'signed' ? 'bg-[var(--success)]' :
-                            e.event_type === 'status_change' ? 'bg-[var(--primary)]' :
-                                e.event_type === 'created' ? 'bg-[var(--text-main)]' : 'bg-[var(--text-muted)]'
+                        e.event_type === 'status_change' ? 'bg-[var(--primary)]' :
+                            e.event_type === 'created' ? 'bg-[var(--text-main)]' : 'bg-[var(--text-muted)]'
                         }`}></div>
                     <p className="text-[13px] font-medium text-[var(--text-main)]">{e.comment || e.event_type}</p>
                     <p className="text-[11px] text-[var(--text-muted)]">{new Date(e.created_at).toLocaleString()}</p>

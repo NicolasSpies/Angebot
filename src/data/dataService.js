@@ -296,5 +296,195 @@ export const dataService = {
             body: formData
         });
         return res.json();
+    },
+
+    // --- ACTIVITY LOG ---
+    getActivities: async (params = {}) => {
+        const query = new URLSearchParams(params).toString();
+        const res = await fetch(`${API_URL}/activities?${query}`);
+        return res.json();
+    },
+
+    logActivity: async (data) => {
+        const res = await fetch(`${API_URL}/activities`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        return res.json();
+    },
+
+    // --- INTEGRATION & SYNC HELPERS ---
+
+    // Helper to find project by offer ID
+    findProjectByOfferId: async (offerId) => {
+        const projects = await dataService.getProjects();
+        return projects.find(p => p.offer_id === parseInt(offerId) || p.offer_id === String(offerId));
+    },
+
+    logProjectActivity: async (projectId, eventType, comment) => {
+        console.log(`[Activity] Project ${projectId}: ${eventType} - ${comment}`);
+        // In a real app, we would POST to /api/projects/:id/events
+    },
+
+    // Centralized Sync: Offer -> Project
+    syncProjectWithOffer: async (offerId, offerData) => {
+        try {
+            const project = await dataService.findProjectByOfferId(offerId);
+            if (!project) return;
+
+            const updates = {};
+            let shouldUpdate = false;
+
+            // 1. Status Sync (Offer Status -> Project Status)
+            // Rules: Sent -> Pending, Signed -> To Do, Declined -> Cancelled/Feedback
+            if (offerData.status) {
+                if (offerData.status === 'sent' && project.status !== 'pending' && project.status !== 'active') {
+                    updates.status = 'pending';
+                    shouldUpdate = true;
+                } else if (offerData.status === 'signed' && project.status !== 'todo' && project.status !== 'active') {
+                    updates.status = 'todo';
+                    shouldUpdate = true;
+                    // Also set activeOfferId if not set? It's already linked via offer_id
+                } else if (offerData.status === 'declined' && project.status !== 'cancelled') {
+                    updates.status = 'feedback'; // Soft cancel
+                    shouldUpdate = true;
+                }
+            }
+
+            // 2. Data Sync: Strategic Notes (Offer -> Project)
+            // "Keep them synchronized if offer is still the activeOfferId"
+            if (offerData.strategic_notes !== undefined && offerData.strategic_notes !== project.strategic_notes) {
+                updates.strategic_notes = offerData.strategic_notes;
+                shouldUpdate = true;
+            }
+
+            if (shouldUpdate) {
+                console.log('[Sync] Updating Project:', project.id, updates);
+                // Call original updateProject to avoid infinite loop if we wrap it
+                await originalUpdateProject(project.id, updates);
+
+                if (updates.status) {
+                    await dataService.logProjectActivity(project.id, 'status_change', `Status auto-updated to ${updates.status} (Offer ${offerData.status})`);
+                }
+            }
+        } catch (err) {
+            console.error('[Sync] Project sync failed:', err);
+        }
+    },
+
+    // Centralized Sync: Project -> Offer
+    syncOfferWithProject: async (projectId, projectData) => {
+        try {
+            const project = await dataService.getProject(projectId);
+            if (!project || !project.offer_id) return;
+
+            // Data Sync: Strategic Notes (Project -> Offer)
+            if (projectData.strategic_notes !== undefined) {
+                const offer = await dataService.getOffer(project.offer_id);
+                if (offer && offer.strategic_notes !== projectData.strategic_notes) {
+                    console.log('[Sync] Updating Offer:', offer.id, { strategic_notes: projectData.strategic_notes });
+                    // Call original updateOffer to avoid loop
+                    await originalUpdateOffer(offer.id, { strategic_notes: projectData.strategic_notes });
+                }
+            }
+        } catch (err) {
+            console.error('[Sync] Offer sync failed:', err);
+        }
+    },
+
+    createOfferFromProject: async (project) => {
+        // 1. Create Offer with project data
+        const newOffer = {
+            status: 'draft',
+            offer_name: `Offer: ${project.name}`,
+            customer_id: project.customer_id,
+            strategic_notes: project.strategic_notes || project.internal_notes, // Prefer strategic
+            items: [],
+            created_at: new Date().toISOString()
+        };
+
+        // Use originalSaveOffer to avoid side-effects during creation if needed, 
+        // but saveOffer isn't wrapped yet.
+        const createdOffer = await dataService.saveOffer(newOffer);
+
+        // 2. Link to Project
+        // We use originalUpdateProject to avoid triggering sync back immediately, though safe.
+        // But we WANT to set offer_id.
+        await originalUpdateProject(project.id, { offer_id: createdOffer.id });
+
+        return createdOffer;
     }
 };
+
+// --- WRAPPERS FOR SYNC ---
+
+// Project Updates
+const originalUpdateProject = dataService.updateProject;
+dataService.updateProject = async (id, data) => {
+    const res = await originalUpdateProject(id, data);
+    // Sync Project -> Offer (e.g. Notes)
+    await dataService.syncOfferWithProject(id, data);
+    return res;
+};
+
+// Offer Updates
+const originalUpdateOffer = dataService.updateOffer;
+dataService.updateOffer = async (id, data) => {
+    const res = await originalUpdateOffer(id, data);
+    // Sync Offer -> Project (Status, Notes)
+    await dataService.syncProjectWithOffer(id, data);
+    return res;
+};
+
+const originalUpdateOfferStatus = dataService.updateOfferStatus;
+dataService.updateOfferStatus = async (id, status) => {
+    const res = await originalUpdateOfferStatus(id, status);
+    await dataService.syncProjectWithOffer(id, { status });
+    return res;
+};
+
+const originalSignOffer = dataService.signOffer;
+dataService.signOffer = async (token, data) => {
+    const res = await originalSignOffer(token, data);
+    // Need offer ID. If res has it (it should), use it.
+    // If not, we might need to fetch by token logic (already have helper)
+    let offerId = res.id;
+    if (!offerId && token) {
+        // Try to get offer by token to find ID
+        try {
+            const offer = await dataService.getOfferByToken(token);
+            if (offer) offerId = offer.id;
+        } catch (e) { /* ignore */ }
+    }
+
+    if (offerId) {
+        await dataService.syncProjectWithOffer(offerId, { status: 'signed' });
+    }
+    return res;
+};
+
+const originalDeclineOffer = dataService.declineOffer;
+dataService.declineOffer = async (token, reason) => {
+    const res = await originalDeclineOffer(token, reason);
+    let offerId = res.id;
+    if (!offerId && token) {
+        try {
+            const offer = await dataService.getOfferByToken(token);
+            if (offer) offerId = offer.id;
+        } catch (e) { /* ignore */ }
+    }
+
+    if (offerId) {
+        await dataService.syncProjectWithOffer(offerId, { status: 'declined' });
+    }
+    return res;
+};
+
+const originalSendOffer = dataService.sendOffer;
+dataService.sendOffer = async (id) => {
+    const res = await originalSendOffer(id);
+    await dataService.syncProjectWithOffer(id, { status: 'sent' });
+    return res;
+};
+

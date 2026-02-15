@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useI18n } from '../i18n/I18nContext';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { dataService } from '../data/dataService';
 import { calculateTotals, formatCurrency } from '../utils/pricingEngine';
 import Input from '../components/ui/Input';
@@ -12,29 +12,9 @@ import { Check, Zap, ArrowLeft, ArrowRight, Save, Plus } from 'lucide-react';
 const OfferWizardPage = () => {
     const { t, locale } = useI18n();
     const navigate = useNavigate();
-    const { editId } = useParams();
+    const location = useLocation(); // Imported from react-router-dom
 
-    // Data
-    const [customers, setCustomers] = useState([]);
-    const [servicesList, setServicesList] = useState([]);
-    const [packagesList, setPackagesList] = useState([]);
-
-    // State
-    const [step, setStep] = useState(1);
-    const [selectedCustomer, setSelectedCustomer] = useState(null);
-    const [offerName, setOfferName] = useState('');
-    const [offerLanguage, setOfferLanguage] = useState(locale);
-    const [dueDate, setDueDate] = useState(() => {
-        const d = new Date();
-        d.setDate(d.getDate() + 14);
-        return d.toISOString().split('T')[0];
-    });
-    const [selectedPackage, setSelectedPackage] = useState('custom');
-    const [selectedServices, setSelectedServices] = useState([]);
-    const [discountPercent, setDiscountPercent] = useState(0);
-    const [internalNotes, setInternalNotes] = useState('');
-    const [isSaving, setIsSaving] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
+    // ... (rest of state)
 
     const loadData = useCallback(async () => {
         try {
@@ -49,6 +29,7 @@ const OfferWizardPage = () => {
             setPackagesList(pData || []);
 
             if (editId) {
+                // ... (existing edit logic) ...
                 const existingOffer = await dataService.getOffer(editId);
                 if (existingOffer) {
                     const customer = cData.find(c => c.id === existingOffer.customer_id);
@@ -59,21 +40,24 @@ const OfferWizardPage = () => {
                     setDiscountPercent(existingOffer.discount_percent || 0);
                     setInternalNotes(existingOffer.internal_notes || '');
 
+                    // Map existing items...
                     const mappedItems = existingOffer.items.map(item => {
                         const originalService = sData.find(s => s.id === item.service_id);
+                        if (!originalService) return null;
                         return {
                             ...originalService,
                             quantity: item.quantity,
                             unit_price: item.unit_price,
-                            variant_id: item.variant_id || null, // Ensure variant_id persists
+                            variant_id: item.variant_id || null,
                             item_name: item.item_name,
                             item_description: item.item_description
                         };
-                    });
+                    }).filter(Boolean);
                     setSelectedServices(mappedItems);
                     setSelectedPackage('custom');
                 }
             } else {
+                // Creation Logic
                 const defaults = sData
                     .filter(s => s.default_selected)
                     .map(s => ({ ...s, quantity: 1, unit_price: s.price }));
@@ -84,13 +68,19 @@ const OfferWizardPage = () => {
                     d.setDate(d.getDate() + settingsData.default_validity_days);
                     setDueDate(d.toISOString().split('T')[0]);
                 }
+
+                // Check for Pre-fill from Location State
+                if (location.state?.customerId) {
+                    const preselected = cData.find(c => c.id === parseInt(location.state.customerId));
+                    if (preselected) setSelectedCustomer(preselected);
+                }
             }
         } catch (error) {
             console.error("Failed to load data:", error);
         } finally {
             setIsLoading(false);
         }
-    }, [editId]);
+    }, [editId, location.state]);
 
     useEffect(() => {
         loadData();
