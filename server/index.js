@@ -1267,61 +1267,114 @@ app.get('/api/reviews/:id/versions', (req, res) => {
 
 app.get('/api/review-by-token/:token', (req, res) => {
     try {
-        const version = db.prepare(`
-            SELECT rv.*, r.project_id, r.current_version_id, r.title, p.name as project_name, 
-                   p.review_limit, r.revisions_used, r.review_policy, r.status as review_container_status
-            FROM review_versions rv
-            JOIN reviews r ON rv.review_id = r.id
+        // Find container (Review) by token - Check container first, then version
+        let container = db.prepare(`
+            SELECT r.*, p.name as project_name
+            FROM reviews r
             JOIN projects p ON r.project_id = p.id
-            WHERE rv.token = ?
+            WHERE r.token = ?
         `).get(req.params.token);
 
-        if (!version) {
+        if (!container) {
+            // Try looking up by version token
+            const v = db.prepare('SELECT review_id FROM review_versions WHERE token = ?').get(req.params.token);
+            if (v) {
+                container = db.prepare(`
+                    SELECT r.*, p.name as project_name
+                    FROM reviews r
+                    JOIN projects p ON r.project_id = p.id
+                    WHERE r.id = ?
+                `).get(v.review_id);
+            }
+        }
+
+        if (!container) {
             return res.status(404).json({ error: 'Review not found' });
         }
 
-        // Active check
-        if (version.is_token_active === 0) {
+        if (container.is_token_active === 0) {
             return res.status(410).json({ error: 'This review link is no longer active' });
         }
 
-        const isCurrent = version.id === version.current_version_id;
+        // Get the requested version (default to current if no query param)
+        const versionId = req.query.v;
+        const version = versionId
+            ? db.prepare('SELECT * FROM review_versions WHERE id = ? AND review_id = ?').get(versionId, container.id)
+            : db.prepare('SELECT * FROM review_versions WHERE id = ?').get(container.current_version_id);
 
-        // PIN Check
-        const providedPin = req.query.pin;
-        if (version.pin_code && version.pin_code !== providedPin) {
-            return res.json({
-                pin_required: true,
-                project_name: version.project_name
-            });
+        if (!version) {
+            return res.status(404).json({ error: 'Review version not found' });
         }
+
+        const isCurrent = version.id === container.current_version_id;
 
         // Versions for switcher
         const allVersions = db.prepare(`
             SELECT id, version_number, status, token FROM review_versions
             WHERE review_id = ?
             ORDER BY version_number DESC
-        `).all(version.review_id);
+        `).all(container.id);
 
-        res.json({ ...version, isCurrent, allVersions });
+        res.json({ ...container, ...version, isCurrent, allVersions, containerId: container.id, versionId: version.id });
     } catch (err) {
         console.error('[API] /api/review-by-token failed:', err);
         res.status(500).json({ error: err.message });
     }
 });
 
-app.post('/api/public/review/:token/verify', (req, res) => {
-    const { pin } = req.body;
-    try {
-        const version = db.prepare('SELECT pin_code FROM review_versions WHERE token = ?').get(req.params.token);
-        if (!version) return res.status(404).json({ error: 'Review version not found' });
+app.post('/api/reviews/:id/action', (req, res) => {
+    const { action, firstName, lastName, email, versionId } = req.body;
+    const reviewId = req.params.id;
 
-        if (version.pin_code === pin) {
-            res.json({ success: true });
-        } else {
-            res.status(401).json({ error: 'Invalid PIN' });
+    try {
+        const review = db.prepare('SELECT * FROM reviews WHERE id = ?').get(reviewId);
+        if (!review) return res.status(404).json({ error: 'Review not found' });
+
+        const version = db.prepare('SELECT * FROM review_versions WHERE id = ?').get(versionId);
+        if (!version) return res.status(404).json({ error: 'Version not found' });
+
+        // Revision limit check for request-changes
+        if (action === 'request-changes') {
+            if (review.revisions_used >= review.review_limit) {
+                return res.status(409).json({ error: 'Revision limit reached for this container.' });
+            }
         }
+
+        // Store identity action
+        db.prepare(`
+            INSERT INTO review_actions (review_id, version_id, action_type, first_name, last_name, email)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `).run(reviewId, versionId, action, firstName, lastName, email);
+
+        // Update status
+        if (action !== 'approve' && action !== 'request-changes') {
+            return res.status(400).json({ error: 'Invalid action' });
+        }
+
+        const newStatus = action === 'approve' ? 'approved' : 'changes_requested';
+        db.prepare('UPDATE review_versions SET status = ? WHERE id = ?').run(newStatus, versionId);
+
+        // If request changes, increment revisions_used
+        if (action === 'request-changes') {
+            db.prepare('UPDATE reviews SET revisions_used = revisions_used + 1, status = "changes_requested" WHERE id = ?').run(reviewId);
+        } else if (action === 'approve') {
+            db.prepare('UPDATE reviews SET status = "approved" WHERE id = ?').run(reviewId);
+        }
+
+        // Create notification
+        const clientName = `${firstName} ${lastName}`.trim() || email;
+        const msg = `${clientName} (${email}) ${action === 'approve' ? 'approved' : 'requested changes for'} "${review.title}" v${version.version_number}.`;
+
+        db.prepare('INSERT INTO notifications (type, title, message, link) VALUES (?, ?, ?, ?)').run(
+            'review_action',
+            action === 'approve' ? 'Review Approved' : 'Changes Requested',
+            msg,
+            `/projects/${review.project_id}`
+        );
+
+        res.json({ success: true, status: newStatus });
     } catch (err) {
+        console.error('[API] /api/reviews/:id/action failed:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -1414,13 +1467,24 @@ app.post('/api/reviews/upload', upload.single('file'), async (req, res) => {
             console.log('[Upload] Original deleted:', file.filename);
         }
 
-        // 3. Find/Create Review container
-        let review = db.prepare('SELECT * FROM reviews WHERE project_id = ?').get(project_id);
+        // 3. Find/Create Review container (multiple containers per project allowed)
+        let review = db.prepare('SELECT * FROM reviews WHERE project_id = ? AND title = ?').get(project_id, title || 'Project Review');
         if (!review) {
-            const result = db.prepare('INSERT INTO reviews (project_id, title, status, review_limit, review_policy, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(
-                project_id, title || 'Project Review', 'in_review', review_limit || 3, review_policy || 'soft', created_by || 'System'
+            const containerToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            const result = db.prepare('INSERT INTO reviews (project_id, title, status, review_limit, review_policy, created_by, token) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+                project_id, title || 'Project Review', 'in_review', review_limit || 3, review_policy || 'soft', created_by || 'System', containerToken
             );
             review = db.prepare('SELECT * FROM reviews WHERE id = ?').get(result.lastInsertRowid);
+        } else {
+            // Strict Revision Credit System Logic
+            if (review.revisions_used >= review.review_limit) {
+                // If soft mode, we allow it but log it? The user said "Reject Upload New Version with 409 (if strict mode enabled)". 
+                // Let's implement strict rejection for now as requested.
+                if (review.review_policy === 'strict') {
+                    if (fs.existsSync(fullCompressedPath)) fs.unlinkSync(fullCompressedPath);
+                    return res.status(409).json({ error: 'Revision limit reached for this container.' });
+                }
+            }
         }
 
         // 4. Update Old Versions (is_active = 0, retention_expiry)
@@ -1507,8 +1571,8 @@ app.post('/api/public/reviews/versions/:id/comments', (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(versionId, page_number, x, y, width || null, height || null, type || 'comment', content, author_name, author_email, parent_id || null, screenshotUrl);
 
-        // Update version status to changes_requested if it was open
-        db.prepare("UPDATE review_versions SET status = 'changes_requested' WHERE id = ? AND status = 'open'").run(versionId);
+        // Status should remain neutral on comments (unless explicitly requested via plan)
+        // db.prepare("UPDATE review_versions SET status = 'changes_requested' WHERE id = ? AND status = 'open'").run(versionId);
 
         const newComment = db.prepare('SELECT * FROM review_comments WHERE id = ?').get(result.lastInsertRowid);
 

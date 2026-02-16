@@ -152,7 +152,7 @@ const ReviewsCard = ({ projectId }) => {
                                         <Link2 size={16} />
                                     </button>
                                     <Link
-                                        to={`/review/${review.token}`}
+                                        to={`/reviews/${review.token}`}
                                         className="btn-primary btn-xs px-3 py-1.5 rounded-md"
                                     >
                                         Open Review

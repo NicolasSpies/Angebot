@@ -211,8 +211,9 @@ export const dataService = {
         return res.json();
     },
 
-    getReviewByToken: async (token, pin = null) => {
-        const url = pin ? `${API_URL}/review-by-token/${token}?pin=${pin}` : `${API_URL}/review-by-token/${token}`;
+    getReviewByToken: async (token, versionId = null) => {
+        let url = `${API_URL}/review-by-token/${token}`;
+        if (versionId) url += `?v=${versionId}`;
         const res = await fetch(url);
         return res.json();
     },

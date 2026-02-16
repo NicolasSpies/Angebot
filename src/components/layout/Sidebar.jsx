@@ -8,16 +8,14 @@ const Sidebar = () => {
 
     const workspaceItems = [
         { to: "/dashboard", icon: LayoutDashboard, label: t('nav.dashboard') },
-        { to: "/activity", icon: Activity, label: t('nav.activity') || 'Activity' },
         { to: "/offers", icon: FileText, label: t('nav.offers') },
         { to: "/projects", icon: Briefcase, label: t('nav.projects') },
         { to: "/reviews", icon: FileCheck, label: t('nav.reviews') || 'Reviews' },
         { to: "/customers", icon: Users, label: t('nav.customers') },
-        { to: "/services", icon: Zap, label: t('nav.services') },
     ];
 
     const systemItems = [
-        { to: "/settings/audit", icon: ShieldCheck, label: 'Audit Mode' },
+        { to: "/services", icon: Zap, label: t('nav.services') },
         { to: "/trash", icon: Trash2, label: t('nav.trash') || 'Trash' },
         { to: "/settings", icon: Settings, label: t('nav.settings') },
     ];

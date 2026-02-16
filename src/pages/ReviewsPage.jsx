@@ -160,7 +160,7 @@ const ReviewsPage = () => {
                                                 <LinkIcon size={14} />
                                             </button>
                                             <Link
-                                                to={`/review/${review.token}`}
+                                                to={`/reviews/${review.token}`}
                                                 className="inline-flex items-center gap-2 text-[12px] font-bold text-[var(--primary)] hover:underline"
                                             >
                                                 View Review

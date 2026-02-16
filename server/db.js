@@ -323,14 +323,32 @@ const migrations = [
         screenshot_url TEXT,
         created_by TEXT, -- For internal users
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        annotation_data TEXT, -- For structured JSON (freehand, highlight, etc.)
         FOREIGN KEY (version_id) REFERENCES review_versions(id) ON DELETE CASCADE
     );`,
+    `CREATE TABLE IF NOT EXISTS review_actions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        review_id INTEGER NOT NULL,
+        version_id INTEGER NOT NULL,
+        action_type TEXT NOT NULL, -- 'approve', 'request_changes'
+        first_name TEXT,
+        last_name TEXT,
+        email TEXT,
+        confirmed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (review_id) REFERENCES reviews(id) ON DELETE CASCADE,
+        FOREIGN KEY (version_id) REFERENCES review_versions(id) ON DELETE CASCADE
+    );`,
+    'ALTER TABLE reviews ADD COLUMN token TEXT;',
+    'ALTER TABLE reviews ADD COLUMN is_token_active INTEGER DEFAULT 1;',
+    'ALTER TABLE review_comments ADD COLUMN annotation_data TEXT;',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_token ON reviews(token);',
+    'CREATE INDEX IF NOT EXISTS idx_review_actions_review_id ON review_actions(review_id);',
     'CREATE INDEX IF NOT EXISTS idx_reviews_project_id ON reviews(project_id);',
     'CREATE INDEX IF NOT EXISTS idx_review_versions_review_id ON review_versions(review_id);',
     // Data Cleanup: Ensure only one review per project
-    `DELETE FROM reviews WHERE id NOT IN (SELECT MIN(id) FROM reviews GROUP BY project_id);`,
+    `DELETE FROM reviews WHERE id NOT IN(SELECT MIN(id) FROM reviews GROUP BY project_id); `,
     // Data Sync: Ensure project_id in review_versions is correct
-    `UPDATE review_versions SET review_id = (SELECT id FROM reviews WHERE reviews.project_id = review_versions.project_id) WHERE review_id IS NULL;`,
+    `UPDATE review_versions SET review_id = (SELECT id FROM reviews WHERE reviews.project_id = review_versions.project_id) WHERE review_id IS NULL; `,
     // New Advanced Review System Columns
     'ALTER TABLE reviews ADD COLUMN status TEXT DEFAULT \'draft\';',
     'ALTER TABLE reviews ADD COLUMN review_limit INTEGER;',
@@ -363,7 +381,7 @@ migrations.forEach(sql => {
     } catch (e) {
         // If it's just "column already exists", we can safely ignore
         if (!e.message.includes('duplicate column name') && !e.message.includes('already exists')) {
-            console.error(`[Migration Error] Failed to run: ${sql}`);
+            console.error(`[Migration Error] Failed to run: ${sql} `);
             console.error(e);
         }
     }

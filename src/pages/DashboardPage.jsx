@@ -100,7 +100,7 @@ const DashboardPage = () => {
             )}
 
             {/* Quick Actions Row */}
-            <div className="grid grid-cols-4 gap-4 mb-10">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
                 <button onClick={() => navigate('/offer/new')} className="flex items-center gap-4 p-4 bg-white border border-[var(--border-subtle)] rounded-xl hover:border-[var(--primary)] hover:shadow-md transition-all group text-left">
                     <div className="w-10 h-10 rounded-full bg-[var(--primary-light)] text-[var(--primary)] flex items-center justify-center group-hover:scale-110 transition-transform">
                         <Plus size={20} />
@@ -126,15 +126,6 @@ const DashboardPage = () => {
                     <div>
                         <p className="text-[13px] font-bold text-[var(--text-main)]">Add Client</p>
                         <p className="text-[11px] text-[var(--text-muted)]">Register entity</p>
-                    </div>
-                </button>
-                <button onClick={() => navigate('/activity')} className="flex items-center gap-4 p-4 bg-white border border-[var(--border-subtle)] rounded-xl hover:border-[var(--primary)] hover:shadow-md transition-all group text-left">
-                    <div className="w-10 h-10 rounded-full bg-[var(--bg-subtle)] text-[var(--text-main)] flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <Activity size={20} />
-                    </div>
-                    <div>
-                        <p className="text-[13px] font-bold text-[var(--text-main)]">Activity Log</p>
-                        <p className="text-[11px] text-[var(--text-muted)]">View history</p>
                     </div>
                 </button>
             </div>
@@ -264,9 +255,6 @@ const DashboardPage = () => {
                         <Activity size={20} className="text-[var(--text-muted)]" />
                         <h3 className="text-[16px] font-extrabold text-[var(--text-main)]">Recent Activity</h3>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => navigate('/activity')}>
-                        View All <ArrowRight size={14} className="ml-1" />
-                    </Button>
                 </div>
                 <div>
                     {(analytics.recentActivity || []).map((act, i) => {

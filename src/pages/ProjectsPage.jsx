@@ -135,7 +135,6 @@ const ProjectsPage = () => {
             {/* Block 1: Title */}
             <ListPageHeader
                 title={t('nav.projects')}
-                description="Manage and track all customer projects in one place."
                 action={
                     <div className="flex items-center gap-3">
                         <div className="flex bg-[var(--bg-subtle)] p-1 rounded-lg border border-[var(--border-subtle)]">
@@ -170,7 +169,6 @@ const ProjectsPage = () => {
                 }}
                 filters={
                     <div className="flex items-center gap-4 overflow-x-auto no-scrollbar pb-1">
-                        <span className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider shrink-0">Filter by Status</span>
                         <div className="flex gap-2 shrink-0">
                             {PROJECT_STATUS_OPTIONS.map(opt => (
                                 <button
@@ -275,7 +273,7 @@ const ProjectsPage = () => {
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
                                                     <div className="flex items-center gap-1.5">
-                                                        <StatusPill status={project.latest_review_status} />
+                                                        <StatusPill status={project.latest_review_status} hideWaitingOn={true} />
                                                         {(project.latest_review_version !== null && project.latest_review_version !== undefined) && (
                                                             <span className="text-[10px] font-bold text-[var(--text-muted)] bg-[var(--bg-app)] px-1.5 py-0.5 rounded uppercase tracking-tighter border border-[var(--border-subtle)]">v{project.latest_review_version}</span>
                                                         )}
@@ -315,9 +313,6 @@ const ProjectsPage = () => {
                                                     onChange={(e) => handleDeadlineChange(project.id, e.target.value)}
                                                 />
                                             </div>
-                                            <span className="text-[10px] text-[var(--text-muted)] font-medium">
-                                                Updated {project.updated_at || project.created_at ? new Date(project.updated_at || project.created_at).toLocaleDateString() : '—'}
-                                            </span>
                                         </div>
                                     </td>
                                     <td className="py-3 px-6" onClick={(e) => e.stopPropagation()}>

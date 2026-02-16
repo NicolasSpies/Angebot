@@ -2,7 +2,7 @@ import React from 'react';
 
 import { getStatusColor } from '../../utils/statusColors';
 
-const StatusPill = ({ status, label }) => {
+const StatusPill = ({ status, label, hideWaitingOn = false }) => {
     const config = getStatusColor(status);
     const displayText = label || config.label;
 
@@ -19,7 +19,7 @@ const StatusPill = ({ status, label }) => {
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: config.dot }} />
                 {displayText.toUpperCase()}
             </span>
-            {config.waitingOn && (
+            {(config.waitingOn && !hideWaitingOn) && (
                 <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest pl-1">
                     Wait on: {config.waitingOn}
                 </span>
