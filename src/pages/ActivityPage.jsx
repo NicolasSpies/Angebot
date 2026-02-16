@@ -146,9 +146,9 @@ const ActivityPage = () => {
                                             {act.entity_type}
                                         </Badge>
                                         <span className="text-[12px] text-[var(--text-muted)]">
-                                            {new Date(act.created_at).toLocaleString(undefined, {
+                                            {act.created_at ? new Date(act.created_at).toLocaleString(undefined, {
                                                 month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                                            })}
+                                            }) : '—'}
                                         </span>
                                     </div>
                                     <div className="text-[15px] font-medium text-[var(--text-main)] pr-8 leading-snug">

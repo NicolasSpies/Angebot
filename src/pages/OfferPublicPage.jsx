@@ -9,6 +9,7 @@ import Button from '../components/ui/Button';
 import { FileText, CheckCircle, Clock, Download, Loader2, XCircle } from 'lucide-react';
 import { useI18n } from '../i18n/I18nContext';
 import DeadlineIndicator from '../components/ui/DeadlineIndicator';
+import { formatDate } from '../utils/dateUtils';
 
 const OfferPublicPage = () => {
     const { token } = useParams();
@@ -122,13 +123,13 @@ const OfferPublicPage = () => {
                     {offer.status === 'signed' && (
                         <div className="px-4 py-2 bg-[var(--success-bg)] text-[var(--success-text)] rounded-[var(--radius-md)] flex items-center gap-2 font-bold border border-[var(--success)]/20 shadow-sm animate-in fade-in slide-in-from-bottom-2">
                             <CheckCircle size={18} />
-                            Offer Signed on {new Date(offer.signed_at || offer.updated_at).toLocaleDateString()}
+                            Offer Signed on {formatDate(offer.signed_at || offer.updated_at)}
                         </div>
                     )}
                     {offer.status === 'declined' && (
                         <div className="px-4 py-2 bg-red-100 text-red-700 rounded-[var(--radius-md)] flex items-center gap-2 font-bold border border-red-200 shadow-sm animate-in fade-in slide-in-from-bottom-2">
                             <XCircle size={18} />
-                            Offer Declined on {new Date(offer.declined_at || offer.updated_at).toLocaleDateString()}
+                            Offer Declined on {formatDate(offer.declined_at || offer.updated_at)}
                         </div>
                     )}
                     {offer.status === 'sent' && (

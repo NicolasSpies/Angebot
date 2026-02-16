@@ -205,30 +205,20 @@ export const dataService = {
         return res.json();
     },
 
-    // --- REVIEWS ---
+    // --- REVIEWS (Unified Token System) ---
     getReviews: async () => {
         const res = await fetch(`${API_URL}/reviews`);
         return res.json();
     },
 
-    getReview: async (id) => {
-        const res = await fetch(`${API_URL}/reviews/${id}`);
-        return res.json();
-    },
-
-    getReviewVersion: async (versionId) => {
-        const res = await fetch(`${API_URL}/reviews/version/${versionId}`);
+    getReviewByToken: async (token, pin = null) => {
+        const url = pin ? `${API_URL}/review-by-token/${token}?pin=${pin}` : `${API_URL}/review-by-token/${token}`;
+        const res = await fetch(url);
         return res.json();
     },
 
     getProjectReviews: async (projectId) => {
         const res = await fetch(`${API_URL}/projects/${projectId}/reviews`);
-        return res.json();
-    },
-
-    // --- PUBLIC REVIEWS ---
-    getPublicReview: async (token) => {
-        const res = await fetch(`${API_URL}/public/review/${token}`);
         return res.json();
     },
 
@@ -287,6 +277,15 @@ export const dataService = {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(commentData)
+        });
+        return res.json();
+    },
+
+    updateReviewComment: async (commentId, data) => {
+        const res = await fetch(`${API_URL}/review-comments/${commentId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
         });
         return res.json();
     },
@@ -468,8 +467,15 @@ export const dataService = {
 
     // Helper to find project by offer ID
     findProjectByOfferId: async (offerId) => {
-        const projects = await dataService.getProjects();
-        return projects.find(p => p.offer_id === parseInt(offerId) || p.offer_id === String(offerId));
+        try {
+            const projects = await dataService.getProjects();
+            // Use strict comparison or loose if ID might be string
+            const idToMatch = Number(offerId);
+            return projects.find(p => p.offer_id === idToMatch) || null;
+        } catch (err) {
+            console.error('[dataService] findProjectByOfferId failed:', err);
+            return null;
+        }
     },
 
     logProjectActivity: async (projectId, eventType, comment) => {
@@ -572,23 +578,36 @@ export const dataService = {
 // Project Updates
 const originalUpdateProject = dataService.updateProject;
 dataService.updateProject = async (id, data) => {
-    const res = await originalUpdateProject(id, data);
-    // Sync Project -> Offer (e.g. Notes)
-    await dataService.syncOfferWithProject(id, data);
-    return res;
+    console.log(`[dataService] Updating Project ${id}`, data);
+    try {
+        const res = await originalUpdateProject(id, data);
+        // Sync Project -> Offer (e.g. Notes)
+        await dataService.syncOfferWithProject(id, data);
+        return res;
+    } catch (err) {
+        console.error(`[dataService] Update Project ${id} failed:`, err);
+        throw err;
+    }
 };
 
 // Offer Updates
 const originalUpdateOffer = dataService.updateOffer;
 dataService.updateOffer = async (id, data) => {
-    const res = await originalUpdateOffer(id, data);
-    // Sync Offer -> Project (Status, Notes)
-    await dataService.syncProjectWithOffer(id, data);
-    return res;
+    console.log(`[dataService] Updating Offer ${id}`, data);
+    try {
+        const res = await originalUpdateOffer(id, data);
+        // Sync Offer -> Project (Status, Notes)
+        await dataService.syncProjectWithOffer(id, data);
+        return res;
+    } catch (err) {
+        console.error(`[dataService] Update Offer ${id} failed:`, err);
+        throw err;
+    }
 };
 
 const originalUpdateOfferStatus = dataService.updateOfferStatus;
 dataService.updateOfferStatus = async (id, status) => {
+    console.log(`[dataService] Updating Offer Status ${id} -> ${status}`);
     const res = await originalUpdateOfferStatus(id, status);
     await dataService.syncProjectWithOffer(id, { status });
     return res;

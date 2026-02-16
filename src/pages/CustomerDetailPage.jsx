@@ -18,6 +18,7 @@ import StatusPill from '../components/ui/StatusPill';
 import DueStatusIndicator from '../components/ui/DueStatusIndicator';
 import DropdownMenu from '../components/ui/DropdownMenu';
 import TableCard from '../components/ui/TableCard';
+import { formatDate } from '../utils/dateUtils';
 
 const CustomerDetailPage = () => {
     const { id } = useParams();
@@ -168,7 +169,7 @@ const CustomerDetailPage = () => {
                                 </Link>
                             </td>
                             <td className="py-3 px-6 text-[14px] text-[var(--text-secondary)] font-medium">
-                                {new Date(offer.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                                {formatDate(offer.created_at)}
                             </td>
                             <td className="py-3 px-6 font-extrabold text-[var(--text-main)]">{formatCurrency(offer.total)}</td>
                             <td className="py-3 px-6">

@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
-import { FileText, Search, Filter, ArrowRight, Clock, User, Briefcase } from 'lucide-react';
+import { FileText, Search, Filter, ArrowRight, Clock, User, Briefcase, Link as LinkIcon } from 'lucide-react';
 import StatusPill from '../components/ui/StatusPill';
 import { Link } from 'react-router-dom';
+import { formatDate, formatTime } from '../utils/dateUtils';
 
 const ReviewsPage = () => {
     const { t } = useI18n();
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
@@ -17,11 +19,17 @@ const ReviewsPage = () => {
 
     const loadData = async () => {
         setLoading(true);
+        setError(null);
         try {
             const data = await dataService.getReviews();
-            setReviews(data);
+            if (data && data.error) {
+                setError(data.error);
+            } else {
+                setReviews(Array.isArray(data) ? data : []);
+            }
         } catch (error) {
             console.error('Failed to load reviews:', error);
+            setError('Could not connect to the server.');
         } finally {
             setLoading(false);
         }
@@ -29,7 +37,8 @@ const ReviewsPage = () => {
 
     const filteredReviews = reviews.filter(r =>
         r.project_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.current_status?.toLowerCase().includes(searchTerm.toLowerCase())
+        r.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.status?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
@@ -47,7 +56,7 @@ const ReviewsPage = () => {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={18} />
                     <input
                         type="text"
-                        placeholder="Search by project or status..."
+                        placeholder="Search by project, title or status..."
                         className="w-full pl-10 pr-4 py-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-[var(--radius-md)] text-[14px] outline-none focus:border-[var(--primary)] transition-all"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
@@ -65,6 +74,15 @@ const ReviewsPage = () => {
                     <div className="p-12 flex justify-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--primary)]"></div>
                     </div>
+                ) : error ? (
+                    <div className="p-12 text-center">
+                        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
+                            <FileText size={24} />
+                        </div>
+                        <h3 className="text-[16px] font-bold text-[var(--text-main)]">Error loading reviews</h3>
+                        <p className="text-[14px] text-[var(--text-secondary)] mt-1 mb-6">{error}</p>
+                        <button onClick={loadData} className="btn-primary">Retry</button>
+                    </div>
                 ) : filteredReviews.length === 0 ? (
                     <div className="p-12 text-center">
                         <div className="w-16 h-16 bg-[var(--bg-app)] rounded-full flex items-center justify-center mx-auto mb-4 text-[var(--text-muted)]">
@@ -77,10 +95,12 @@ const ReviewsPage = () => {
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="bg-[var(--bg-app)] border-b border-[var(--border-subtle)]">
-                                <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)] w-[40%]">Project</th>
+                                <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Project</th>
+                                <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Review Title</th>
                                 <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Version</th>
                                 <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Status</th>
-                                <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Created</th>
+                                <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Revisions</th>
+                                <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Last Updated</th>
                                 <th className="px-6 py-4"></th>
                             </tr>
                         </thead>
@@ -88,33 +108,65 @@ const ReviewsPage = () => {
                             {filteredReviews.map((review) => (
                                 <tr key={review.id} className="hover:bg-[var(--bg-app)]/50 transition-colors">
                                     <td className="px-6 py-4">
-                                        <Link to={`/projects/${review.project_id}`} className="flex items-center gap-3 group">
+                                        <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-lg bg-[var(--primary-light)] flex items-center justify-center text-[var(--primary)] text-[12px] font-bold">
                                                 {review.project_name?.substring(0, 2).toUpperCase()}
                                             </div>
-                                            <span className="text-[14px] font-bold text-[var(--text-main)] group-hover:text-[var(--primary)] transition-colors">{review.project_name}</span>
-                                        </Link>
+                                            <span className="text-[14px] font-bold text-[var(--text-main)]">{review.project_name}</span>
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="text-[13px] font-medium px-2 py-1 bg-[var(--bg-app)] rounded-md">v{review.version_number}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[14px] font-medium text-[var(--text-main)]">{review.title || 'Untitled Review'}</span>
+                                            {review.unread_count > 0 && (
+                                                <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-black rounded-full shadow-sm">
+                                                    {review.unread_count}
+                                                </span>
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <StatusPill status={review.current_status} />
+                                        <span className="text-[13px] font-medium px-2 py-1 bg-[var(--bg-app)] rounded-md">v{review.version_number || 1}</span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <StatusPill status={review.status} />
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <span className="text-[13px] text-[var(--text-secondary)]">
+                                            {review.revisions_used || 0} / {review.revision_limit || '∞'}
+                                        </span>
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col">
-                                            <span className="text-[13px] text-[var(--text-main)]">{new Date(review.created_at).toLocaleDateString()}</span>
-                                            <span className="text-[11px] text-[var(--text-muted)]">{new Date(review.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                            <span className="text-[13px] text-[var(--text-main)]">
+                                                {formatDate(review.updated_at)}
+                                            </span>
+                                            <span className="text-[11px] text-[var(--text-muted)]">
+                                                {formatTime(review.updated_at)}
+                                            </span>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <Link
-                                            to={`/reviews/${review.id}`}
-                                            className="inline-flex items-center gap-2 text-[12px] font-bold text-[var(--primary)] hover:underline"
-                                        >
-                                            View Details
-                                            <ArrowRight size={14} />
-                                        </Link>
+                                        <div className="flex items-center justify-end gap-3">
+                                            <button
+                                                onClick={() => {
+                                                    const url = `${window.location.origin}/review/${review.token}`;
+                                                    navigator.clipboard.writeText(url);
+                                                    alert('Public review link copied to clipboard!');
+                                                }}
+                                                className="p-2 hover:bg-[var(--bg-app)] rounded-full text-[var(--text-secondary)] transition-colors"
+                                                title="Copy Public Link"
+                                            >
+                                                <LinkIcon size={14} />
+                                            </button>
+                                            <Link
+                                                to={`/review/${review.token}`}
+                                                className="inline-flex items-center gap-2 text-[12px] font-bold text-[var(--primary)] hover:underline"
+                                            >
+                                                View Review
+                                                <ArrowRight size={14} />
+                                            </Link>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

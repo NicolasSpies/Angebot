@@ -4,11 +4,9 @@ import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import { formatCurrency } from '../utils/pricingEngine';
 import {
-    ArrowLeft, Plus, Trash2, CheckCircle, Circle,
-    ExternalLink, Save, Calendar, Clock, DollarSign,
-    Zap, FileText, MoreVertical, Box, Pencil, Globe,
-    AlertTriangle, Link as LinkIcon, CheckSquare,
-    User, File, Download
+    ArrowLeft, Plus, Trash2, CheckCircle,
+    ExternalLink, Clock, FileText, Pencil, Globe,
+    Link as LinkIcon, CheckSquare
 } from 'lucide-react';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 import Button from '../components/ui/Button';
@@ -20,8 +18,8 @@ import Select from '../components/ui/Select';
 import Textarea from '../components/ui/Textarea';
 import Badge from '../components/ui/Badge';
 import StatusPill from '../components/ui/StatusPill';
-import AttachmentSection from '../components/common/AttachmentSection';
 import ReviewsCard from '../components/projects/ReviewsCard';
+import { formatDate } from '../utils/dateUtils';
 
 const STATUS_OPTIONS = ['todo', 'in_progress', 'feedback', 'done', 'cancelled'];
 const STATUS_LABELS = {
@@ -41,8 +39,6 @@ const ProjectDetailPage = () => {
     const [offer, setOffer] = useState(null);
     const [allCustomers, setAllCustomers] = useState([]);
     const [allOffers, setAllOffers] = useState([]);
-    const [teamMembers, setTeamMembers] = useState([]);
-    const [financialLink, setFinancialLink] = useState('');
 
     // UI State
     const [isLoading, setIsLoading] = useState(true);
@@ -64,8 +60,6 @@ const ProjectDetailPage = () => {
             const projectData = await dataService.getProject(id);
             setProject(projectData);
             setNotes(projectData.strategic_notes || projectData.internal_notes || '');
-            setTeamMembers(JSON.parse(projectData.team_members || '[]'));
-            setFinancialLink(projectData.financial_link || '');
             setLastSaved(projectData.updated_at);
 
             // Load Linked Data
@@ -80,8 +74,15 @@ const ProjectDetailPage = () => {
                 setCustomer(customers.find(c => c.id === projectData.customer_id));
             }
             if (projectData.offer_id) {
-                const offerData = await dataService.getOffer(projectData.offer_id);
-                setOffer(offerData);
+                try {
+                    const offerData = await dataService.getOffer(projectData.offer_id);
+                    setOffer(offerData);
+                } catch (offerErr) {
+                    console.warn('Failed to load linked offer', offerErr);
+                    setOffer(null);
+                }
+            } else {
+                setOffer(null);
             }
         } catch (err) {
             console.error('Failed to load project data', err);
@@ -253,26 +254,45 @@ const ProjectDetailPage = () => {
                         {/* Metadata Row */}
                         <div className="flex items-center gap-6 text-[13px] font-medium text-[var(--text-secondary)]">
                             <div className="flex items-center gap-2">
-                                <span className={`w-2.5 h-2.5 rounded-full ${project.status === 'done' ? 'bg-[var(--success)]' : project.status === 'in_progress' ? 'bg-[var(--primary)]' : project.status === 'cancelled' ? 'bg-[var(--danger)]' : 'bg-[var(--warning)]'} shadow-[0_0_8px_currentColor]`} style={{ color: project.status === 'done' ? 'var(--success)' : project.status === 'in_progress' ? 'var(--primary)' : project.status === 'cancelled' ? 'var(--danger)' : 'var(--warning)' }} />
-                                <span className="uppercase tracking-wider font-extrabold text-[11px] text-[var(--text-main)]">{STATUS_LABELS[project.status]}</span>
+                                <span className={`w-2.5 h-2.5 rounded-full ${project.status === 'done' ? 'bg-[var(--success)]' : project.status === 'in_progress' ? 'bg-[var(--primary)]' : project.status === 'cancelled' ? 'bg-[var(--danger)]' : project.status === 'on_hold' ? 'bg-amber-500' : 'bg-slate-400'} shadow-[0_0_8px_currentColor]`} />
+                                <span className="uppercase tracking-wider font-extrabold text-[11px] text-[var(--text-main)]">
+                                    {project.status ? (STATUS_LABELS[project.status] || project.status.replace('_', ' ')) : 'Unknown'}
+                                </span>
                             </div>
 
-                            {customer && (
+                            {customer ? (
                                 <Link to={`/customers/${customer.id}`} className="flex items-center gap-2 hover:text-[var(--primary)] transition-colors">
                                     <Globe size={14} className="text-[var(--text-muted)]" />
                                     {customer.company_name}
                                 </Link>
+                            ) : (
+                                <button
+                                    onClick={() => {
+                                        const cid = prompt("Select Customer ID (Demo/Quick Link):", "");
+                                        if (cid) handleUpdateProject({ customer_id: parseInt(cid) }).then(loadProject);
+                                    }}
+                                    className="flex items-center gap-2 text-[var(--primary)] hover:underline"
+                                >
+                                    <Plus size={14} /> Link Client
+                                </button>
                             )}
 
-                            {offer && (
+                            {offer ? (
                                 <Link to={`/offer/preview/${offer.id}`} className="flex items-center gap-2 hover:text-[var(--primary)] transition-colors">
                                     <FileText size={14} className="text-[var(--text-muted)]" />
                                     {offer.offer_name}
                                 </Link>
+                            ) : (
+                                <button
+                                    onClick={() => setIsLinkOfferModalOpen(true)}
+                                    className="flex items-center gap-2 text-[var(--primary)] hover:underline"
+                                >
+                                    <LinkIcon size={14} /> Link Offer
+                                </button>
                             )}
 
                             <span className="flex items-center gap-2 text-[var(--text-muted)]">
-                                <Clock size={14} /> Created {new Date(project.created_at).toLocaleDateString()}
+                                <Clock size={14} /> Created {formatDate(project.created_at)}
                             </span>
                         </div>
                     </div>
@@ -371,7 +391,11 @@ const ProjectDetailPage = () => {
                             </h3>
                             <div className="flex items-center gap-2">
                                 {notesSaving && <span className="text-[11px] text-[var(--text-muted)] animate-pulse">Saving...</span>}
-                                {!notesSaving && lastSaved && <span className="text-[11px] text-[var(--text-muted)] opacity-50">Saved {new Date(lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                                {!notesSaving && lastSaved && (
+                                    <span className="text-[11px] text-[var(--text-muted)] opacity-50">
+                                        Saved {new Date(lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                )}
                             </div>
                         </div>
                         <Textarea
@@ -384,12 +408,6 @@ const ProjectDetailPage = () => {
                             <div className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" />
                             Private & Internal Only
                         </div>
-                    </Card>
-
-                    {/* Activity Timeline */}
-                    <Card padding="2rem" className="border-[var(--border)]">
-                        <h3 className="text-[15px] font-bold text-[var(--text-main)] mb-6">Project Activity</h3>
-                        <ActivityTimeline projectId={id} />
                     </Card>
 
                 </div>
@@ -430,223 +448,34 @@ const ProjectDetailPage = () => {
                                 <input
                                     type="date"
                                     className="w-full px-3 py-2 bg-white border border-[var(--border)] rounded-md text-[14px] font-medium focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
-                                    value={project.deadline ? project.deadline.split('T')[0] : ''}
+                                    value={project.deadline && !isNaN(new Date(project.deadline).getTime()) ? new Date(project.deadline).toISOString().split('T')[0] : ''}
                                     onChange={(e) => handleUpdateProject({ deadline: e.target.value || null })}
                                 />
                             </div>
-                        </div>
-                    </Card>
 
-                    {/* Linked Customer */}
-                    <Card padding="1.5rem" className="border-[var(--border)] shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3 text-[var(--primary)]">
-                                <User size={18} />
-                                <h3 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-main)]">Client Entity</h3>
-                            </div>
-                            {!customer && (
-                                <Select
-                                    className="w-40 text-[11px]"
-                                    value=""
-                                    onChange={async (e) => {
-                                        if (!e.target.value) return;
-                                        await handleUpdateProject({ customer_id: parseInt(e.target.value) });
-                                        loadProject();
-                                    }}
-                                    options={[
-                                        { value: '', label: 'Link Client...' },
-                                        ...allCustomers.map(c => ({ value: c.id, label: c.company_name }))
-                                    ]}
-                                />
-                            )}
-                            {customer && (
-                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-[var(--text-muted)] hover:text-[var(--danger)]" onClick={() => handleUpdateProject({ customer_id: null }).then(loadProject)}>
-                                    <Trash2 size={12} />
-                                </Button>
-                            )}
-                        </div>
-                        {customer ? (
-                            <div className="space-y-4">
-                                <div>
-                                    <Link to={`/customers/${customer.id}`} className="block text-[15px] font-extrabold text-[var(--text-main)] hover:text-[var(--primary)] mb-1">
-                                        {customer.company_name}
-                                    </Link>
-                                    <div className="text-[13px] text-[var(--text-secondary)] font-medium">
-                                        {customer.first_name} {customer.last_name}
-                                    </div>
-                                </div>
-                                <div className="space-y-2 text-[12px] text-[var(--text-secondary)] font-medium pt-3 border-t border-[var(--border-subtle)]">
-                                    <div className="flex items-center gap-2"><Globe size={12} /> {customer.country}</div>
-                                    {customer.vat_number && <div className="flex items-center gap-2"><FileText size={12} /> VAT: {customer.vat_number}</div>}
-                                    {customer.email && <div className="flex items-center gap-2 font-bold text-[var(--text-main)]"><Mail size={12} /> {customer.email}</div>}
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="text-[13px] text-[var(--text-muted)] italic">No client linked. Select a client to enable offer creation.</div>
-                        )}
-                    </Card>
-
-                    {/* Linked Offer */}
-                    <Card padding="1.5rem" className="border-[var(--border)] shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3 text-[var(--primary)]">
-                                <FileText size={18} />
-                                <h3 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-main)]">Strategic Basis</h3>
-                            </div>
-                            {offer && (
-                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-[var(--text-muted)] hover:text-[var(--danger)]" onClick={() => handleUpdateProject({ offer_id: null }).then(() => { setOffer(null); loadProject(); })}>
-                                    <Trash2 size={12} />
-                                </Button>
-                            )}
-                        </div>
-                        {offer ? (
-                            <div>
-                                <Link to={`/offer/preview/${offer.id}`} className="block text-[15px] font-extrabold text-[var(--text-main)] hover:text-[var(--primary)] mb-1 break-words">
-                                    {offer.offer_name}
-                                </Link>
-                                <div className="text-[13px] font-bold text-[var(--text-secondary)] mb-3">
-                                    {formatCurrency(offer.total)}
-                                </div>
-                                <StatusPill status={offer.status} />
-                                <div className="mt-6 space-y-2">
-                                    <Button variant="ghost" className="w-full justify-start text-[13px] h-8" onClick={() => navigate(`/offer/preview/${offer.id}`)}>
-                                        <ExternalLink size={14} className="mr-2" /> View Proposal
-                                    </Button>
-                                    {offer.token && (
-                                        <Button variant="ghost" className="w-full justify-start text-[13px] h-8" onClick={() => window.open(`/offer/sign/${offer.token}`, '_blank')}>
-                                            <LinkIcon size={14} className="mr-2" /> Open Signing Page
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                <div className="text-[13px] text-[var(--text-muted)] italic">No offer linked.</div>
-                                <div className="flex flex-col gap-2">
-                                    <Button
-                                        onClick={async () => {
-                                            if (!customer) { alert('Please link a client first.'); return; }
-                                            const newOffer = await dataService.createOfferFromProject(project);
-                                            navigate(`/offer/edit/${newOffer.id}`);
-                                        }}
-                                        className="w-full btn-primary text-[13px]"
-                                        disabled={!customer}
-                                    >
-                                        <Plus size={14} className="mr-2" /> Create New Offer
-                                    </Button>
-                                    <Button variant="secondary" className="w-full text-[13px] bg-white border-[var(--border)] shadow-sm hover:bg-[var(--bg-app)]" onClick={() => setIsLinkOfferModalOpen(true)}>
-                                        <LinkIcon size={14} className="mr-2" /> Link Existing Offer
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
-                    </Card>
-
-                    {/* Team Members */}
-                    <Card padding="1.5rem" className="border-[var(--border)] shadow-sm">
-                        <div className="flex items-center gap-3 text-[var(--primary)] mb-6">
-                            <User size={18} />
-                            <h3 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-main)]">Team & Collaboration</h3>
-                        </div>
-                        <div className="space-y-3">
-                            {teamMembers.length === 0 ? (
-                                <p className="text-[12px] text-[var(--text-muted)] italic">No team members assigned.</p>
-                            ) : (
-                                teamMembers.map((member, idx) => (
-                                    <div key={idx} className="flex items-center gap-2 group">
-                                        <div className="w-6 h-6 rounded-lg bg-[var(--bg-active)] flex items-center justify-center text-[10px] font-bold text-[var(--text-muted)] uppercase">
-                                            {member.charAt(0)}
-                                        </div>
-                                        <span className="text-[13px] font-medium text-[var(--text-main)] flex-1">{member}</span>
-                                        <button
-                                            onClick={() => {
-                                                const newTeam = teamMembers.filter((_, i) => i !== idx);
-                                                setTeamMembers(newTeam);
-                                                handleUpdateProject({ team_members: JSON.stringify(newTeam) });
-                                            }}
-                                            className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-[var(--danger)] transition-all"
-                                        >
-                                            <Trash2 size={12} />
-                                        </button>
-                                    </div>
-                                ))
-                            )}
-                            <div className="relative pt-2">
-                                <Plus size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                                <input
-                                    type="text"
-                                    placeholder="Assign member..."
-                                    className="w-full pl-9 pr-3 py-2 bg-[var(--bg-active)] border border-transparent focus:bg-white focus:border-[var(--primary)] rounded-lg text-[12px] font-medium transition-all outline-none"
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && e.target.value.trim()) {
-                                            const newTeam = [...teamMembers, e.target.value.trim()];
-                                            setTeamMembers(newTeam);
-                                            handleUpdateProject({ team_members: JSON.stringify(newTeam) });
-                                            e.target.value = '';
-                                        }
-                                    }}
-                                />
-                            </div>
-                        </div>
-                    </Card>
-
-                    {/* Financial Perspective */}
-                    <Card padding="1.5rem" className="border-[var(--border)] shadow-sm">
-                        <div className="flex items-center gap-3 text-[var(--primary)] mb-4">
-                            <DollarSign size={18} />
-                            <h3 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-main)]">Financial Perspective</h3>
-                        </div>
-                        {offer && (
-                            <div className="mb-6 space-y-3">
-                                <div className="flex justify-between items-center text-[12px] font-bold text-[var(--text-secondary)]">
-                                    <span>Project Volume (Net)</span>
-                                    <span>{formatCurrency(offer.subtotal || offer.total / 1.21)}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-[12px] font-bold text-[var(--text-secondary)] pb-3 border-b border-[var(--border-subtle)] border-dashed">
-                                    <span>VAT Recovery</span>
-                                    <span>{formatCurrency(offer.vat || 0)}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-[15px] font-black text-[var(--text-main)]">
-                                    <span>Total Gross</span>
-                                    <span className="text-[var(--primary)]">{formatCurrency(offer.total)}</span>
-                                </div>
-                            </div>
-                        )}
-                        {financialLink ? (
-                            <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--primary-light)] border border-[var(--primary)]/10">
-                                <a href={financialLink} target="_blank" rel="noopener noreferrer" className="text-[13px] font-bold text-[var(--primary)] hover:underline flex items-center gap-2 truncate">
-                                    <ExternalLink size={14} /> Open External Tracker
-                                </a>
-                                <button onClick={() => { setFinancialLink(''); handleUpdateProject({ financial_link: '' }); }} className="text-[var(--text-muted)] hover:text-[var(--danger)]">
-                                    <Trash2 size={14} />
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                <p className="text-[12px] text-[var(--text-muted)] leading-relaxed italic">Connect to a Google Sheet or Notion for detailed expense tracking.</p>
-                                <div className="relative">
-                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"><LinkIcon size={14} /></div>
+                            <div className="space-y-2">
+                                <label className="text-[12px] font-bold text-[var(--text-secondary)]">Revision Limit</label>
+                                <div className="flex items-center gap-3">
                                     <input
-                                        type="text"
-                                        placeholder="Paste Dashboard URL..."
-                                        className="w-full pl-9 pr-3 py-2 bg-[var(--bg-active)] border border-transparent focus:bg-white focus:border-[var(--primary)] rounded-lg text-[12px] font-medium transition-all outline-none"
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && e.target.value.trim()) {
-                                                setFinancialLink(e.target.value.trim());
-                                                handleUpdateProject({ financial_link: e.target.value.trim() });
-                                            }
-                                        }}
+                                        type="number"
+                                        min="1"
+                                        max="10"
+                                        className="w-16 px-3 py-2 bg-white border border-[var(--border)] rounded-md text-[14px] font-bold focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
+                                        value={project.review_limit || 3}
+                                        onChange={(e) => handleUpdateProject({ review_limit: parseInt(e.target.value) || 3 })}
                                     />
+                                    <span className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                                        {project.revisions_used || 0} Used
+                                    </span>
                                 </div>
                             </div>
-                        )}
+
+
+                        </div>
                     </Card>
 
-                    {/* Reviews Management */}
+                    {/* Reviews */}
                     <ReviewsCard projectId={id} />
-
-                    {/* Attachments Section */}
-                    <AttachmentSection entityType="projects" entityId={id} />
                 </div>
             </div>
 
@@ -669,39 +498,6 @@ const ProjectDetailPage = () => {
                 currentOfferId={project.offer_id}
             />
         </div >
-    );
-};
-
-// Activity Component
-const ActivityTimeline = ({ projectId }) => {
-    const [events, setEvents] = useState([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        dataService.getProjectActivity(projectId)
-            .then(data => {
-                setEvents(Array.isArray(data) ? data : []);
-            })
-            .catch(() => setEvents([]))
-            .finally(() => setLoading(false));
-    }, [projectId]);
-
-    if (loading) return <div className="text-[13px] text-[var(--text-muted)]">Loading activity...</div>;
-    if (!events || events.length === 0) return <div className="text-[13px] text-[var(--text-muted)]">No activity recorded.</div>;
-
-    return (
-        <div className="relative pl-4 border-l border-[var(--border-subtle)] space-y-6">
-            {events.map((e, i) => (
-                <div key={i} className="relative">
-                    <div className={`absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-white ${e.event_type === 'signed' ? 'bg-[var(--success)]' :
-                        e.event_type === 'status_change' ? 'bg-[var(--primary)]' :
-                            e.event_type === 'created' ? 'bg-[var(--text-main)]' : 'bg-[var(--text-muted)]'
-                        }`}></div>
-                    <p className="text-[13px] font-medium text-[var(--text-main)]">{e.comment || e.event_type}</p>
-                    <p className="text-[11px] text-[var(--text-muted)]">{new Date(e.created_at).toLocaleString()}</p>
-                </div>
-            ))}
-        </div>
     );
 };
 

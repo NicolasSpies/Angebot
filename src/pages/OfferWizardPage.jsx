@@ -278,17 +278,21 @@ const OfferWizardPage = () => {
             <div className="flex gap-12 pt-4">
                 <main className="flex-1 min-w-0">
                     {/* Stepper Header */}
-                    <div className="flex gap-12 mb-12 border-b border-[var(--border)] pb-6 overflow-x-auto no-scrollbar">
+                    <div className="flex flex-wrap items-center justify-between gap-y-6 mb-12 border-b border-[var(--border)] pb-8">
                         {[1, 2, 3, 4].map(s => (
-                            <div key={s} className={`flex items-center gap-4 transition-all whitespace-nowrap ${step >= s ? 'opacity-100' : 'opacity-40'}`}>
-                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-extrabold text-[13px] shadow-sm transition-all ${step >= s ? 'bg-[var(--primary)] text-white scale-110' : 'bg-[var(--bg-main)] text-[var(--text-muted)] border border-[var(--border)]'}`}>
-                                    {s}
+                            <React.Fragment key={s}>
+                                <div className={`flex items-center gap-3 transition-all shrink-0 ${step >= s ? 'opacity-100' : 'opacity-40'}`}>
+                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-extrabold text-[14px] shadow-sm transition-all ${step >= s ? 'bg-[var(--primary)] text-white scale-110' : 'bg-[var(--bg-main)] text-[var(--text-muted)] border border-[var(--border)]'}`}>
+                                        {s}
+                                    </div>
+                                    <span className={`font-bold text-[14px] uppercase tracking-wider ${step >= s ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)]'}`}>
+                                        {s === 1 ? "Basics" : s === 2 ? "Context" : s === 3 ? "Services" : "Finalize"}
+                                    </span>
                                 </div>
-                                <span className={`font-bold text-[14px] uppercase tracking-wider ${step >= s ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)]'}`}>
-                                    {s === 1 ? "Basics" : s === 2 ? "Context" : s === 3 ? "Services" : "Finalize"}
-                                </span>
-                                {s < 4 && <div className="w-8 h-[2px] bg-[var(--border)] opacity-50 ml-2" />}
-                            </div>
+                                {s < 4 && (
+                                    <div className="flex-1 min-w-[20px] max-w-[60px] h-[2px] bg-[var(--border)] mx-2 opacity-30 hidden sm:block" />
+                                )}
+                            </React.Fragment>
                         ))}
                     </div>
 
@@ -315,7 +319,7 @@ const OfferWizardPage = () => {
                                             onChange={(e) => setOfferName(e.target.value)}
                                         />
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                                             <Select
                                                 label="Strategic Client"
                                                 value={selectedCustomer?.id || ''}
@@ -336,7 +340,7 @@ const OfferWizardPage = () => {
                                             />
                                         </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                                             <Select
                                                 label="Interactions Language"
                                                 value={offerLanguage}

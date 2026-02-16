@@ -1,16 +1,21 @@
-# React + Vite
+## Local Development
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This project includes custom launcher scripts for macOS to make local development easier.
 
-Currently, two official plugins are available:
+### Quick Start
+1.  **Launch**: Double-click `Launch Angebot Workspace.command`. 
+    - This will start the backend (port 3001) and frontend (port 5173).
+    - It opens two Terminal tabs and automatically launches your browser and database viewer.
+    - If `node_modules` is missing, it will run `npm install` automatically.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+2.  **Stop**: Double-click `Stop Angebot Workspace.command`.
+    - This cleanly shuts down both servers and frees up the ports.
 
-## React Compiler
+### Configuration
+- **Frontend Port**: 5173
+- **Backend Port**: 3001
+- **Database**: `database.sqlite` (SQLite)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### Troubleshooting
+- **Port Conflict**: If the launcher says a port is in use, it will attempt to kill the stale process for you.
+- **Dependencies**: Ensure you have Node.js installed. If `npm install` fails, try running it manually in the terminal.

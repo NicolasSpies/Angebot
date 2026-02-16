@@ -11,6 +11,7 @@ const CreateProjectModal = ({ isOpen, onClose, onSuccess }) => {
     const [offerId, setOfferId] = useState('');
     const [status, setStatus] = useState('todo');
     const [deadline, setDeadline] = useState('');
+    const [reviewLimit, setReviewLimit] = useState(3);
     const [customers, setCustomers] = useState([]);
     const [offers, setOffers] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,7 +34,8 @@ const CreateProjectModal = ({ isOpen, onClose, onSuccess }) => {
                 customer_id: customerId || null,
                 offer_id: offerId || null,
                 status,
-                deadline: deadline || null
+                deadline: deadline || null,
+                review_limit: reviewLimit
             });
             onSuccess();
             onClose();
@@ -77,6 +79,14 @@ const CreateProjectModal = ({ isOpen, onClose, onSuccess }) => {
                         type="date"
                         value={deadline}
                         onChange={(e) => setDeadline(e.target.value)}
+                    />
+                    <Input
+                        label="Review Limit"
+                        type="number"
+                        min="0"
+                        value={reviewLimit}
+                        onChange={(e) => setReviewLimit(parseInt(e.target.value) || 0)}
+                        placeholder="Default: 3"
                     />
                 </div>
 

@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { dataService } from '../../data/dataService';
-import { FileText, Plus, ExternalLink, Calendar, ChevronRight, Upload, Link2 } from 'lucide-react';
+import { FileText, Plus, ExternalLink, Calendar, ChevronRight, Upload, Link2, Clock } from 'lucide-react';
 import StatusPill from '../ui/StatusPill';
 import ReviewUploadModal from './ReviewUploadModal';
+import { formatDate } from '../../utils/dateUtils';
+import { Pencil } from 'lucide-react';
 
 const ReviewsCard = ({ projectId }) => {
     const [reviews, setReviews] = useState([]);
+    const [project, setProject] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
@@ -19,28 +22,74 @@ const ReviewsCard = ({ projectId }) => {
     const loadReviews = async () => {
         setLoading(true);
         try {
-            const data = await dataService.getProjectReviews(projectId);
-            setReviews(data);
+            const [reviewsData, projectData] = await Promise.all([
+                dataService.getProjectReviews(projectId),
+                dataService.getProject(projectId)
+            ]);
+            setReviews(reviewsData);
+            setProject(projectData);
         } catch (error) {
-            console.error('Failed to load project reviews:', error);
+            console.error('Failed to load project reviews or project:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleUpdateLimit = async (newLimit) => {
+        try {
+            await dataService.updateProject(projectId, { review_limit: newLimit });
+            setProject(prev => ({ ...prev, review_limit: newLimit }));
+        } catch (error) {
+            console.error('Failed to update limit:', error);
         }
     };
 
     return (
         <div className="card h-full flex flex-col">
             <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2">
-                    <FileText size={18} className="text-[var(--text-secondary)]" />
-                    <h3 className="font-bold text-[15px] text-[var(--text-main)]">Reviews</h3>
+                <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                        <FileText size={18} className="text-[var(--text-secondary)]" />
+                        <h3 className="font-bold text-[15px] text-[var(--text-main)]">Reviews</h3>
+                    </div>
+                    {project && (
+                        <div className="flex items-center gap-2 group/limit">
+                            <p className="text-[11px] font-black uppercase text-[var(--text-muted)] tracking-wider">
+                                Revisions: {project.revisions_used || 0} /
+                            </p>
+                            <input
+                                type="text"
+                                value={project.review_limit === null ? '' : project.review_limit}
+                                placeholder="3"
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    const num = val === '' ? null : parseInt(val.replace(/\D/g, ''));
+                                    setProject({ ...project, review_limit: num });
+                                }}
+                                onBlur={() => handleUpdateLimit(project.review_limit)}
+                                className="w-8 bg-transparent border-none p-0 focus:ring-0 font-black text-[var(--text-main)] text-[11px] text-center"
+                            />
+                            <Pencil size={10} className="text-[var(--text-muted)] opacity-0 group-hover/limit:opacity-100 transition-opacity" />
+                        </div>
+                    )}
                 </div>
                 <button
-                    className="btn-secondary btn-sm gap-1.5"
-                    onClick={() => setIsUploadModalOpen(true)}
+                    className={`btn-secondary btn-sm gap-1.5 ${(project?.review_limit ?? 3) !== null && project?.revisions_used >= (project?.review_limit ?? 3) && (reviews.length === 0 || reviews[0].status !== 'approved')
+                        ? 'opacity-50 cursor-not-allowed grayscale'
+                        : ''
+                        }`}
+                    onClick={() => {
+                        const limit = project?.review_limit ?? 3;
+                        if (project?.revisions_used >= limit && (reviews.length === 0 || reviews[0].status !== 'approved')) {
+                            alert('Review limit reached. Please contact support or upgrade your plan.');
+                            return;
+                        }
+                        setIsUploadModalOpen(true);
+                    }}
+                    title={(project?.review_limit ?? 3) !== null && project?.revisions_used >= (project?.review_limit ?? 3) && (reviews.length === 0 || reviews[0].status !== 'approved') ? 'Review limit reached' : ''}
                 >
                     <Upload size={14} />
-                    <span>Upload New</span>
+                    <span>{(project?.review_limit ?? 3) !== null && project?.revisions_used >= (project?.review_limit ?? 3) && (reviews.length === 0 || reviews[0].status !== 'approved') ? 'Limit Reached' : 'Upload New'}</span>
                 </button>
             </div>
 
@@ -59,27 +108,54 @@ const ReviewsCard = ({ projectId }) => {
             ) : (
                 <div className="flex-1 flex flex-col gap-3">
                     {reviews.map((review) => (
-                        <div key={review.id} className="group p-3 border border-[var(--border-subtle)] rounded-[var(--radius-md)] hover:border-[var(--border-medium)] transition-all block">
-                            <div className="flex items-center justify-between gap-3">
-                                <Link
-                                    to={`/reviews/${review.id}`}
-                                    className="flex-1 min-w-0"
-                                >
+                        <div key={review.id} className="group p-4 border border-[var(--border-subtle)] rounded-[var(--radius-lg)] hover:border-[var(--border-medium)] bg-[var(--bg-surface)] transition-all">
+                            <div className="flex items-start justify-between mb-3">
+                                <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-[13px] font-bold text-[var(--text-main)] hover:text-[var(--primary)] transition-colors">Version {review.version_number}</span>
-                                        <StatusPill status={review.current_status} />
+                                        <h4 className="font-bold text-[14px] text-[var(--text-main)] truncate">{review.title || 'Untitled Review'}</h4>
+                                        {review.unread_count > 0 && (
+                                            <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-black rounded-full shadow-sm">
+                                                {review.unread_count}
+                                            </span>
+                                        )}
                                     </div>
-                                    <div className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
-                                        <Calendar size={12} />
-                                        <span>{new Date(review.created_at).toLocaleDateString()}</span>
+                                    <div className="flex items-center gap-2">
+                                        <StatusPill status={review.status} />
+                                        {(review.version_number !== null && review.version_number !== undefined) && (
+                                            <span className="text-[11px] font-bold text-[var(--text-muted)] bg-[var(--bg-app)] px-2 py-0.5 rounded uppercase tracking-tight">v{review.version_number}</span>
+                                        )}
                                     </div>
-                                </Link>
-                                <div className="flex items-center gap-1">
-                                    <Link
-                                        to={`/reviews/${review.id}`}
-                                        className="w-8 h-8 rounded-full bg-[var(--bg-app)] flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--primary)] hover:text-white transition-all"
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-[11px] font-black text-[var(--text-secondary)] uppercase tracking-widest leading-none mb-1">Usage</p>
+                                    <p className="text-[13px] font-bold text-[var(--text-main)]">{review.revisions_used || 0} / {review.review_limit ?? 3}</p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-3 border-t border-[var(--border-subtle)]">
+                                <div className="flex items-center gap-3 text-[11px] text-[var(--text-muted)] font-medium">
+                                    <div className="flex items-center gap-1">
+                                        <Clock size={12} />
+                                        <span>Updated {formatDate(review.updated_at)}</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => {
+                                            const url = `${window.location.origin}/review/${review.token}`;
+                                            navigator.clipboard.writeText(url);
+                                            // Optional: show toast
+                                        }}
+                                        className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--primary)] hover:bg-[var(--bg-app)] rounded-md transition-all"
+                                        title="Copy Public Link"
                                     >
-                                        <ChevronRight size={16} />
+                                        <Link2 size={16} />
+                                    </button>
+                                    <Link
+                                        to={`/review/${review.token}`}
+                                        className="btn-primary btn-xs px-3 py-1.5 rounded-md"
+                                    >
+                                        Open Review
                                     </Link>
                                 </div>
                             </div>

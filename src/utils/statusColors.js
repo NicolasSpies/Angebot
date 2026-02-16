@@ -14,9 +14,11 @@ export const STATUS_COLORS = {
     declined: { label: 'Declined', bg: '#FEF2F2', text: '#B91C1C', dot: '#EF4444' },
 
     // Reviews
-    open: { label: 'Open', bg: '#F8FAFC', text: '#334155', dot: '#64748B' },
-    changes_requested: { label: 'Changes Requested', bg: '#FFF7ED', text: '#C2410C', dot: '#F97316' },
-    approved: { label: 'Approved', bg: '#ECFDF5', text: '#047857', dot: '#10B981' }
+    // Reviews
+    in_review: { label: 'In Review', bg: '#EFF6FF', text: '#1D4ED8', dot: '#3B82F6', waitingOn: 'Client' },
+    changes_requested: { label: 'Changes Requested', bg: '#FFF7ED', text: '#C2410C', dot: '#F97316', waitingOn: 'Designer' },
+    approved: { label: 'Approved', bg: '#ECFDF5', text: '#047857', dot: '#10B981' },
+    draft: { label: 'Draft', bg: '#F3F4F6', text: '#4B5563', dot: '#9CA3AF', waitingOn: 'Designer' }
 };
 
 export const getStatusColor = (status) => STATUS_COLORS[status] || STATUS_COLORS.pending;

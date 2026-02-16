@@ -17,8 +17,7 @@ const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
 const ServicesPage = lazy(() => import('./pages/ServicesPage'));
 const ReviewsPage = lazy(() => import('./pages/ReviewsPage'));
-const ReviewViewerPage = lazy(() => import('./pages/ReviewViewerPage'));
-const PublicReviewPage = lazy(() => import('./pages/PublicReviewPage'));
+const ReviewPage = lazy(() => import('./pages/ReviewPage'));
 const TrashPage = lazy(() => import('./pages/TrashPage'));
 const AuditPage = lazy(() => import('./pages/AuditPage'));
 
@@ -45,9 +44,7 @@ function App() {
       <BrowserRouter>
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            {/* Public Routes */}
-            <Route path="/offer/sign/:token" element={<OfferPublicPage />} />
-            <Route path="/review/:token" element={<PublicReviewPage />} />
+            <Route path="/review/:token" element={<ReviewPage />} />
 
             {/* App Routes */}
             <Route path="/" element={<PageShell />}>
@@ -57,6 +54,7 @@ function App() {
               <Route path="customers" element={<CustomersPage />} />
               <Route path="customers/:id" element={<CustomerDetailPage />} />
               <Route path="offers" element={<OffersPage />} />
+              <Route path="offers/:id" element={<OfferPreviewPage />} />
               <Route path="offer/new" element={<OfferWizardPage />} />
               <Route path="offer/edit/:editId" element={<OfferWizardPage />} />
               <Route path="offer/wizard" element={<OfferWizardPage />} />
@@ -64,7 +62,6 @@ function App() {
               <Route path="projects" element={<ProjectsPage />} />
               <Route path="projects/:id" element={<ProjectDetailPage />} />
               <Route path="reviews" element={<ReviewsPage />} />
-              <Route path="reviews/:id" element={<ReviewViewerPage />} />
               <Route path="services" element={<ServicesPage />} />
               <Route path="trash" element={<TrashPage />} />
               <Route path="settings" element={<SettingsPage />} />
@@ -73,7 +70,7 @@ function App() {
           </Routes>
         </Suspense>
       </BrowserRouter>
-    </I18nProvider>
+    </I18nProvider >
   );
 }
 

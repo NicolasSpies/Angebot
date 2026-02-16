@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { dataService } from '../data/dataService';
 import { useI18n } from '../i18n/I18nContext';
 import OfferLayout from '../components/offers/OfferLayout';
-import { AlertTriangle, ChevronLeft, Pencil, FileText } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, Pencil, FileText, Download } from 'lucide-react';
 import Button from '../components/ui/Button';
 import DeadlineIndicator from '../components/ui/DeadlineIndicator';
 import AttachmentSection from '../components/common/AttachmentSection';

@@ -1,6 +1,7 @@
 import React from 'react';
 import { formatCurrency } from '../../utils/pricingEngine';
 import DeadlineIndicator from '../ui/DeadlineIndicator';
+import { formatDate, formatDateTime } from '../../utils/dateUtils';
 
 const cycleTitles = {
     one_time: { de: 'Einmalige Kosten', fr: 'Frais uniques' },
@@ -71,13 +72,13 @@ const OfferLayout = ({ offer, settings, hideInternal = false, tempSignature = nu
                         </h1>
                         <div className="text-[20px] font-extrabold mb-1">{offer.offer_name || `#${offer.id}`}</div>
                         <div className="text-[12px] text-[var(--text-muted)] font-bold">
-                            {new Date(offer.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                            {formatDate(offer.created_at)}
                         </div>
                         {offer.due_date && (
                             <div className="mt-3 pt-3 border-t border-[var(--border)]/50">
                                 <div className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest mb-1">Valid Until</div>
                                 <div className="text-[12px] font-bold text-[var(--text-main)]">
-                                    {new Date(offer.due_date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                                    {formatDate(offer.due_date)}
                                 </div>
                             </div>
                         )}
@@ -204,7 +205,7 @@ const OfferLayout = ({ offer, settings, hideInternal = false, tempSignature = nu
                                     Signed by {signatureToDisplay.name}
                                 </div>
                                 <div className="text-[10px] text-[var(--text-muted)] mt-1 text-right font-medium leading-tight">
-                                    {new Date(signatureToDisplay.date || new Date()).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })} <br />
+                                    {formatDateTime(signatureToDisplay.date)} <br />
                                     {signatureToDisplay.email}
                                 </div>
                             </div>

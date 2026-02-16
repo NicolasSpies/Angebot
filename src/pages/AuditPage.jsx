@@ -44,7 +44,7 @@ const AuditPage = () => {
     };
 
     const handleFix = (issue) => {
-        if (issue.offerId) navigate(`/offers/${issue.offerId}`);
+        if (issue.offerId) navigate(`/offer/preview/${issue.offerId}`);
         else if (issue.projectId) navigate(`/projects/${issue.projectId}`);
         else if (issue.customerId) navigate(`/customers`);
     };

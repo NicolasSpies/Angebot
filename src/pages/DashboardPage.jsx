@@ -301,7 +301,7 @@ const DashboardPage = () => {
 
                         return (
                             <div key={i} onClick={() => {
-                                if (act.entity_type === 'offer') navigate(`/offers/${act.entity_id}`);
+                                if (act.entity_type === 'offer') navigate(`/offer/preview/${act.entity_id}`);
                                 else if (act.entity_type === 'project') navigate(`/projects/${act.entity_id}`);
                                 else if (act.entity_type === 'customer') navigate(`/customers`);
                             }} className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-subtle)] transition-colors cursor-pointer group">
@@ -314,7 +314,7 @@ const DashboardPage = () => {
                                             {getDescription(act)}
                                         </span>
                                         <span className="text-[10px] text-[var(--text-secondary)]">
-                                            {new Date(act.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                            {act.created_at ? new Date(act.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
                                         </span>
                                     </div>
                                 </div>

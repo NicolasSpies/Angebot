@@ -7,6 +7,7 @@
     "dev": "vite",
     "server": "node server/index.js",
     "start": "npm run dev & npm run server",
+    "db:view": "open database.sqlite",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"

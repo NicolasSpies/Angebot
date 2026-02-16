@@ -8,8 +8,11 @@ const dbPath = join(__dirname, '..', 'database.sqlite');
 
 const db = new Database(dbPath, { verbose: console.log });
 
-// Enable foreign keys
+// Enable performance and stability optimizations
+db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL');
 db.pragma('foreign_keys = ON');
+db.pragma('busy_timeout = 5000');
 
 // Create tables
 db.exec(`
@@ -106,6 +109,7 @@ db.exec(`
         name TEXT,
         status TEXT DEFAULT 'todo',
         deadline DATETIME,
+        revision_limit INTEGER,
         internal_notes TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         deleted_at DATETIME,
@@ -323,14 +327,45 @@ const migrations = [
     );`,
     'CREATE INDEX IF NOT EXISTS idx_reviews_project_id ON reviews(project_id);',
     'CREATE INDEX IF NOT EXISTS idx_review_versions_review_id ON review_versions(review_id);',
+    // Data Cleanup: Ensure only one review per project
+    `DELETE FROM reviews WHERE id NOT IN (SELECT MIN(id) FROM reviews GROUP BY project_id);`,
+    // Data Sync: Ensure project_id in review_versions is correct
+    `UPDATE review_versions SET review_id = (SELECT id FROM reviews WHERE reviews.project_id = review_versions.project_id) WHERE review_id IS NULL;`,
+    // New Advanced Review System Columns
+    'ALTER TABLE reviews ADD COLUMN status TEXT DEFAULT \'draft\';',
+    'ALTER TABLE reviews ADD COLUMN review_limit INTEGER;',
+    'ALTER TABLE reviews ADD COLUMN review_count_used INTEGER DEFAULT 0;',
+    'ALTER TABLE reviews ADD COLUMN revisions_used INTEGER DEFAULT 0;',
+    'ALTER TABLE reviews ADD COLUMN review_policy TEXT DEFAULT \'soft\';',
+    'ALTER TABLE reviews ADD COLUMN unread_count INTEGER DEFAULT 0;',
+    'ALTER TABLE projects ADD COLUMN revision_limit INTEGER;',
+    'ALTER TABLE projects ADD COLUMN review_limit INTEGER;',
+    'ALTER TABLE reviews ADD COLUMN current_version_id INTEGER;',
+    'ALTER TABLE reviews ADD COLUMN updated_at DATETIME;',
+    'UPDATE reviews SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL;',
+    'ALTER TABLE review_comments ADD COLUMN version_id INTEGER;',
+    'UPDATE review_comments SET version_id = (SELECT current_version_id FROM reviews WHERE reviews.id = review_comments.review_id) WHERE version_id IS NULL;',
     'CREATE INDEX IF NOT EXISTS idx_review_comments_version_id ON review_comments(version_id);',
+    'ALTER TABLE review_versions ADD COLUMN compressed_size_bytes INTEGER;',
+    'ALTER TABLE review_versions ADD COLUMN original_size_bytes INTEGER;',
+    'ALTER TABLE review_versions ADD COLUMN compression_ratio REAL;',
+    'ALTER TABLE review_versions ADD COLUMN last_accessed_at DATETIME;',
+    'ALTER TABLE review_versions ADD COLUMN retention_expires_at DATETIME;',
+    'ALTER TABLE review_versions ADD COLUMN is_active INTEGER DEFAULT 1;',
+    'ALTER TABLE review_versions ADD COLUMN is_pinned INTEGER DEFAULT 0;',
+    'ALTER TABLE review_versions ADD COLUMN file_deleted INTEGER DEFAULT 0;',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_offers_token ON offers(token);',
 ];
 
 migrations.forEach(sql => {
     try {
         db.prepare(sql).run();
     } catch (e) {
-        // Column already exists, ignore
+        // If it's just "column already exists", we can safely ignore
+        if (!e.message.includes('duplicate column name') && !e.message.includes('already exists')) {
+            console.error(`[Migration Error] Failed to run: ${sql}`);
+            console.error(e);
+        }
     }
 });
 

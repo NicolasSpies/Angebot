@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 
-const Select = ({ label, options = [], value, onChange, error, className = '', containerStyle = {}, placeholder = 'Select option...', ...props }) => {
+const Select = ({ label, options = [], value, onChange, error, className = '', containerStyle = {}, triggerStyle = {}, placeholder = 'Select option...', ...props }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [activeIndex, setActiveIndex] = useState(-1);
     const triggerRef = useRef(null);
@@ -90,6 +90,7 @@ const Select = ({ label, options = [], value, onChange, error, className = '', c
                     tabIndex={0}
                     onClick={() => setIsOpen(!isOpen)}
                     onKeyDown={handleKeyDown}
+                    style={triggerStyle}
                     className={`w-full h-[42px] px-3 flex items-center justify-between text-[14px] font-medium bg-[var(--bg-surface)] border rounded-[var(--radius-md)] shadow-[var(--shadow-sm)] outline-none transition-all cursor-pointer select-none
                         ${isOpen ? 'border-[var(--primary)] ring-2 ring-[var(--primary)]/10' : 'border-[var(--border-subtle)] hover:border-[var(--border-medium)]'}
                         ${error ? '!border-[var(--danger)] focus:ring-[var(--danger)]/10' : ''}

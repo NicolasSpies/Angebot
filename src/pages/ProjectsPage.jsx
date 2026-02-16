@@ -32,7 +32,7 @@ const ProjectsPage = () => {
     const [error, setError] = useState(null);
 
     // Sort state
-    const [sortField, setSortField] = useState('name');
+    const [sortField, setSortField] = useState('deadline');
     const [sortDir, setSortDir] = useState('asc');
 
     const PROJECT_STATUS_OPTIONS = [
@@ -203,7 +203,8 @@ const ProjectsPage = () => {
                     <Table headers={[
                         { label: 'Project Name', onClick: () => handleSort('name'), sortField: 'name', currentSort: sortField, sortDir, width: '30%' },
                         { label: 'Customer', onClick: () => handleSort('customer_name'), sortField: 'customer_name', currentSort: sortField, sortDir, width: '20%' },
-                        { label: 'Status', onClick: () => handleSort('status'), sortField: 'status', currentSort: sortField, sortDir, width: '15%' },
+                        { label: 'Status', onClick: () => handleSort('status'), sortField: 'status', currentSort: sortField, sortDir, width: '12%' },
+                        { label: 'Latest Review', width: '18%' },
                         { label: 'Timeline', onClick: () => handleSort('deadline'), sortField: 'deadline', currentSort: sortField, sortDir, width: '15%' },
                         { label: 'Linked Offer', width: '20%' }
                     ]}>
@@ -266,27 +267,75 @@ const ProjectsPage = () => {
                                         />
                                     </td>
                                     <td className="py-3 px-6" onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex flex-col gap-1 items-start">
+                                            {project.latest_review_status ? (
+                                                <Link
+                                                    to={`/review/${project.latest_review_token}`}
+                                                    className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <div className="flex items-center gap-1.5">
+                                                        <StatusPill status={project.latest_review_status} />
+                                                        {(project.latest_review_version !== null && project.latest_review_version !== undefined) && (
+                                                            <span className="text-[10px] font-bold text-[var(--text-muted)] bg-[var(--bg-app)] px-1.5 py-0.5 rounded uppercase tracking-tighter border border-[var(--border-subtle)]">v{project.latest_review_version}</span>
+                                                        )}
+                                                        {project.latest_review_unread > 0 && (
+                                                            <span className="flex items-center justify-center min-w-[14px] h-[14px] px-0.5 bg-red-500 text-white text-[8px] font-black rounded-full shadow-sm">
+                                                                {project.latest_review_unread}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </Link>
+                                            ) : (
+                                                <span className="text-[11px] text-[var(--text-muted)] italic font-medium">No reviews</span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="py-3 px-6" onClick={(e) => e.stopPropagation()}>
                                         <div className="flex flex-col gap-1 relative group/date">
                                             <div className="relative">
-                                                <DueStatusIndicator dueDate={project.deadline} />
+                                                {(() => {
+                                                    if (!project.deadline) return <DueStatusIndicator dueDate={null} />;
+                                                    const daysDiff = (new Date(project.deadline) - new Date()) / (1000 * 60 * 60 * 24);
+                                                    let colorClass = "bg-[var(--success-bg)] text-[var(--success)] shadow-[0_0_10px_rgba(16,185,129,0.1)]";
+                                                    if (daysDiff < 0) colorClass = "bg-[var(--danger-bg)] text-[var(--danger)] shadow-[0_0_10px_rgba(239,68,68,0.1)] animate-pulse";
+                                                    else if (daysDiff < 7) colorClass = "bg-[var(--warning-bg)] text-[var(--warning)] shadow-[0_0_10px_rgba(245,158,11,0.1)]";
+
+                                                    return (
+                                                        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border border-white/50 ${colorClass}`}>
+                                                            <Calendar size={12} />
+                                                            {new Date(project.deadline).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}
+                                                        </div>
+                                                    );
+                                                })()}
                                                 <input
                                                     type="date"
                                                     className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                                                    value={project.deadline ? new Date(project.deadline).toISOString().split('T')[0] : ''}
+                                                    value={project.deadline && !isNaN(new Date(project.deadline).getTime()) ? new Date(project.deadline).toISOString().split('T')[0] : ''}
                                                     onChange={(e) => handleDeadlineChange(project.id, e.target.value)}
                                                 />
                                             </div>
                                             <span className="text-[10px] text-[var(--text-muted)] font-medium">
-                                                Updated {new Date(project.updated_at || project.created_at).toLocaleDateString()}
+                                                Updated {project.updated_at || project.created_at ? new Date(project.updated_at || project.created_at).toLocaleDateString() : '—'}
                                             </span>
                                         </div>
                                     </td>
                                     <td className="py-3 px-6" onClick={(e) => e.stopPropagation()}>
                                         {project.offer_id ? (
-                                            <Link to={`/offer/preview/${project.offer_id}`} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--bg-surface)] text-[var(--text-main)] text-[12px] font-bold hover:bg-[var(--primary)] hover:text-white transition-all border border-[var(--border-subtle)] group/offer">
-                                                <FileText size={12} className="text-[var(--text-muted)] group-hover/offer:text-white" />
-                                                {project.offer_name || `#${project.offer_id}`}
-                                            </Link>
+                                            <div className="flex flex-col gap-1 items-start">
+                                                <Link to={`/offer/preview/${project.offer_id}`} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--bg-surface)] text-[var(--text-main)] text-[12px] font-bold hover:bg-[var(--primary)] hover:text-white transition-all border border-[var(--border-subtle)] group/offer">
+                                                    <FileText size={12} className="text-[var(--text-muted)] group-hover/offer:text-white" />
+                                                    {project.offer_name || `#${project.offer_id}`}
+                                                </Link>
+                                                {project.offer_status && (
+                                                    <span className={`text-[9px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded border ml-1 ${project.offer_status === 'signed' ? 'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success)]/20' :
+                                                        project.offer_status === 'declined' ? 'bg-[var(--danger-bg)] text-[var(--danger)] border-[var(--danger)]/20' :
+                                                            'bg-[var(--bg-app)] text-[var(--text-muted)] border-[var(--border-subtle)]'
+                                                        }`}>
+                                                        {project.offer_status}
+                                                    </span>
+                                                )}
+                                            </div>
                                         ) : (
                                             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-muted)] text-[11px] font-medium border border-transparent">
                                                 No Offer Linked
