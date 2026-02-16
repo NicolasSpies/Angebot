@@ -31,11 +31,16 @@ const OfferLayout = ({ offer, settings, hideInternal = false, tempSignature = nu
 
     const lang = offer.language || 'de';
 
-    const signatureToDisplay = (typeof tempSignature !== 'undefined' ? tempSignature : null) || (offer.status === 'signed' ? {
+    const signatureToDisplay = tempSignature ? {
+        name: tempSignature.name,
+        email: tempSignature.email,
+        date: tempSignature.date || new Date().toISOString(),
+        image: tempSignature.signatureData || tempSignature.image
+    } : (offer.status === 'signed' ? {
         name: offer.signed_by_name,
         email: offer.signed_by_email,
         date: offer.signed_at,
-        image: offer.signature_data
+        image: offer.signed_pdf_url || offer.signature_data || offer.pdfUrl
     } : null);
 
     return (

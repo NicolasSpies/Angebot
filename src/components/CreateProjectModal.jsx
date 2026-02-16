@@ -65,11 +65,11 @@ const CreateProjectModal = ({ isOpen, onClose, onSuccess }) => {
                         value={status}
                         onChange={(e) => setStatus(e.target.value)}
                         options={[
-                            { value: 'todo', label: 'To Do' },
-                            { value: 'in_progress', label: 'In Progress' },
-                            { value: 'on_hold', label: 'On Hold' },
-                            { value: 'completed', label: 'Completed' },
-                            { value: 'cancelled', label: 'Cancelled' }
+                            { value: 'todo', label: 'To Do', color: '#64748b' },
+                            { value: 'in_progress', label: 'In Progress', color: '#3b82f6' },
+                            { value: 'on_hold', label: 'On Hold', color: '#f59e0b' },
+                            { value: 'completed', label: 'Completed', color: '#10b981' },
+                            { value: 'cancelled', label: 'Cancelled', color: '#ef4444' }
                         ]}
                     />
                     <Input

@@ -92,10 +92,10 @@ const OffersPage = () => {
 
     const STATUS_OPTIONS = [
         { value: 'all', label: 'All' },
-        { value: 'draft', label: 'Draft' },
-        { value: 'sent', label: 'Sent' },
-        { value: 'signed', label: 'Signed' },
-        { value: 'declined', label: 'Declined' }
+        { value: 'draft', label: 'Draft', color: '#64748b' },
+        { value: 'sent', label: 'Sent', color: '#f59e0b' },
+        { value: 'signed', label: 'Signed', color: '#10b981' },
+        { value: 'declined', label: 'Declined', color: '#ef4444' }
     ];
 
     return (

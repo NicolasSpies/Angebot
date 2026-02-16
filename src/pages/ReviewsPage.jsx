@@ -29,7 +29,7 @@ const ReviewsPage = () => {
 
     const filteredReviews = reviews.filter(r =>
         r.project_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.status?.toLowerCase().includes(searchTerm.toLowerCase())
+        r.current_status?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
@@ -96,10 +96,10 @@ const ReviewsPage = () => {
                                         </Link>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="text-[13px] font-medium px-2 py-1 bg-[var(--bg-app)] rounded-md">v{review.version}</span>
+                                        <span className="text-[13px] font-medium px-2 py-1 bg-[var(--bg-app)] rounded-md">v{review.version_number}</span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <StatusPill status={review.status} />
+                                        <StatusPill status={review.current_status} />
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col">
@@ -109,7 +109,7 @@ const ReviewsPage = () => {
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <Link
-                                            to={`/projects/${review.project_id}`}
+                                            to={`/reviews/${review.id}`}
                                             className="inline-flex items-center gap-2 text-[12px] font-bold text-[var(--primary)] hover:underline"
                                         >
                                             View Details

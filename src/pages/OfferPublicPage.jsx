@@ -115,7 +115,7 @@ const OfferPublicPage = () => {
     if (!offer) return null;
 
     return (
-        <div className="min-h-screen bg-[var(--bg-app)] py-12 px-4">
+        <div className="min-h-screen bg-[var(--bg-app)] py-12 px-4 public-page">
             {/* Header Actions */}
             <div className="max-w-[1000px] mx-auto mb-8 flex justify-between items-center no-print flex-wrap gap-4">
                 <div className="flex items-center gap-4">
@@ -145,7 +145,10 @@ const OfferPublicPage = () => {
                     <Button
                         size="lg"
                         className="shadow-sm bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] border-[var(--primary)] hover:border-[var(--primary-dark)]"
-                        onClick={() => window.print()}
+                        onClick={() => {
+                            // Ensure non-print elements are hidden if they aren't already via CSS
+                            window.print();
+                        }}
                     >
                         <Download size={18} className="mr-2" /> Download Signed PDF
                     </Button>

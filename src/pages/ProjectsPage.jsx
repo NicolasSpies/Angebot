@@ -35,6 +35,16 @@ const ProjectsPage = () => {
     const [sortField, setSortField] = useState('name');
     const [sortDir, setSortDir] = useState('asc');
 
+    const PROJECT_STATUS_OPTIONS = [
+        { value: 'all', label: 'All Status' },
+        { value: 'pending', label: 'Pending', color: '#94a3b8' },
+        { value: 'todo', label: 'To Do', color: '#64748b' },
+        { value: 'in_progress', label: 'In Progress', color: '#3b82f6' },
+        { value: 'feedback', label: 'Feedback', color: '#f59e0b' },
+        { value: 'done', label: 'Done', color: '#10b981' },
+        { value: 'cancelled', label: 'Cancelled', color: '#ef4444' }
+    ];
+
     const STATUS_OPTIONS = ['pending', 'todo', 'in_progress', 'feedback', 'done', 'cancelled'];
     const STATUS_LABELS = {
         pending: 'Pending',
@@ -80,7 +90,20 @@ const ProjectsPage = () => {
             console.error('Failed to update status', err);
             // Rollback
             setProjects(originalProjects);
-            // Optional: Show toast
+        }
+    };
+
+    const handleDeadlineChange = async (id, newDeadline) => {
+        // Optimistic Update
+        const originalProjects = [...projects];
+        setProjects(projects.map(p => p.id === id ? { ...p, deadline: newDeadline } : p));
+
+        try {
+            await dataService.updateProject(id, { deadline: newDeadline });
+        } catch (err) {
+            console.error('Failed to update deadline', err);
+            // Rollback
+            setProjects(originalProjects);
         }
     };
 
@@ -146,15 +169,30 @@ const ProjectsPage = () => {
                     placeholder: "Search projects..."
                 }}
                 filters={
-                    <div className="flex items-center gap-3">
-                        <span className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider">Status Filter</span>
-                        <Select
-                            className="w-48"
-                            containerStyle={{ gap: 0 }}
-                            value={filterStatus}
-                            onChange={(e) => setFilterStatus(e.target.value)}
-                            options={Object.entries(STATUS_LABELS).map(([val, label]) => ({ value: val, label }))}
-                        />
+                    <div className="flex items-center gap-4 overflow-x-auto no-scrollbar pb-1">
+                        <span className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider shrink-0">Filter by Status</span>
+                        <div className="flex gap-2 shrink-0">
+                            {PROJECT_STATUS_OPTIONS.map(opt => (
+                                <button
+                                    key={opt.value}
+                                    onClick={() => setFilterStatus(opt.value)}
+                                    className={`
+                                        flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px] font-bold border transition-all whitespace-nowrap
+                                        ${filterStatus === opt.value
+                                            ? 'bg-[var(--primary)] text-white border-[var(--primary)] shadow-sm'
+                                            : 'bg-white text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-medium)] hover:text-[var(--text-main)]'}
+                                    `}
+                                >
+                                    {opt.color && (
+                                        <div
+                                            className="w-1.5 h-1.5 rounded-full shrink-0"
+                                            style={{ backgroundColor: filterStatus === opt.value ? 'white' : opt.color }}
+                                        />
+                                    )}
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 }
             />
@@ -227,9 +265,17 @@ const ProjectsPage = () => {
                                             }))}
                                         />
                                     </td>
-                                    <td className="py-3 px-6">
-                                        <div className="flex flex-col gap-1">
-                                            <DueStatusIndicator dueDate={project.deadline} />
+                                    <td className="py-3 px-6" onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex flex-col gap-1 relative group/date">
+                                            <div className="relative">
+                                                <DueStatusIndicator dueDate={project.deadline} />
+                                                <input
+                                                    type="date"
+                                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                                    value={project.deadline ? new Date(project.deadline).toISOString().split('T')[0] : ''}
+                                                    onChange={(e) => handleDeadlineChange(project.id, e.target.value)}
+                                                />
+                                            </div>
                                             <span className="text-[10px] text-[var(--text-muted)] font-medium">
                                                 Updated {new Date(project.updated_at || project.created_at).toLocaleDateString()}
                                             </span>

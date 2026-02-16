@@ -66,34 +66,15 @@ const ReviewsCard = ({ projectId }) => {
                                     className="flex-1 min-w-0"
                                 >
                                     <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-[13px] font-bold text-[var(--text-main)] hover:text-[var(--primary)] transition-colors">Version {review.version}</span>
-                                        <StatusPill status={review.status} />
+                                        <span className="text-[13px] font-bold text-[var(--text-main)] hover:text-[var(--primary)] transition-colors">Version {review.version_number}</span>
+                                        <StatusPill status={review.current_status} />
                                     </div>
                                     <div className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
                                         <Calendar size={12} />
                                         <span>{new Date(review.created_at).toLocaleDateString()}</span>
-                                        {review.file_size_compressed && (
-                                            <>
-                                                <span className="opacity-30">•</span>
-                                                <span className="text-[var(--success)] font-bold">
-                                                    {Math.round((1 - (review.file_size_compressed / review.file_size_original)) * 100)}% smaller
-                                                </span>
-                                            </>
-                                        )}
                                     </div>
                                 </Link>
                                 <div className="flex items-center gap-1">
-                                    <button
-                                        onClick={() => {
-                                            const url = `${window.location.origin}/review/${review.token}`;
-                                            navigator.clipboard.writeText(url);
-                                            alert('Public review link copied to clipboard!');
-                                        }}
-                                        className="w-8 h-8 rounded-full bg-[var(--bg-app)] flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--primary)] hover:text-white transition-all tooltip"
-                                        title="Copy Public Link"
-                                    >
-                                        <Link2 size={14} />
-                                    </button>
                                     <Link
                                         to={`/reviews/${review.id}`}
                                         className="w-8 h-8 rounded-full bg-[var(--bg-app)] flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--primary)] hover:text-white transition-all"
@@ -104,13 +85,6 @@ const ReviewsCard = ({ projectId }) => {
                             </div>
                         </div>
                     ))}
-
-                    {reviews.length > 0 && (
-                        <button className="mt-2 text-[12px] font-semibold text-[var(--primary)] hover:underline flex items-center gap-1.5 w-fit">
-                            <span>View All Version History</span>
-                            <ChevronRight size={12} />
-                        </button>
-                    )}
                 </div>
             )}
 

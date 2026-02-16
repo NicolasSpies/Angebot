@@ -66,7 +66,7 @@ const OfferPreviewPage = () => {
                         <Pencil size={18} className="mr-2" /> Modify Proposal
                     </Button>
                     <Button size="lg" className="shadow-lg px-8" onClick={() => window.print()}>
-                        <FileText size={18} className="mr-2" /> Download Signed PDF
+                        <Download size={18} className="mr-2" /> Download Signed PDF
                     </Button>
                     <Button
                         size="lg"

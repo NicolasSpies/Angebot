@@ -52,49 +52,37 @@ const DeadlineIndicator = ({ dueDate, createdAt }) => {
     const itemsPercent = Math.max(0, Math.min(100, (elapsed / totalWindow) * 100));
 
     return (
-        <>
-            <div className="print-only" style={{
-                marginBottom: '1.5rem',
-                padding: '1rem 0',
-                borderBottom: '1px solid #eee',
-                fontSize: '14px',
-                fontWeight: 'bold',
-                color: '#000'
+        <div className="no-print" style={{ padding: '1rem', background: bgColor, borderRadius: '8px', border: `1px solid ${color}30`, marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <span style={{ fontWeight: 600, color: labelColor, fontSize: '0.9rem' }}>
+                    Deadline
+                </span>
+                <span style={{ fontWeight: 700, color: labelColor, fontSize: '0.9rem' }}>
+                    {text}
+                </span>
+            </div>
+
+            {/* Progress Bar Container */}
+            <div style={{
+                width: '100%',
+                height: '8px',
+                background: 'rgba(255,255,255,0.6)',
+                borderRadius: '4px',
+                overflow: 'hidden'
             }}>
-                Due Date: {new Date(dueDate).toLocaleDateString()}
-            </div>
-            <div className="no-print" style={{ padding: '1rem', background: bgColor, borderRadius: '8px', border: `1px solid ${color}30` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <span style={{ fontWeight: 600, color: labelColor, fontSize: '0.9rem' }}>
-                        Deadline
-                    </span>
-                    <span style={{ fontWeight: 700, color: labelColor, fontSize: '0.9rem' }}>
-                        {text}
-                    </span>
-                </div>
-
-                {/* Progress Bar Container */}
+                {/* Progress Fill */}
                 <div style={{
-                    width: '100%',
-                    height: '8px',
-                    background: 'rgba(255,255,255,0.6)',
-                    borderRadius: '4px',
-                    overflow: 'hidden'
-                }}>
-                    {/* Progress Fill */}
-                    <div style={{
-                        width: `${itemsPercent}%`,
-                        height: '100%',
-                        background: color,
-                        transition: 'width 0.5s ease'
-                    }} />
-                </div>
-
-                <div style={{ textAlign: 'right', marginTop: '0.25rem', fontSize: '0.75rem', color: labelColor, opacity: 0.8 }}>
-                    Due: {new Date(dueDate).toLocaleDateString()}
-                </div>
+                    width: `${itemsPercent}%`,
+                    height: '100%',
+                    background: color,
+                    transition: 'width 0.5s ease'
+                }} />
             </div>
-        </>
+
+            <div style={{ textAlign: 'right', marginTop: '0.25rem', fontSize: '0.75rem', color: labelColor, opacity: 0.8 }}>
+                Due: {new Date(dueDate).toLocaleDateString()}
+            </div>
+        </div>
     );
 };
 

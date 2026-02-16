@@ -11,12 +11,13 @@ import {
     Highlighter,
     Strikethrough,
     Send,
-    CheckCircle2,
-    X,
     Plus,
     User,
     Mail,
-    Reply
+    Reply,
+    ShieldAlert,
+    Download,
+    FileText
 } from 'lucide-react';
 import { dataService } from '../data/dataService';
 import Button from '../components/ui/Button';
@@ -30,6 +31,7 @@ const PublicReviewPage = () => {
 
     // State
     const [review, setReview] = useState(null);
+    const [selectedVersionId, setSelectedVersionId] = useState(null);
     const [pdf, setPdf] = useState(null);
     const [numPages, setNumPages] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
@@ -42,11 +44,12 @@ const PublicReviewPage = () => {
     const [commentText, setCommentText] = useState('');
     const [replyText, setReplyText] = useState('');
     const [replyingTo, setReplyingTo] = useState(null);
-
-    // Drawing State
-    const [isDrawing, setIsDrawing] = useState(false);
-    const [drawStart, setDrawStart] = useState(null);
-    const [tempRect, setTempRect] = useState(null);
+    const [pinRequired, setPinRequired] = useState(false);
+    const [pin, setPin] = useState('');
+    const [pinError, setPinError] = useState('');
+    const [isVerified, setIsVerified] = useState(false);
+    const [verifiedPin, setVerifiedPin] = useState(null);
+    const [settings, setSettings] = useState(null);
 
     // Identity State
     const [showIdentityModal, setShowIdentityModal] = useState(false);
@@ -59,30 +62,86 @@ const PublicReviewPage = () => {
     const containerRef = useRef(null);
     const renderTaskRef = useRef(null);
 
-    // Initial Load
-    useEffect(() => {
-        const loadReview = async () => {
-            setLoading(true);
-            try {
-                const data = await dataService.getPublicReview(token);
-                if (data.error) throw new Error(data.error);
+    const loadReviewByToken = useCallback(async (tkn, p = null) => {
+        setLoading(true);
+        try {
+            const url = p ? `/api/public/review/${tkn}?pin=${p}` : `/api/public/review/${tkn}`;
+            const res = await fetch(url);
+            const data = await res.json();
+
+            if (data.pin_required) {
+                setPinRequired(true);
                 setReview(data);
-
-                const commentData = await dataService.getPublicComments(data.id);
-                setComments(Array.isArray(commentData) ? commentData : []);
-
-                const loadingTask = pdfjsLib.getDocument(data.file_url);
-                const pdfInstance = await loadingTask.promise;
-                setPdf(pdfInstance);
-                setNumPages(pdfInstance.numPages);
-            } catch (err) {
-                console.error('Failed to load review:', err);
-            } finally {
                 setLoading(false);
+                return;
             }
-        };
-        loadReview();
-    }, [token]);
+
+            if (data.error) throw new Error(data.error);
+
+            setReview(data);
+            setSelectedVersionId(data.id);
+            setPinRequired(false);
+            setVerifiedPin(p);
+
+            const commentData = await dataService.getPublicComments(data.id);
+            setComments(Array.isArray(commentData) ? commentData : []);
+
+            const loadingTask = pdfjsLib.getDocument(data.file_url);
+            const pdfInstance = await loadingTask.promise;
+            setPdf(pdfInstance);
+            setNumPages(pdfInstance.numPages);
+        } catch (err) {
+            console.error('Failed to load review:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const loadVersionById = useCallback(async (versionId) => {
+        setLoading(true);
+        try {
+            const version = await dataService.getReviewVersion(versionId);
+            setReview(prev => ({ ...prev, ...version }));
+            setSelectedVersionId(versionId);
+
+            const commentData = await dataService.getPublicComments(versionId);
+            setComments(Array.isArray(commentData) ? commentData : []);
+
+            const loadingTask = pdfjsLib.getDocument(version.file_url);
+            const pdfInstance = await loadingTask.promise;
+            setPdf(pdfInstance);
+            setNumPages(pdfInstance.numPages);
+        } catch (err) {
+            console.error('Failed to load version:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadReviewByToken(token);
+        dataService.getSettings().then(setSettings);
+    }, [token, loadReviewByToken]);
+
+    const handleVerifyPin = async (e) => {
+        e.preventDefault();
+        setPinError('');
+        try {
+            const res = await fetch(`/api/public/review/${token}/verify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pin })
+            });
+            const data = await res.json();
+            if (data.success) {
+                loadReviewByToken(token, pin);
+            } else {
+                setPinError('Invalid PIN code');
+            }
+        } catch (err) {
+            setPinError('Validation failed');
+        }
+    };
 
     // Render Page
     const renderPage = useCallback(async (pageNum, currentScale) => {
@@ -118,7 +177,7 @@ const PublicReviewPage = () => {
     }, [currentPage, scale, renderPage]);
 
     const handleMouseDown = (e) => {
-        if (activeTool === 'select' || activeTool === 'comment' || !pdf) return;
+        if (activeTool === 'select' || activeTool === 'comment' || !pdf || isReadOnly) return;
 
         const rect = containerRef.current.getBoundingClientRect();
         const x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -162,7 +221,7 @@ const PublicReviewPage = () => {
     };
 
     const handleCanvasClick = (e) => {
-        if (activeTool !== 'comment' || !pdf) return;
+        if (activeTool !== 'comment' || !pdf || isReadOnly) return;
 
         const rect = containerRef.current.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) return;
@@ -172,6 +231,17 @@ const PublicReviewPage = () => {
 
         setNewCommentPos({ x, y, width: null, height: null });
         setSelectedComment(null);
+    };
+
+    const captureScreenshot = () => {
+        if (!canvasRef.current) return null;
+        try {
+            // Quality 0.5 to keep file size small
+            return canvasRef.current.toDataURL('image/jpeg', 0.5);
+        } catch (err) {
+            console.error('Failed to capture screenshot:', err);
+            return null;
+        }
     };
 
     const handleSaveComment = async (parentId = null) => {
@@ -188,7 +258,9 @@ const PublicReviewPage = () => {
         }
 
         try {
-            const newComment = await dataService.createPublicComment(review.id, {
+            const screenshot = parentId ? null : captureScreenshot();
+
+            const newComment = await dataService.createPublicComment(selectedVersionId, {
                 page_number: parentComment ? parentComment.page_number : currentPage,
                 x: parentComment ? parentComment.x : newCommentPos.x,
                 y: parentComment ? parentComment.y : newCommentPos.y,
@@ -198,7 +270,8 @@ const PublicReviewPage = () => {
                 content: textToSave,
                 author_name: author.name,
                 author_email: author.email,
-                parent_id: parentId
+                parent_id: parentId,
+                screenshot: screenshot
             });
 
             setComments([...comments, newComment]);
@@ -224,9 +297,9 @@ const PublicReviewPage = () => {
         if (!window.confirm('Are you sure you want to approve this review version? This will close the review.')) return;
 
         try {
-            await dataService.approveReview(review.id, author);
+            await dataService.approveReview(selectedVersionId, author);
             alert('Review approved successfully!');
-            window.location.reload();
+            loadVersionById(selectedVersionId);
         } catch (err) {
             console.error('Failed to approve:', err);
         }
@@ -248,7 +321,10 @@ const PublicReviewPage = () => {
         </div>
     );
 
-    if (!review) return (
+    const isCurrent = review?.id === review?.current_version_id;
+    const isReadOnly = review?.status === 'approved' || !isCurrent;
+
+    if (!review && !loading) return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--bg-secondary)] text-[var(--text-secondary)]">
             <X size={48} className="mb-4 opacity-50" />
             <h1 className="text-xl font-medium">Review Not Found or Closed</h1>
@@ -257,54 +333,78 @@ const PublicReviewPage = () => {
     );
 
     return (
-        <div className="flex h-screen bg-[var(--bg-app)] overflow-hidden">
-            {/* Main Content */}
+        <div className="flex flex-col h-screen bg-[var(--bg-app)] overflow-hidden public-page">
+            {isReadOnly && (
+                <div className="bg-amber-500 text-white text-center text-[11px] font-black py-2.5 z-[100] flex items-center justify-center gap-2 uppercase tracking-[0.2em] shadow-lg">
+                    <ShieldAlert size={14} />
+                    {review?.status === 'approved' ? 'Final Review: Version Approved & Sealed' : 'Viewing Historical Version (Read Only)'}
+                </div>
+            )}
             <div className="flex-1 flex flex-col min-w-0">
                 {/* Public Header */}
-                <header className="h-16 px-6 bg-white border-b border-[var(--border-subtle)] flex items-center justify-between shrink-0 z-10">
+                <header className="h-16 px-6 bg-white border-b border-[var(--border-subtle)] flex items-center justify-between shrink-0 z-10 shadow-sm">
                     <div className="flex items-center gap-4">
-                        <div className="h-8 w-8 bg-[var(--primary)] rounded-lg flex items-center justify-center text-white shrink-0">
-                            <Maximize2 size={18} />
-                        </div>
-                        <div>
-                            <h2 className="text-sm font-semibold text-[var(--text-main)] leading-none mb-1">
-                                {review.project_name} - V{review.version}
-                            </h2>
-                            <span className="text-xs text-[var(--text-secondary)]">Reviewing Document</span>
+                        {settings?.logo_url ? (
+                            <img src={settings.logo_url} alt="Logo" className="h-8 w-auto grayscale" />
+                        ) : (
+                            <div className="h-8 w-8 bg-[var(--primary)] rounded-lg flex items-center justify-center text-white shrink-0">
+                                <FileText size={18} />
+                            </div>
+                        )}
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                                <h2 className="text-[15px] font-extrabold text-[var(--text-main)] leading-none truncate max-w-[200px]">
+                                    {review.project_name}
+                                </h2>
+                                <select
+                                    className="bg-transparent border-none text-[13px] font-extrabold text-[var(--primary)] cursor-pointer outline-none"
+                                    value={selectedVersionId}
+                                    onChange={(e) => loadVersionById(parseInt(e.target.value))}
+                                >
+                                    {review.allVersions?.map(v => (
+                                        <option key={v.id} value={v.id}>
+                                            V{v.version_number} {v.id === review.current_version_id ? '(Current)' : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <span className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Project Document Review</span>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <div className="flex items-center bg-[var(--bg-app)] rounded-full p-1 border border-[var(--border-subtle)]">
-                            <button
-                                onClick={() => setActiveTool('select')}
-                                className={`p-2 rounded-full transition-all ${activeTool === 'select' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)]'}`}
-                                title="Select"
-                            >
-                                <Maximize2 size={18} />
-                            </button>
-                            <button
-                                onClick={() => setActiveTool('comment')}
-                                className={`p-2 rounded-full transition-all ${activeTool === 'comment' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)]'}`}
-                                title="Add Comment"
-                            >
-                                <MessageSquare size={18} />
-                            </button>
-                            <button
-                                onClick={() => setActiveTool('highlight')}
-                                className={`p-2 rounded-full transition-all ${activeTool === 'highlight' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)]'}`}
-                                title="Highlight Region"
-                            >
-                                <Highlighter size={18} />
-                            </button>
-                            <button
-                                onClick={() => setActiveTool('strike')}
-                                className={`p-2 rounded-full transition-all ${activeTool === 'strike' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)]'}`}
-                                title="Strike Region"
-                            >
-                                <Strikethrough size={18} />
-                            </button>
-                        </div>
+                        {!isReadOnly && (
+                            <div className="flex items-center bg-[var(--bg-app)] rounded-full p-1 border border-[var(--border-subtle)]">
+                                <button
+                                    onClick={() => setActiveTool('select')}
+                                    className={`p-2 rounded-full transition-all ${activeTool === 'select' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)]'}`}
+                                    title="Select"
+                                >
+                                    <Maximize2 size={18} />
+                                </button>
+                                <button
+                                    onClick={() => setActiveTool('comment')}
+                                    className={`p-2 rounded-full transition-all ${activeTool === 'comment' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)]'}`}
+                                    title="Add Comment"
+                                >
+                                    <MessageSquare size={18} />
+                                </button>
+                                <button
+                                    onClick={() => setActiveTool('highlight')}
+                                    className={`p-2 rounded-full transition-all ${activeTool === 'highlight' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)]'}`}
+                                    title="Highlight Region"
+                                >
+                                    <Highlighter size={18} />
+                                </button>
+                                <button
+                                    onClick={() => setActiveTool('strike')}
+                                    className={`p-2 rounded-full transition-all ${activeTool === 'strike' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)]'}`}
+                                    title="Strike Region"
+                                >
+                                    <Strikethrough size={18} />
+                                </button>
+                            </div>
+                        )}
 
                         <div className="flex items-center bg-[var(--bg-app)] rounded-lg p-1 border border-[var(--border-subtle)] ml-4">
                             <button onClick={() => setScale(prev => Math.max(0.5, prev - 0.2))} className="p-1 px-2 text-[var(--text-secondary)]">
@@ -338,6 +438,20 @@ const PublicReviewPage = () => {
                                     Approve
                                 </Button>
                             )}
+
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-9 w-9 p-0"
+                                onClick={() => {
+                                    a.href = review?.file_url;
+                                    a.download = `review-${review.project_name}-v${review.version_number}.pdf`;
+                                    a.click();
+                                }}
+                                title="Download PDF"
+                            >
+                                <Download size={16} />
+                            </Button>
                         </div>
                     </div>
                 </header>
@@ -514,12 +628,28 @@ const PublicReviewPage = () => {
             {/* Sidebar */}
             <aside className="w-[340px] border-l border-[var(--border-subtle)] bg-white flex flex-col shrink-0">
                 <div className="p-6 border-b border-[var(--border-subtle)]">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between mb-4">
                         <h3 className="font-bold text-[var(--text-main)]">Comments</h3>
                         <span className="bg-[var(--bg-app)] text-[var(--text-secondary)] text-xs font-bold px-2 py-0.5 rounded-full">
                             {comments.length}
                         </span>
                     </div>
+                    <button
+                        onClick={async () => {
+                            const res = await fetch(`/api/reviews/versions/${selectedVersionId}/export`);
+                            const data = await res.json();
+                            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `review-summary-${review.project_name}-v${review.version_number}.json`;
+                            a.click();
+                        }}
+                        className="w-full btn-secondary btn-sm gap-2"
+                    >
+                        <FileText size={14} />
+                        <span>Export Summary (JSON)</span>
+                    </button>
                 </div>
 
                 <div className="flex-1 overflow-auto p-4 custom-scrollbar">
@@ -562,13 +692,28 @@ const PublicReviewPage = () => {
                                         <p className="text-[13px] text-[var(--text-main)] leading-relaxed italic mb-3">
                                             "{comment.content}"
                                         </p>
+                                        {comment.screenshot_url && (
+                                            <div className="mt-2 mb-3 rounded overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-app)]">
+                                                <img
+                                                    src={comment.screenshot_url}
+                                                    alt="Context"
+                                                    className="w-full h-auto cursor-zoom-in hover:opacity-90 transition-opacity"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        window.open(comment.screenshot_url, '_blank');
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
                                         <div className="flex justify-end">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setSelectedComment(comment); setReplyingTo(comment.id); }}
-                                                className="text-[var(--primary)] text-xs font-bold hover:underline py-1"
-                                            >
-                                                Reply
-                                            </button>
+                                            {!isReadOnly && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setSelectedComment(comment); setReplyingTo(comment.id); }}
+                                                    className="text-[var(--primary)] text-xs font-bold hover:underline py-1"
+                                                >
+                                                    Reply
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
 
@@ -648,6 +793,36 @@ const PublicReviewPage = () => {
                                 <Button variant="ghost" className="flex-1" onClick={() => setShowIdentityModal(false)}>Cancel</Button>
                                 <Button variant="primary" className="flex-1" type="submit">Save Identity</Button>
                             </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+            {/* PIN Protection Modal */}
+            {pinRequired && (
+                <div className="fixed inset-0 bg-white z-[100] flex items-center justify-center p-4">
+                    <div className="w-full max-w-sm text-center">
+                        <div className="w-16 h-16 bg-[var(--primary)]/10 text-[var(--primary)] rounded-2xl flex items-center justify-center mx-auto mb-6">
+                            <Lock size={32} />
+                        </div>
+                        <h2 className="text-2xl font-bold text-[var(--text-main)] mb-2">Secure Review</h2>
+                        <p className="text-[var(--text-secondary)] mb-8 text-sm">
+                            This review for <strong>{review?.project_name}</strong> is protected. Please enter the PIN code provided by your contact.
+                        </p>
+
+                        <form onSubmit={handleVerifyPin} className="space-y-4">
+                            <input
+                                type="text"
+                                maxLength={6}
+                                className="w-full text-center text-3xl font-bold tracking-[0.5em] py-4 rounded-xl border border-[var(--border-subtle)] focus:border-[var(--primary)] outline-none"
+                                placeholder="••••••"
+                                value={pin}
+                                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                                autoFocus
+                            />
+                            {pinError && <p className="text-[var(--danger)] text-xs font-bold">{pinError}</p>}
+                            <Button variant="primary" className="w-full h-12" type="submit" disabled={pin.length < 4}>
+                                Unlock Review
+                            </Button>
                         </form>
                     </div>
                 </div>

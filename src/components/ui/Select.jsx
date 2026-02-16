@@ -96,9 +96,17 @@ const Select = ({ label, options = [], value, onChange, error, className = '', c
                         ${props.disabled ? 'opacity-50 cursor-not-allowed bg-[var(--bg-app)]' : ''}
                     `}
                 >
-                    <span className={selectedOption ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)]'}>
-                        {selectedOption ? selectedOption.label : placeholder}
-                    </span>
+                    <div className="flex items-center gap-2 overflow-hidden">
+                        {selectedOption?.color && (
+                            <div
+                                className="w-2 h-2 rounded-full shrink-0 shadow-sm"
+                                style={{ backgroundColor: selectedOption.color }}
+                            />
+                        )}
+                        <span className={`truncate ${selectedOption ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)]'}`}>
+                            {selectedOption ? selectedOption.label : placeholder}
+                        </span>
+                    </div>
                     <ChevronDown
                         size={16}
                         className={`text-[var(--text-muted)] transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
@@ -129,7 +137,15 @@ const Select = ({ label, options = [], value, onChange, error, className = '', c
                                     ${value === opt.value ? 'bg-[var(--primary)] text-white' : index === activeIndex ? 'bg-[var(--bg-app)] text-[var(--text-main)]' : 'text-[var(--text-main)]'}
                                 `}
                             >
-                                {opt.label}
+                                <div className="flex items-center gap-2">
+                                    {opt.color && (
+                                        <div
+                                            className="w-2 h-2 rounded-full shrink-0"
+                                            style={{ backgroundColor: opt.color }}
+                                        />
+                                    )}
+                                    <span>{opt.label}</span>
+                                </div>
                             </div>
                         ))}
                         {options.length === 0 && (

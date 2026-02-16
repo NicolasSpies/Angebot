@@ -30,6 +30,16 @@ const PageLoader = () => (
 );
 
 function App() {
+  // Global environment check for debug tools
+  React.useEffect(() => {
+    const isDev = import.meta.env.DEV;
+    if (!isDev) {
+      document.body.classList.add('env-production');
+    } else {
+      document.body.classList.add('env-development');
+    }
+  }, []);
+
   return (
     <I18nProvider>
       <BrowserRouter>

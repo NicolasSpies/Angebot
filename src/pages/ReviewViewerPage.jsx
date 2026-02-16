@@ -1,7 +1,18 @@
+```
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as pdfjsLib from 'pdfjs-dist';
 import {
+    CheckCircle2,
+    Calendar,
+    Reply,
+    MoreVertical,
+    Send,
+    ChevronDown,
+    ShieldAlert,
+    Download,
+    FileText,
+    MessageSquare,
     Plus,
     X,
     Maximize,
@@ -11,13 +22,7 @@ import {
     ChevronRight,
     Trash2,
     Highlighter,
-    Strikethrough,
-    CheckCircle2,
-    Calendar,
-    Reply,
-    MoreVertical,
-    Send,
-    ChevronDown
+    Strikethrough
 } from 'lucide-react';
 import { dataService } from '../data/dataService';
 import Button from '../components/ui/Button';
@@ -37,6 +42,8 @@ const ReviewViewerPage = () => {
 
     // State
     const [review, setReview] = useState(null);
+    const [selectedVersionId, setSelectedVersionId] = useState(null);
+    const [currentVersion, setCurrentVersion] = useState(null);
     const [comments, setComments] = useState([]);
     const [loading, setLoading] = useState(true);
     const [pdf, setPdf] = useState(null);
@@ -62,41 +69,51 @@ const ReviewViewerPage = () => {
 
     // Load Review Data
     useEffect(() => {
-        const loadData = async () => {
+        const loadInitialData = async () => {
             setLoading(true);
             try {
-                // Fetch specific review version
-                const currentReview = await dataService.getReview(id);
-
-                if (currentReview.error) {
-                    console.error('Review not found:', currentReview.error);
+                const parentReview = await dataService.getReview(id);
+                if (!parentReview || parentReview.error) {
                     navigate('/reviews');
                     return;
                 }
-
-                setReview(currentReview);
-
-                // Load Comments
-                const commentData = await dataService.getReviewComments(id);
-                setComments(Array.isArray(commentData) ? commentData : []);
-
-                // Load PDF
-                if (currentReview.file_url) {
-                    const loadingTask = pdfjsLib.getDocument(currentReview.file_url);
-                    const pdfDocument = await loadingTask.promise;
-                    setPdf(pdfDocument);
-                    setNumPages(pdfDocument.numPages);
-                }
-
+                setReview(parentReview);
+                // Default to current version ID
+                setSelectedVersionId(parentReview.current_version_id);
             } catch (err) {
                 console.error('Failed to load review:', err);
-                // Optionally show an error state instead of redirecting
             } finally {
                 setLoading(false);
             }
         };
-        loadData();
+        loadInitialData();
     }, [id, navigate]);
+
+    useEffect(() => {
+        if (!selectedVersionId) return;
+
+        const loadVersionData = async () => {
+            try {
+                const version = await dataService.getReviewVersion(selectedVersionId);
+                setCurrentVersion(version);
+
+                // Load Comments for this version
+                const commentData = await dataService.getReviewComments(selectedVersionId);
+                setComments(Array.isArray(commentData) ? commentData : []);
+
+                // Load PDF
+                if (version.file_url) {
+                    const loadingTask = pdfjsLib.getDocument(version.file_url);
+                    const pdfDocument = await loadingTask.promise;
+                    setPdf(pdfDocument);
+                    setNumPages(pdfDocument.numPages);
+                }
+            } catch (err) {
+                console.error('Failed to load version:', err);
+            }
+        };
+        loadVersionData();
+    }, [selectedVersionId]);
 
     // Render PDF Page
     const renderPage = useCallback(async (pageNum, currentScale) => {
@@ -192,6 +209,17 @@ const ReviewViewerPage = () => {
         setSelectedComment(null);
     };
 
+    const captureScreenshot = () => {
+        if (!canvasRef.current) return null;
+        try {
+            // Quality 0.5 to keep file size small
+            return canvasRef.current.toDataURL('image/jpeg', 0.5);
+        } catch (err) {
+            console.error('Failed to capture screenshot:', err);
+            return null;
+        }
+    };
+
     const handleSaveComment = async (parentId = null) => {
         const textToSave = parentId ? replyText : commentText;
         if (!textToSave.trim()) return;
@@ -200,7 +228,9 @@ const ReviewViewerPage = () => {
         const parentComment = parentId ? comments.find(c => c.id === parentId) : null;
 
         try {
-            const newComment = await dataService.createReviewComment(id, {
+            const screenshot = parentId ? null : captureScreenshot();
+
+            const newComment = await dataService.createReviewComment(selectedVersionId, {
                 page_number: parentComment ? parentComment.page_number : currentPage,
                 x: parentComment ? parentComment.x : newCommentPos.x,
                 y: parentComment ? parentComment.y : newCommentPos.y,
@@ -209,7 +239,8 @@ const ReviewViewerPage = () => {
                 type: parentId ? 'reply' : (activeTool === 'comment' ? 'comment' : activeTool),
                 content: textToSave,
                 created_by: 'System',
-                parent_id: parentId
+                parent_id: parentId,
+                screenshot: screenshot
             });
 
             setComments([...comments, newComment]);
@@ -265,15 +296,42 @@ const ReviewViewerPage = () => {
 
     if (loading) return <PageLoader />;
 
+    const isCurrentVersion = currentVersion?.id === review?.current_version_id;
+    const isReadOnly = review?.status === 'approved' || !isCurrentVersion;
+
     return (
         <div className="flex h-screen bg-[var(--bg-app)] overflow-hidden">
+            {isReadOnly && (
+                <div className="fixed top-0 left-0 right-0 bg-blue-600 text-white text-center text-xs font-bold py-1 z-[100] flex items-center justify-center gap-2">
+                    <ShieldAlert size={14} />
+                    READ ONLY MODE: REVIEW IS APPROVED
+                </div>
+            )}
             {/* Sidebar - Comments */}
             <div className="w-[320px] border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] flex flex-col">
-                <div className="p-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
-                    <h2 className="font-bold text-[16px]">Comments</h2>
-                    <span className="bg-[var(--bg-app)] text-[var(--text-secondary)] text-[11px] px-2 py-0.5 rounded-full font-bold">
-                        {comments.length}
-                    </span>
+                <div className="p-4 border-b border-[var(--border-subtle)]">
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="font-bold text-[16px]">Comments</h2>
+                        <span className="bg-[var(--bg-app)] text-[var(--text-secondary)] text-[11px] px-2 py-0.5 rounded-full font-bold">
+                            {comments.length}
+                        </span>
+                    </div>
+                    <button
+                        onClick={async () => {
+                            const res = await fetch(`/api/reviews/versions/${selectedVersionId}/export`);
+                            const data = await res.json();
+                            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `review-export-${review?.project_name}-v${currentVersion?.version_number}.json`;
+                            a.click();
+                        }}
+                        className="w-full flex items-center justify-center gap-2 py-2 border border-[var(--border-subtle)] rounded-lg text-[12px] font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-app)] transition-colors"
+                    >
+                        <FileText size={14} />
+                        Export Results
+                    </button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -326,15 +384,30 @@ const ReviewViewerPage = () => {
                                                     </button>
                                                 </>
                                             )}
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleDeleteComment(comment.id); }}
-                                                className="text-[var(--text-muted)] hover:text-[var(--danger)] p-1"
-                                            >
-                                                <Trash2 size={12} />
-                                            </button>
+                                            {!isReadOnly && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleDeleteComment(comment.id); }}
+                                                    className="text-[var(--text-muted)] hover:text-[var(--danger)] p-1"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                     <p className="text-[13px] text-[var(--text-main)] line-clamp-3">{comment.content}</p>
+                                    {comment.screenshot_url && (
+                                        <div className="mt-2 mb-3 rounded overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-app)]">
+                                            <img
+                                                src={comment.screenshot_url}
+                                                alt="Context"
+                                                className="w-full h-auto cursor-zoom-in hover:opacity-90 transition-opacity"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    window.open(comment.screenshot_url, '_blank');
+                                                }}
+                                            />
+                                        </div>
+                                    )}
                                     <div className="mt-2 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <div className="w-5 h-5 rounded-full bg-[var(--primary)] flex items-center justify-center text-[white] text-[9px] font-bold">
@@ -342,12 +415,14 @@ const ReviewViewerPage = () => {
                                             </div>
                                             <span className="text-[11px] text-[var(--text-secondary)]">{comment.author_name || 'System'} • {new Date(comment.created_at).toLocaleDateString()}</span>
                                         </div>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); setReplyingTo(comment.id); setSelectedComment(comment); }}
-                                            className="text-[var(--primary)] text-[11px] font-bold hover:underline"
-                                        >
-                                            Reply
-                                        </button>
+                                        {!isReadOnly && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setReplyingTo(comment.id); setSelectedComment(comment); }}
+                                                className="text-[var(--primary)] text-[11px] font-bold hover:underline"
+                                            >
+                                                Reply
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
 
@@ -398,47 +473,78 @@ const ReviewViewerPage = () => {
                             <ChevronLeft size={20} />
                         </button>
                         <div>
-                            <h1 className="font-bold text-[15px] text-[var(--text-main)] truncate max-w-[200px]">
-                                {review?.project_name} - V{review?.version}
-                            </h1>
-                            <p className="text-[11px] text-[var(--text-secondary)] uppercase font-bold tracking-tight">Reviewing Document</p>
+                            <div className="flex items-center gap-2">
+                                <h1 className="font-bold text-[15px] text-[var(--text-main)] truncate max-w-[200px]">
+                                    {review?.project_name}
+                                </h1>
+                                <select
+                                    className="bg-transparent border-none text-[13px] font-bold text-[var(--primary)] cursor-pointer outline-none"
+                                    value={selectedVersionId}
+                                    onChange={(e) => setSelectedVersionId(parseInt(e.target.value))}
+                                >
+                                    {review?.versions?.map(v => (
+                                        <option key={v.id} value={v.id}>
+                                            V{v.version_number} {v.id === review.current_version_id ? '(Current)' : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <p className="text-[11px] text-[var(--text-secondary)] uppercase font-bold tracking-tight">
+                                {isCurrentVersion ? 'Reviewing Current Version' : 'Viewing Historical Version'}
+                            </p>
                         </div>
                     </div>
 
-                    <div className="flex items-center bg-[var(--bg-app)] p-1 rounded-full border border-[var(--border-subtle)]">
-                        <button
-                            onClick={() => setActiveTool('select')}
-                            className={`p-1.5 rounded-full transition-all ${activeTool === 'select' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--primary)]' : 'text-[var(--text-secondary)]'}`}
-                        >
-                            <Maximize size={18} />
-                        </button>
-                        <button
-                            onClick={() => setActiveTool('comment')}
-                            className={`p-1.5 rounded-full transition-all ${activeTool === 'comment' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--primary)]' : 'text-[var(--text-secondary)]'}`}
-                        >
-                            <MessageSquare size={18} />
-                        </button>
-                        <button
-                            onClick={() => setActiveTool('highlight')}
-                            className={`p-1.5 rounded-full transition-all ${activeTool === 'highlight' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--primary)]' : 'text-[var(--text-secondary)]'}`}
-                            title="Highlight Region"
-                        >
-                            <Highlighter size={18} />
-                        </button>
-                        <button
-                            onClick={() => setActiveTool('strike')}
-                            className={`p-1.5 rounded-full transition-all ${activeTool === 'strike' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--primary)]' : 'text-[var(--text-secondary)]'}`}
-                            title="Strike Region"
-                        >
-                            <Strikethrough size={18} />
-                        </button>
-                    </div>
+                    {!isReadOnly && (
+                        <div className="flex items-center bg-[var(--bg-app)] p-1 rounded-full border border-[var(--border-subtle)]">
+                            <button
+                                onClick={() => setActiveTool('select')}
+                                className={`p-1.5 rounded-full transition-all ${activeTool === 'select' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--primary)]' : 'text-[var(--text-secondary)]'}`}
+                            >
+                                <Maximize size={18} />
+                            </button>
+                            <button
+                                onClick={() => setActiveTool('comment')}
+                                className={`p-1.5 rounded-full transition-all ${activeTool === 'comment' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--primary)]' : 'text-[var(--text-secondary)]'}`}
+                            >
+                                <MessageSquare size={18} />
+                            </button>
+                            <button
+                                onClick={() => setActiveTool('highlight')}
+                                className={`p-1.5 rounded-full transition-all ${activeTool === 'highlight' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--primary)]' : 'text-[var(--text-secondary)]'}`}
+                                title="Highlight Region"
+                            >
+                                <Highlighter size={18} />
+                            </button>
+                            <button
+                                onClick={() => setActiveTool('strike')}
+                                className={`p-1.5 rounded-full transition-all ${activeTool === 'strike' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--primary)]' : 'text-[var(--text-secondary)]'}`}
+                                title="Strike Region"
+                            >
+                                <Strikethrough size={18} />
+                            </button>
+                        </div>
+                    )}
 
                     <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1 bg-[var(--bg-app)] px-2 py-1 rounded-md border border-[var(--border-subtle)] mr-2">
                             <button onClick={() => setScale(s => Math.max(0.5, s - 0.2))} className="text-[var(--text-secondary)] hover:text-[var(--text-main)]"><ZoomOut size={16} /></button>
                             <span className="text-[12px] font-bold min-w-[40px] text-center">{Math.round(scale * 100)}%</span>
                             <button onClick={() => setScale(s => Math.min(3, s + 0.2))} className="text-[var(--text-secondary)] hover:text-[var(--text-main)]"><ZoomIn size={16} /></button>
+                        </div>
+                        <div className="flex items-center gap-2 bg-[var(--bg-app)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
+                            <button
+                                onClick={() => {
+                                    const a = document.createElement('a');
+                                    a.href = currentVersion?.file_url;
+                                    a.download = `review-${review?.project_name}-v${currentVersion?.version_number}.pdf`;
+                                    a.click();
+                                }}
+                                className="text-[var(--text-secondary)] hover:text-[var(--primary)] p-1"
+                                title="Download Original PDF"
+                            >
+                                <Download size={18} />
+                            </button>
                         </div>
                         <div className="flex items-center gap-2 bg-[var(--bg-app)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
                             <button

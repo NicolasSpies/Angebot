@@ -275,24 +275,34 @@ const migrations = [
     `CREATE TABLE IF NOT EXISTS reviews (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id INTEGER NOT NULL,
-        file_url TEXT,
-        compressed_file_url TEXT,
-        file_size_original INTEGER,
-        file_size_compressed INTEGER,
-        version INTEGER DEFAULT 1,
-        status TEXT DEFAULT 'open', -- 'open', 'changes_requested', 'approved'
-        token TEXT UNIQUE, -- For public access
-        is_token_active INTEGER DEFAULT 1,
-        approved_at DATETIME,
-        approved_by_name TEXT,
-        approved_by_email TEXT,
+        current_version_id INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         created_by TEXT,
         FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
     );`,
+    `CREATE TABLE IF NOT EXISTS review_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        review_id INTEGER,
+        project_id INTEGER, -- Legacy field for migration compatibility
+        file_url TEXT,
+        compressed_file_url TEXT,
+        file_size_original INTEGER,
+        file_size_compressed INTEGER,
+        version_number INTEGER DEFAULT 1,
+        status TEXT DEFAULT 'open', -- 'open', 'changes_requested', 'approved', 'superseded'
+        token TEXT UNIQUE,
+        is_token_active INTEGER DEFAULT 1,
+        approved_at DATETIME,
+        approved_by_name TEXT,
+        approved_by_email TEXT,
+        pin_code TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_by TEXT,
+        FOREIGN KEY (review_id) REFERENCES reviews(id) ON DELETE CASCADE
+    );`,
     `CREATE TABLE IF NOT EXISTS review_comments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        review_id INTEGER NOT NULL,
+        version_id INTEGER NOT NULL,
         page_number INTEGER NOT NULL,
         x REAL NOT NULL,
         y REAL NOT NULL,
@@ -302,18 +312,18 @@ const migrations = [
         content TEXT,
         author_name TEXT,
         author_email TEXT,
+        is_resolved INTEGER DEFAULT 0,
+        resolved_at DATETIME,
+        resolved_by TEXT,
+        parent_id INTEGER,
+        screenshot_url TEXT,
         created_by TEXT, -- For internal users
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (review_id) REFERENCES reviews(id) ON DELETE CASCADE
+        FOREIGN KEY (version_id) REFERENCES review_versions(id) ON DELETE CASCADE
     );`,
     'CREATE INDEX IF NOT EXISTS idx_reviews_project_id ON reviews(project_id);',
-    'CREATE INDEX IF NOT EXISTS idx_review_comments_review_id ON review_comments(review_id);',
-    // --- REVIEW SYSTEM (Stage 2) ---
-    'ALTER TABLE review_comments ADD COLUMN parent_id INTEGER;',
-    'ALTER TABLE review_comments ADD COLUMN is_resolved INTEGER DEFAULT 0;',
-    'ALTER TABLE review_comments ADD COLUMN resolved_at DATETIME;',
-    'ALTER TABLE review_comments ADD COLUMN resolved_by TEXT;',
-    'ALTER TABLE review_comments ADD COLUMN screenshot_url TEXT;',
+    'CREATE INDEX IF NOT EXISTS idx_review_versions_review_id ON review_versions(review_id);',
+    'CREATE INDEX IF NOT EXISTS idx_review_comments_version_id ON review_comments(version_id);',
 ];
 
 migrations.forEach(sql => {

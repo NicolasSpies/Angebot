@@ -204,6 +204,20 @@ body {
   flex-direction: column;
 }
 
+/* --- Environment Guards --- */
+.env-production .dev-debug-panel,
+.env-production .dev-debug-inspector,
+.env-production #dev-debug-root,
+.env-production [id^="dev-debug"] {
+  display: none !important;
+}
+
+.public-page .dev-debug-panel,
+.public-page .dev-debug-inspector,
+.public-page #dev-debug-root {
+  display: none !important;
+}
+
 /* ================================================================
    LAYOUT PRIMITIVES
    ================================================================ */
@@ -663,6 +677,8 @@ button {
   .no-print,
   .dev-debug-panel,
   .dev-debug-inspector,
+  #dev-debug-root,
+  [id^="dev-debug"],
   header,
   footer,
   nav,
@@ -681,7 +697,9 @@ button {
   .shadow-floating,
   .shadow-lg,
   .shadow-md,
-  .shadow-sm {
+  .shadow-sm,
+  .deadline-progress,
+  .no-print-important {
     display: none !important;
   }
 

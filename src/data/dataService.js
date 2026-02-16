@@ -216,6 +216,11 @@ export const dataService = {
         return res.json();
     },
 
+    getReviewVersion: async (versionId) => {
+        const res = await fetch(`${API_URL}/reviews/version/${versionId}`);
+        return res.json();
+    },
+
     getProjectReviews: async (projectId) => {
         const res = await fetch(`${API_URL}/projects/${projectId}/reviews`);
         return res.json();
@@ -227,13 +232,13 @@ export const dataService = {
         return res.json();
     },
 
-    getPublicComments: async (reviewId) => {
-        const res = await fetch(`${API_URL}/public/reviews/${reviewId}/comments`);
+    getPublicComments: async (versionId) => {
+        const res = await fetch(`${API_URL}/public/reviews/versions/${versionId}/comments`);
         return res.json();
     },
 
-    createPublicComment: async (reviewId, commentData) => {
-        const res = await fetch(`${API_URL}/public/reviews/${reviewId}/comments`, {
+    createPublicComment: async (versionId, commentData) => {
+        const res = await fetch(`${API_URL}/public/reviews/versions/${versionId}/comments`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(commentData)
@@ -241,8 +246,8 @@ export const dataService = {
         return res.json();
     },
 
-    approveReview: async (reviewId, authorData) => {
-        const res = await fetch(`${API_URL}/public/reviews/${reviewId}/approve`, {
+    approveReview: async (versionId, authorData) => {
+        const res = await fetch(`${API_URL}/public/reviews/versions/${versionId}/approve`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(authorData)
@@ -272,13 +277,13 @@ export const dataService = {
         return res.json();
     },
 
-    getReviewComments: async (reviewId) => {
-        const res = await fetch(`${API_URL}/reviews/${reviewId}/comments`);
+    getReviewComments: async (versionId) => {
+        const res = await fetch(`${API_URL}/reviews/versions/${versionId}/comments`);
         return res.json();
     },
 
-    createReviewComment: async (reviewId, commentData) => {
-        const res = await fetch(`${API_URL}/reviews/${reviewId}/comments`, {
+    createReviewComment: async (versionId, commentData) => {
+        const res = await fetch(`${API_URL}/reviews/versions/${versionId}/comments`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(commentData)

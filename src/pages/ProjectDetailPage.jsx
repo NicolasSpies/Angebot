@@ -8,7 +8,7 @@ import {
     ExternalLink, Save, Calendar, Clock, DollarSign,
     Zap, FileText, MoreVertical, Box, Pencil, Globe,
     AlertTriangle, Link as LinkIcon, CheckSquare,
-    User, File
+    User, File, Download
 } from 'lucide-react';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 import Button from '../components/ui/Button';
@@ -41,6 +41,8 @@ const ProjectDetailPage = () => {
     const [offer, setOffer] = useState(null);
     const [allCustomers, setAllCustomers] = useState([]);
     const [allOffers, setAllOffers] = useState([]);
+    const [teamMembers, setTeamMembers] = useState([]);
+    const [financialLink, setFinancialLink] = useState('');
 
     // UI State
     const [isLoading, setIsLoading] = useState(true);
@@ -61,7 +63,9 @@ const ProjectDetailPage = () => {
         try {
             const projectData = await dataService.getProject(id);
             setProject(projectData);
-            setNotes(projectData.internal_notes || '');
+            setNotes(projectData.strategic_notes || projectData.internal_notes || '');
+            setTeamMembers(JSON.parse(projectData.team_members || '[]'));
+            setFinancialLink(projectData.financial_link || '');
             setLastSaved(projectData.updated_at);
 
             // Load Linked Data
@@ -152,7 +156,7 @@ const ProjectDetailPage = () => {
         autosaveTimerRef.current = setTimeout(async () => {
             setNotesSaving(true);
             try {
-                await dataService.updateProject(id, { ...project, internal_notes: newValue });
+                await dataService.updateProject(id, { ...project, strategic_notes: newValue, internal_notes: newValue });
                 setLastSaved(new Date().toISOString());
             } catch (error) {
                 console.error('Autosave failed', error);
@@ -249,8 +253,8 @@ const ProjectDetailPage = () => {
                         {/* Metadata Row */}
                         <div className="flex items-center gap-6 text-[13px] font-medium text-[var(--text-secondary)]">
                             <div className="flex items-center gap-2">
-                                <span className={`w-2.5 h-2.5 rounded-full ${project.status === 'done' ? 'bg-[var(--success)]' : project.status === 'in_progress' ? 'bg-[var(--primary)]' : project.status === 'cancelled' ? 'bg-[var(--danger)]' : 'bg-[var(--warning)]'}`} />
-                                <span className="uppercase tracking-wider font-bold">{STATUS_LABELS[project.status]}</span>
+                                <span className={`w-2.5 h-2.5 rounded-full ${project.status === 'done' ? 'bg-[var(--success)]' : project.status === 'in_progress' ? 'bg-[var(--primary)]' : project.status === 'cancelled' ? 'bg-[var(--danger)]' : 'bg-[var(--warning)]'} shadow-[0_0_8px_currentColor]`} style={{ color: project.status === 'done' ? 'var(--success)' : project.status === 'in_progress' ? 'var(--primary)' : project.status === 'cancelled' ? 'var(--danger)' : 'var(--warning)' }} />
+                                <span className="uppercase tracking-wider font-extrabold text-[11px] text-[var(--text-main)]">{STATUS_LABELS[project.status]}</span>
                             </div>
 
                             {customer && (
@@ -392,7 +396,6 @@ const ProjectDetailPage = () => {
 
                 {/* Right Column (Sidebar) */}
                 <div className="flex flex-col gap-6">
-
                     {/* Execution & Cycle */}
                     <Card padding="1.5rem" className="border-[var(--border)] shadow-md bg-gradient-to-br from-white to-[var(--bg-app)]">
                         <h3 className="text-[11px] font-black uppercase text-[var(--text-muted)] tracking-widest mb-6 border-b border-[var(--border)] pb-2">Execution & Cycle</h3>
@@ -403,7 +406,13 @@ const ProjectDetailPage = () => {
                                 <Select
                                     value={project.status}
                                     onChange={(e) => handleUpdateProject({ status: e.target.value })}
-                                    options={STATUS_OPTIONS.map(s => ({ value: s, label: STATUS_LABELS[s] }))}
+                                    options={[
+                                        { value: 'todo', label: 'To Do', color: '#64748b' },
+                                        { value: 'in_progress', label: 'In Progress', color: '#3b82f6' },
+                                        { value: 'feedback', label: 'Feedback', color: '#f59e0b' },
+                                        { value: 'done', label: 'Done', color: '#10b981' },
+                                        { value: 'cancelled', label: 'Cancelled', color: '#ef4444' }
+                                    ]}
                                 />
                             </div>
 
@@ -457,15 +466,19 @@ const ProjectDetailPage = () => {
                             )}
                         </div>
                         {customer ? (
-                            <div>
-                                <Link to={`/customers/${customer.id}`} className="block text-[15px] font-extrabold text-[var(--text-main)] hover:text-[var(--primary)] mb-1">
-                                    {customer.company_name}
-                                </Link>
-                                <div className="text-[13px] text-[var(--text-secondary)]">
-                                    {customer.first_name} {customer.last_name}
+                            <div className="space-y-4">
+                                <div>
+                                    <Link to={`/customers/${customer.id}`} className="block text-[15px] font-extrabold text-[var(--text-main)] hover:text-[var(--primary)] mb-1">
+                                        {customer.company_name}
+                                    </Link>
+                                    <div className="text-[13px] text-[var(--text-secondary)] font-medium">
+                                        {customer.first_name} {customer.last_name}
+                                    </div>
                                 </div>
-                                <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] flex gap-2">
-                                    <Badge variant="neutral">{customer.country}</Badge>
+                                <div className="space-y-2 text-[12px] text-[var(--text-secondary)] font-medium pt-3 border-t border-[var(--border-subtle)]">
+                                    <div className="flex items-center gap-2"><Globe size={12} /> {customer.country}</div>
+                                    {customer.vat_number && <div className="flex items-center gap-2"><FileText size={12} /> VAT: {customer.vat_number}</div>}
+                                    {customer.email && <div className="flex items-center gap-2 font-bold text-[var(--text-main)]"><Mail size={12} /> {customer.email}</div>}
                                 </div>
                             </div>
                         ) : (
@@ -495,22 +508,12 @@ const ProjectDetailPage = () => {
                                     {formatCurrency(offer.total)}
                                 </div>
                                 <StatusPill status={offer.status} />
-
-                                {/* Quick Actions */}
                                 <div className="mt-6 space-y-2">
-                                    <Button
-                                        variant="ghost"
-                                        className="w-full justify-start text-[13px] h-8"
-                                        onClick={() => navigate(`/offer/preview/${offer.id}`)}
-                                    >
+                                    <Button variant="ghost" className="w-full justify-start text-[13px] h-8" onClick={() => navigate(`/offer/preview/${offer.id}`)}>
                                         <ExternalLink size={14} className="mr-2" /> View Proposal
                                     </Button>
                                     {offer.token && (
-                                        <Button
-                                            variant="ghost"
-                                            className="w-full justify-start text-[13px] h-8"
-                                            onClick={() => window.open(`/offer/sign/${offer.token}`, '_blank')}
-                                        >
+                                        <Button variant="ghost" className="w-full justify-start text-[13px] h-8" onClick={() => window.open(`/offer/sign/${offer.token}`, '_blank')}>
                                             <LinkIcon size={14} className="mr-2" /> Open Signing Page
                                         </Button>
                                     )}
@@ -528,18 +531,112 @@ const ProjectDetailPage = () => {
                                         }}
                                         className="w-full btn-primary text-[13px]"
                                         disabled={!customer}
-                                        title={!customer ? "Link a client first" : ""}
                                     >
                                         <Plus size={14} className="mr-2" /> Create New Offer
                                     </Button>
-
-                                    <Button
-                                        variant="secondary"
-                                        className="w-full text-[13px] bg-white border-[var(--border)] shadow-sm hover:bg-[var(--bg-app)]"
-                                        onClick={() => setIsLinkOfferModalOpen(true)}
-                                    >
+                                    <Button variant="secondary" className="w-full text-[13px] bg-white border-[var(--border)] shadow-sm hover:bg-[var(--bg-app)]" onClick={() => setIsLinkOfferModalOpen(true)}>
                                         <LinkIcon size={14} className="mr-2" /> Link Existing Offer
                                     </Button>
+                                </div>
+                            </div>
+                        )}
+                    </Card>
+
+                    {/* Team Members */}
+                    <Card padding="1.5rem" className="border-[var(--border)] shadow-sm">
+                        <div className="flex items-center gap-3 text-[var(--primary)] mb-6">
+                            <User size={18} />
+                            <h3 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-main)]">Team & Collaboration</h3>
+                        </div>
+                        <div className="space-y-3">
+                            {teamMembers.length === 0 ? (
+                                <p className="text-[12px] text-[var(--text-muted)] italic">No team members assigned.</p>
+                            ) : (
+                                teamMembers.map((member, idx) => (
+                                    <div key={idx} className="flex items-center gap-2 group">
+                                        <div className="w-6 h-6 rounded-lg bg-[var(--bg-active)] flex items-center justify-center text-[10px] font-bold text-[var(--text-muted)] uppercase">
+                                            {member.charAt(0)}
+                                        </div>
+                                        <span className="text-[13px] font-medium text-[var(--text-main)] flex-1">{member}</span>
+                                        <button
+                                            onClick={() => {
+                                                const newTeam = teamMembers.filter((_, i) => i !== idx);
+                                                setTeamMembers(newTeam);
+                                                handleUpdateProject({ team_members: JSON.stringify(newTeam) });
+                                            }}
+                                            className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-[var(--danger)] transition-all"
+                                        >
+                                            <Trash2 size={12} />
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                            <div className="relative pt-2">
+                                <Plus size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                <input
+                                    type="text"
+                                    placeholder="Assign member..."
+                                    className="w-full pl-9 pr-3 py-2 bg-[var(--bg-active)] border border-transparent focus:bg-white focus:border-[var(--primary)] rounded-lg text-[12px] font-medium transition-all outline-none"
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && e.target.value.trim()) {
+                                            const newTeam = [...teamMembers, e.target.value.trim()];
+                                            setTeamMembers(newTeam);
+                                            handleUpdateProject({ team_members: JSON.stringify(newTeam) });
+                                            e.target.value = '';
+                                        }
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    </Card>
+
+                    {/* Financial Perspective */}
+                    <Card padding="1.5rem" className="border-[var(--border)] shadow-sm">
+                        <div className="flex items-center gap-3 text-[var(--primary)] mb-4">
+                            <DollarSign size={18} />
+                            <h3 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-main)]">Financial Perspective</h3>
+                        </div>
+                        {offer && (
+                            <div className="mb-6 space-y-3">
+                                <div className="flex justify-between items-center text-[12px] font-bold text-[var(--text-secondary)]">
+                                    <span>Project Volume (Net)</span>
+                                    <span>{formatCurrency(offer.subtotal || offer.total / 1.21)}</span>
+                                </div>
+                                <div className="flex justify-between items-center text-[12px] font-bold text-[var(--text-secondary)] pb-3 border-b border-[var(--border-subtle)] border-dashed">
+                                    <span>VAT Recovery</span>
+                                    <span>{formatCurrency(offer.vat || 0)}</span>
+                                </div>
+                                <div className="flex justify-between items-center text-[15px] font-black text-[var(--text-main)]">
+                                    <span>Total Gross</span>
+                                    <span className="text-[var(--primary)]">{formatCurrency(offer.total)}</span>
+                                </div>
+                            </div>
+                        )}
+                        {financialLink ? (
+                            <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--primary-light)] border border-[var(--primary)]/10">
+                                <a href={financialLink} target="_blank" rel="noopener noreferrer" className="text-[13px] font-bold text-[var(--primary)] hover:underline flex items-center gap-2 truncate">
+                                    <ExternalLink size={14} /> Open External Tracker
+                                </a>
+                                <button onClick={() => { setFinancialLink(''); handleUpdateProject({ financial_link: '' }); }} className="text-[var(--text-muted)] hover:text-[var(--danger)]">
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <p className="text-[12px] text-[var(--text-muted)] leading-relaxed italic">Connect to a Google Sheet or Notion for detailed expense tracking.</p>
+                                <div className="relative">
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"><LinkIcon size={14} /></div>
+                                    <input
+                                        type="text"
+                                        placeholder="Paste Dashboard URL..."
+                                        className="w-full pl-9 pr-3 py-2 bg-[var(--bg-active)] border border-transparent focus:bg-white focus:border-[var(--primary)] rounded-lg text-[12px] font-medium transition-all outline-none"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && e.target.value.trim()) {
+                                                setFinancialLink(e.target.value.trim());
+                                                handleUpdateProject({ financial_link: e.target.value.trim() });
+                                            }
+                                        }}
+                                    />
                                 </div>
                             </div>
                         )}
@@ -571,7 +668,7 @@ const ProjectDetailPage = () => {
                 customerId={customer?.id}
                 currentOfferId={project.offer_id}
             />
-        </div>
+        </div >
     );
 };
 
