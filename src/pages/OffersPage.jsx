@@ -21,6 +21,7 @@ import StatusPill from '../components/ui/StatusPill';
 import DueStatusIndicator from '../components/ui/DueStatusIndicator';
 import EmptyState from '../components/ui/EmptyState';
 import { getStatusColor } from '../utils/statusColors';
+import { toast } from 'react-hot-toast';
 
 const OffersPage = () => {
     const { t } = useI18n();
@@ -72,7 +73,7 @@ const OffersPage = () => {
     const handleUpdateStatus = async (id, newStatus) => {
         setOffers(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
         try {
-            await dataService.updateOffer(id, { status: newStatus });
+            await dataService.updateOfferStatus(id, newStatus);
         } catch (error) {
             console.error('Failed to update status', error);
             loadOffers();
@@ -87,7 +88,7 @@ const OffersPage = () => {
     const copyLink = (token) => {
         const url = `${window.location.origin}/offer/sign/${token}`;
         navigator.clipboard.writeText(url);
-        alert('Signature link copied to clipboard!');
+        toast.success('Signature link copied to clipboard!');
     };
 
     const filteredOffers = offers.filter(offer => {

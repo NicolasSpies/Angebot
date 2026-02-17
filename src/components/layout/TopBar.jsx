@@ -6,6 +6,8 @@ import { dataService } from '../../data/dataService';
 import { useNavigate, Link } from 'react-router-dom';
 import Select from '../ui/Select';
 import Badge from '../ui/Badge';
+import ConfirmationDialog from '../ui/ConfirmationDialog';
+import { toast } from 'react-hot-toast';
 
 const TopBar = () => {
     const { locale, setLocale } = useI18n();
@@ -16,6 +18,7 @@ const TopBar = () => {
     const [showAuditPanel, setShowAuditPanel] = useState(false);
     const [auditIssues, setAuditIssues] = useState([]);
     const [isAuditLoading, setIsAuditLoading] = useState(false);
+    const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false);
     const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
     const triggerRef = useRef(null);
     const menuRef = useRef(null);
@@ -88,6 +91,31 @@ const TopBar = () => {
 
     const handleMarkAllRead = async () => {
         await dataService.markAllNotificationsRead();
+        loadNotifications();
+    };
+
+    const handleClearAll = () => {
+        setIsClearAllDialogOpen(true);
+    };
+
+    const handleClearAllClick = () => {
+        setIsClearAllDialogOpen(true);
+    };
+
+    const confirmClearAll = async () => {
+        try {
+            await dataService.clearAllNotifications();
+            loadNotifications();
+        } catch (err) {
+            console.error('Clear notifications failed', err);
+        } finally {
+            setIsClearAllDialogOpen(false);
+        }
+    };
+
+    const handleDeleteNotification = async (e, id) => {
+        e.stopPropagation();
+        await dataService.deleteNotification(id);
         loadNotifications();
     };
 
@@ -179,25 +207,43 @@ const TopBar = () => {
                         }}
                     >
                         <div className="p-3 border-b border-[var(--border-subtle)] flex justify-between items-center bg-[var(--bg-app)]/50">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Notifications</span>
-                            {unreadCount > 0 && <button onClick={handleMarkAllRead} className="text-[10px] font-bold text-[var(--accent)] hover:underline">MARK ALL READ</button>}
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-main)]">Notifications</span>
+                            <div className="flex gap-3">
+                                {unreadCount > 0 && <button onClick={handleMarkAllRead} className="text-[10px] font-bold text-[var(--primary)] hover:underline">MARK ALL READ</button>}
+                                {notifications.length > 0 && <button onClick={handleClearAllClick} className="text-[10px] font-bold text-red-500 hover:underline">CLEAR ALL</button>}
+                            </div>
                         </div>
-                        <div className="max-h-[320px] overflow-y-auto custom-scrollbar">
+                        <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
                             {notifications.length > 0 ? notifications.map(n => (
                                 <div
                                     key={n.id}
-                                    className={`p-4 border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-app)] transition-colors cursor-pointer ${!n.is_read ? 'bg-[var(--accent)]/5' : ''}`}
+                                    className={`p-4 border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-app)] transition-colors cursor-pointer group/item relative ${!n.is_read ? 'bg-[var(--primary)]/5' : ''}`}
                                     onClick={() => handleNotificationClick(n)}
                                 >
                                     <div className="flex gap-3">
-                                        <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${!n.is_read ? 'bg-[var(--accent)]' : 'bg-transparent'}`} />
-                                        <div>
-                                            <div className="text-[13px] font-semibold text-[var(--text-main)] mb-1">{n.title}</div>
+                                        <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${!n.is_read ? 'bg-[var(--primary)]' : 'bg-transparent'}`} />
+                                        <div className="flex-1 min-w-0 pr-6">
+                                            <div className="text-[13px] font-semibold text-[var(--text-main)] mb-1 leading-tight">{n.title}</div>
                                             <div className="text-[12px] text-[var(--text-secondary)] leading-relaxed">{n.message}</div>
                                         </div>
                                     </div>
+                                    <button
+                                        onClick={(e) => handleDeleteNotification(e, n.id)}
+                                        className="absolute right-4 top-4 p-1 hover:bg-red-50 rounded text-[var(--text-muted)] hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all"
+                                    >
+                                        <X size={14} />
+                                    </button>
                                 </div>
-                            )) : <div className="p-8 text-center text-[13px] text-[var(--text-muted)]">No new notifications</div>}
+                            )) : <div className="p-12 text-center text-[13px] text-[var(--text-muted)]">No new notifications</div>}
+                        </div>
+                        <div className="p-2 border-t border-[var(--border-subtle)] bg-[var(--bg-app)]/30 text-center">
+                            <Link
+                                to="/notifications"
+                                className="text-[11px] font-bold text-[var(--text-secondary)] hover:text-[var(--primary)] tracking-wide uppercase px-3 py-1 block"
+                                onClick={() => setShowNotifications(false)}
+                            >
+                                View All
+                            </Link>
                         </div>
                     </div>,
                     document.body
@@ -314,7 +360,17 @@ const TopBar = () => {
                     document.body
                 )}
             </div>
-        </div >
+
+            <ConfirmationDialog
+                isOpen={isClearAllDialogOpen}
+                onClose={() => setIsClearAllDialogOpen(false)}
+                onConfirm={confirmClearAll}
+                title="Clear All Notifications"
+                message="Are you sure you want to delete all notifications? This action cannot be undone."
+                confirmText="Clear All"
+                isDestructive={true}
+            />
+        </div>
     );
 };
 

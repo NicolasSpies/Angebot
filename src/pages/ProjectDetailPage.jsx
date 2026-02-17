@@ -25,8 +25,10 @@ const STATUS_OPTIONS = ['todo', 'in_progress', 'feedback', 'done', 'cancelled'];
 const STATUS_LABELS = {
     todo: 'To Do', in_progress: 'In Progress', feedback: 'Feedback', done: 'Done', cancelled: 'Cancelled'
 };
-const PRIORITY_OPTIONS = ['low', 'medium', 'high'];
-const PRIORITY_LABELS = { low: 'Low', medium: 'Medium', high: 'High' };
+
+import SearchablePicker from '../components/ui/SearchablePicker';
+import SimpleDatePicker from '../components/ui/SimpleDatePicker';
+import { toast } from 'react-hot-toast';
 
 const ProjectDetailPage = () => {
     const { id } = useParams();
@@ -43,13 +45,19 @@ const ProjectDetailPage = () => {
     // UI State
     const [isLoading, setIsLoading] = useState(true);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-    const [isLinkOfferModalOpen, setIsLinkOfferModalOpen] = useState(false);
+    const [isMismatchDialogOpen, setIsMismatchDialogOpen] = useState(false);
+    const [pendingOffer, setPendingOffer] = useState(null);
 
     // Notes State
     const [notes, setNotes] = useState('');
     const [notesSaving, setNotesSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState(null);
     const autosaveTimerRef = useRef(null);
+    // Name Auto-save State
+    const [nameSaving, setNameSaving] = useState(false);
+    const [nameError, setNameError] = useState(null);
+    const nameAutosaveTimerRef = useRef(null);
+    const inFlightNameUpdateRef = useRef(null);
 
     // Task State
     const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -98,53 +106,101 @@ const ProjectDetailPage = () => {
         const updated = { ...project, ...updates };
         setProject(updated); // Optimistic
         try {
-            await dataService.updateProject(id, updated);
+            await dataService.updateProject(id, updates);
+            return true;
         } catch (error) {
             console.error('Update failed', error);
             loadProject(); // Revert on error
+            return false;
         }
     };
 
+    const saveProjectName = async (newName) => {
+        if (!newName.trim()) return;
+
+        // Cancel in-flight
+        if (inFlightNameUpdateRef.current) {
+            // No direct cancellation in dataService yet, but we skip the state update
+        }
+
+        setNameSaving(true);
+        setNameError(null);
+
+        try {
+            const updatePromise = dataService.updateProject(id, { name: newName.trim() });
+            inFlightNameUpdateRef.current = updatePromise;
+            await updatePromise;
+            setLastSaved(new Date().toISOString());
+        } catch (error) {
+            setNameError('Failed to save name');
+        } finally {
+            setNameSaving(false);
+            inFlightNameUpdateRef.current = null;
+        }
+    };
+
+    const handleNameChange = (e) => {
+        const val = e.target.value;
+        setProject(prev => ({ ...prev, name: val }));
+
+        if (nameAutosaveTimerRef.current) clearTimeout(nameAutosaveTimerRef.current);
+        nameAutosaveTimerRef.current = setTimeout(() => {
+            saveProjectName(val);
+        }, 600);
+    };
+
+    const handleNameBlur = () => {
+        if (nameAutosaveTimerRef.current) clearTimeout(nameAutosaveTimerRef.current);
+        saveProjectName(project.name);
+    };
+
     const handleLinkOffer = async (selectedOffer) => {
-        setIsLinkOfferModalOpen(false);
         setIsLoading(true);
 
         try {
-            // Customer Mismatch Check
             if (selectedOffer.customer_id && project.customer_id && selectedOffer.customer_id !== project.customer_id) {
-                const proceed = window.confirm(
-                    `The offer "${selectedOffer.offer_name}" belongs to a different client. Do you want to link it anyway?\n\nThis will update the project's client to match the offer.`
-                );
-                if (!proceed) {
-                    setIsLoading(false);
-                    return;
-                }
+                setPendingOffer(selectedOffer);
+                setIsMismatchDialogOpen(true);
+                setIsLoading(false);
+                return;
             }
 
+            await executeLinkOffer(selectedOffer);
+        } catch (error) {
+            console.error("Failed to link offer:", error);
+            toast.error("Failed to link offer. Please try again.");
+            setIsLoading(false);
+        }
+    };
+
+    const executeLinkOffer = async (selectedOffer) => {
+        setIsLoading(true);
+        try {
             // Atomic-like update (Sequential for MVP)
-            // 1. Update Project (Link Offer & Update Customer if needed)
             const projectUpdates = {
                 offer_id: selectedOffer.id,
                 ...(selectedOffer.customer_id ? { customer_id: selectedOffer.customer_id } : {})
             };
             await dataService.updateProject(id, projectUpdates);
 
-            // 2. Update Offer (Link Project)
+            // Update Offer (Link Project)
             await dataService.updateOffer(selectedOffer.id, { project_id: id });
-
-            // 3. Trigger Sync explicitly to ensure status updates (Sent -> Pending, etc)
-            // The updateProject call above already triggers syncOfferWithProject (notes)
-            // But we need to ensure the PROJECT status reacts to the OFFER status
-            // dataService.syncProjectWithOffer contains the logic: if offer.status -> update project.status
-            // We can simulate this by re-triggering a sync or just relying on the fact that we loaded the offer data
 
             // Re-fetch everything to ensure consistent state
             await loadProject();
-
+            toast.success("Offer linked successfully");
         } catch (error) {
             console.error("Failed to link offer:", error);
-            alert("Failed to link offer. Please try again.");
+            toast.error("Failed to link offer. Please try again.");
+        } finally {
             setIsLoading(false);
+        }
+    };
+
+    const confirmMismatchLink = () => {
+        if (pendingOffer) {
+            executeLinkOffer(pendingOffer);
+            setPendingOffer(null);
         }
     };
 
@@ -234,21 +290,30 @@ const ProjectDetailPage = () => {
                     <div className="flex-1 min-w-0">
                         {/* Inline Edit Title */}
                         <div className="group relative mb-2">
-                            <input
-                                type="text"
-                                value={project.name || ''}
-                                onChange={(e) => setProject({ ...project, name: e.target.value })}
-                                onBlur={(e) => {
-                                    if (e.target.value.trim() && e.target.value !== project.name) {
-                                        handleUpdateProject({ name: e.target.value.trim() });
-                                    }
-                                }}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') e.target.blur();
-                                }}
-                                className="text-3xl font-extrabold text-[var(--text-main)] w-full bg-transparent border-none p-0 focus:ring-0 truncate"
-                            />
-                            <Pencil size={16} className="absolute right-full top-1/2 -translate-y-1/2 mr-2 opacity-0 group-hover:opacity-50 text-[var(--text-muted)]" />
+                            <div className="flex items-center gap-3">
+                                <div className="flex-1 relative">
+                                    <input
+                                        type="text"
+                                        value={project.name}
+                                        onChange={handleNameChange}
+                                        onBlur={handleNameBlur}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.target.blur();
+                                            }
+                                        }}
+                                        placeholder="Enter Project Name"
+                                        className="text-3xl font-extrabold text-[var(--text-main)] w-full bg-transparent border-none p-0 focus:ring-0 truncate"
+                                    />
+                                    {project.name === '' && <span className="absolute left-0 top-0 text-3xl font-extrabold text-[var(--text-muted)] pointer-events-none opacity-30">Unnamed Project</span>}
+                                </div>
+
+                                <div className="flex items-center gap-2 h-8">
+                                    {nameSaving && <span className="text-[11px] font-bold text-[var(--text-muted)] animate-pulse uppercase tracking-wider">Saving...</span>}
+                                    {!nameSaving && !nameError && project.name && <span className="text-[11px] font-bold text-[var(--success)] uppercase tracking-wider opacity-60">Saved</span>}
+                                    {nameError && <span className="text-[11px] font-bold text-[var(--danger)] uppercase tracking-wider">{nameError}</span>}
+                                </div>
+                            </div>
                         </div>
 
                         {/* Metadata Row */}
@@ -260,36 +325,47 @@ const ProjectDetailPage = () => {
                                 </span>
                             </div>
 
-                            {customer ? (
-                                <Link to={`/customers/${customer.id}`} className="flex items-center gap-2 hover:text-[var(--primary)] transition-colors">
-                                    <Globe size={14} className="text-[var(--text-muted)]" />
-                                    {customer.company_name}
-                                </Link>
-                            ) : (
-                                <button
-                                    onClick={() => {
-                                        const cid = prompt("Select Customer ID (Demo/Quick Link):", "");
-                                        if (cid) handleUpdateProject({ customer_id: parseInt(cid) }).then(loadProject);
-                                    }}
-                                    className="flex items-center gap-2 text-[var(--primary)] hover:underline"
-                                >
-                                    <Plus size={14} /> Link Client
-                                </button>
-                            )}
+                            <SearchablePicker
+                                options={allCustomers.map(c => ({ value: c.id, label: c.company_name, subLabel: c.email }))}
+                                value={project.customer_id}
+                                onChange={(opt) => handleUpdateProject({ customer_id: opt.value }).then(loadProject)}
+                                trigger={
+                                    customer ? (
+                                        <div className="flex items-center gap-2 hover:text-[var(--primary)] transition-colors cursor-pointer">
+                                            <Globe size={14} className="text-[var(--text-muted)]" />
+                                            {customer.company_name}
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2 text-[var(--primary)] hover:underline cursor-pointer">
+                                            <Plus size={14} /> Link Client
+                                        </div>
+                                    )
+                                }
+                            />
 
-                            {offer ? (
-                                <Link to={`/offer/preview/${offer.id}`} className="flex items-center gap-2 hover:text-[var(--primary)] transition-colors">
-                                    <FileText size={14} className="text-[var(--text-muted)]" />
-                                    {offer.offer_name}
-                                </Link>
-                            ) : (
-                                <button
-                                    onClick={() => setIsLinkOfferModalOpen(true)}
-                                    className="flex items-center gap-2 text-[var(--primary)] hover:underline"
-                                >
-                                    <LinkIcon size={14} /> Link Offer
-                                </button>
-                            )}
+                            <SearchablePicker
+                                options={allOffers.filter(o => !project.offer_id || o.id !== project.offer_id).map(o => ({
+                                    value: o.id,
+                                    label: o.offer_name || `Offer #${o.id}`,
+                                    subLabel: `${formatCurrency(o.total)} • Status: ${o.status || 'Draft'}`,
+                                    data: o
+                                }))}
+                                value={project.offer_id}
+                                onChange={(opt) => handleLinkOffer(opt.data)}
+                                placeholder="Search by offer name or ID..."
+                                trigger={
+                                    offer ? (
+                                        <div className="flex items-center gap-2 hover:text-[var(--primary)] transition-colors cursor-pointer">
+                                            <FileText size={14} className="text-[var(--text-muted)]" />
+                                            {offer.offer_name}
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2 text-[var(--primary)] hover:underline cursor-pointer">
+                                            <LinkIcon size={14} /> Link Offer
+                                        </div>
+                                    )
+                                }
+                            />
 
                             <span className="flex items-center gap-2 text-[var(--text-muted)]">
                                 <Clock size={14} /> Created {formatDate(project.created_at)}
@@ -369,11 +445,11 @@ const ProjectDetailPage = () => {
 
                         {/* Add Task */}
                         <div className="relative">
-                            <Plus size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                            <input
+                            <Plus size={16} className="absolute left-3 top-[22px] -translate-y-1/2 text-[var(--text-muted)] z-10" />
+                            <Input
                                 type="text"
                                 placeholder="Add a new task..."
-                                className="w-full pl-10 pr-4 py-3 bg-[var(--bg-active)] border border-transparent focus:bg-white focus:border-[var(--primary)] rounded-lg text-[14px] font-medium transition-all outline-none"
+                                className="pl-6"
                                 value={newTaskTitle}
                                 onChange={(e) => setNewTaskTitle(e.target.value)}
                                 onKeyDown={handleAddTask}
@@ -435,40 +511,13 @@ const ProjectDetailPage = () => {
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-[12px] font-bold text-[var(--text-secondary)]">Priority Level</label>
-                                <Select
-                                    value={project.priority || 'medium'}
-                                    onChange={(e) => handleUpdateProject({ priority: e.target.value })}
-                                    options={PRIORITY_OPTIONS.map(p => ({ value: p, label: PRIORITY_LABELS[p] }))}
-                                />
-                            </div>
-
-                            <div className="space-y-2">
                                 <label className="text-[12px] font-bold text-[var(--text-secondary)]">Target Delivery</label>
-                                <input
-                                    type="date"
-                                    className="w-full px-3 py-2 bg-white border border-[var(--border)] rounded-md text-[14px] font-medium focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
+                                <SimpleDatePicker
                                     value={project.deadline && !isNaN(new Date(project.deadline).getTime()) ? new Date(project.deadline).toISOString().split('T')[0] : ''}
-                                    onChange={(e) => handleUpdateProject({ deadline: e.target.value || null })}
+                                    onChange={(val) => handleUpdateProject({ deadline: val || null })}
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-[12px] font-bold text-[var(--text-secondary)]">Revision Limit</label>
-                                <div className="flex items-center gap-3">
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        max="10"
-                                        className="w-16 px-3 py-2 bg-white border border-[var(--border)] rounded-md text-[14px] font-bold focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
-                                        value={project.review_limit || 3}
-                                        onChange={(e) => handleUpdateProject({ review_limit: parseInt(e.target.value) || 3 })}
-                                    />
-                                    <span className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
-                                        {project.revisions_used || 0} Used
-                                    </span>
-                                </div>
-                            </div>
 
 
                         </div>
@@ -489,15 +538,17 @@ const ProjectDetailPage = () => {
                 isDestructive={true}
             />
 
-            <LinkOfferModal
-                isOpen={isLinkOfferModalOpen}
-                onClose={() => setIsLinkOfferModalOpen(false)}
-                onLink={handleLinkOffer}
-                offers={allOffers}
-                customerId={customer?.id}
-                currentOfferId={project.offer_id}
+            <ConfirmationDialog
+                isOpen={isMismatchDialogOpen}
+                onClose={() => { setIsMismatchDialogOpen(false); setPendingOffer(null); }}
+                onConfirm={confirmMismatchLink}
+                title="Client Mismatch"
+                message={`The offer "${pendingOffer?.offer_name || `Offer #${pendingOffer?.id}`}" belongs to a different client. Do you want to link it anyway? This will update the project's client to match the offer.`}
+                confirmText="Link & Update Client"
+                isDestructive={false}
             />
-        </div >
+
+        </div>
     );
 };
 

@@ -9,6 +9,7 @@ import Select from '../components/ui/Select';
 import Card from '../components/ui/Card';
 import { Check, Zap, ArrowLeft, ArrowRight, Save, Plus, AlertCircle } from 'lucide-react';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
+import { toast } from 'react-hot-toast';
 
 const OfferWizardPage = () => {
     const { t, locale } = useI18n();
@@ -158,7 +159,7 @@ const OfferWizardPage = () => {
             }
         } catch (err) {
             console.error(err);
-            alert('Error saving offer');
+            toast.error('Error saving offer');
         }
         setIsSaving(false);
     };

@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import * as pdfjsLib from 'pdfjs-dist';
+import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 import {
     CheckCircle2, ShieldAlert, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight,
-    MessageSquare, MousePointer2, Hand, X, Layout, CircleDashed, History, Briefcase, Share2, Edit3
+    MessageSquare, MousePointer2, Hand, X, Layout, CircleDashed, History, Briefcase, Share2, Highlighter, Strikethrough
 } from 'lucide-react';
 import { dataService } from '../data/dataService';
 import Button from '../components/ui/Button';
+import Select from '../components/ui/Select';
 import StatusPill from '../components/ui/StatusPill';
 import ReviewSidebar from '../components/reviews/ReviewSidebar';
 
@@ -42,59 +45,104 @@ const ReviewPage = () => {
     const [activeTool, setActiveTool] = useState('pin');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-    const [isDrawing, setIsDrawing] = useState(false);
-    const [currentPath, setCurrentPath] = useState([]);
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragStart, setDragStart] = useState(null);
+    const [dragEnd, setDragEnd] = useState(null);
     const [annotations, setAnnotations] = useState([]);
+    const [highlightedCommentId, setHighlightedCommentId] = useState(null);
+    const [isDeleteCommentDialogOpen, setIsDeleteCommentDialogOpen] = useState(false);
+    const [commentToDelete, setCommentToDelete] = useState(null);
+    const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
+    const [pendingCommentPos, setPendingCommentPos] = useState(null);
+    const [newCommentText, setNewCommentText] = useState('');
+    const [highlightedPinId, setHighlightedPinId] = useState(null);
 
     const canvasRef = useRef(null);
     const overlayRef = useRef(null);
     const containerRef = useRef(null);
     const renderTaskRef = useRef(null);
+    const fileInputRef = useRef(null);
 
-    const loadData = useCallback(async (tokenToLoad, versionId = null) => {
-        setLoading(true);
+    const handleDeleteCommentClick = (id) => {
+        setCommentToDelete(id);
+        setIsDeleteCommentDialogOpen(true);
+    };
+
+    const confirmDeleteComment = async () => {
+        if (!commentToDelete) return;
+        try {
+            await dataService.deleteReviewComment(commentToDelete);
+            toast.success('Comment deleted');
+            loadData(token, currentVersion?.versionId);
+        } catch (error) {
+            console.error('Failed to delete comment:', error);
+            toast.error('Failed to delete comment');
+        } finally {
+            setIsDeleteCommentDialogOpen(false);
+            setCommentToDelete(null);
+        }
+    };
+
+    const loadData = useCallback(async (tokenToLoad, versionId = null, isSilent = false) => {
+        if (!isSilent) setLoading(true);
         setPdfError(null);
         try {
             const data = await dataService.getReviewByToken(tokenToLoad, versionId);
 
             if (!data || data.error) {
-                setPdfError(data?.error || 'Review not found.');
-                setLoading(false);
+                if (!isSilent) {
+                    setPdfError(data?.error || 'Review not found.');
+                    setLoading(false);
+                }
                 return;
             }
 
             setReview(data);
             setCurrentVersion(data);
 
-            const commentData = await dataService.getReviewComments(data.versionId);
-            setAnnotations(Array.isArray(commentData) ? commentData.map(c => ({
-                id: c.id,
-                page: c.page_number,
-                type: c.type,
-                x: c.x,
-                y: c.y,
-                data: c.annotation_data ? JSON.parse(c.annotation_data) : null,
-                content: c.content
-            })) : []);
+            // Fetch comments separately if not included or for safety
+            const commentsData = await dataService.getReviewComments(data.versionId);
+
+            if (commentsData) {
+                const mapped = Array.isArray(commentsData) ? commentsData.map(c => ({
+                    id: c.id,
+                    page: c.page_number,
+                    type: c.type,
+                    x: c.x,
+                    y: c.y,
+                    content: c.content,
+                    author_name: c.author_name,
+                    is_resolved: !!c.is_resolved,
+                    created_at: c.created_at,
+                    data: c.annotation_data ? JSON.parse(c.annotation_data) : null,
+                })) : [];
+                setAnnotations(mapped);
+                setComments(mapped);
+            }
 
             if (data.file_url) {
                 const loadingTask = pdfjsLib.getDocument(data.file_url);
                 const pdfDocument = await loadingTask.promise;
                 setPdf(pdfDocument);
                 setNumPages(pdfDocument.numPages);
-                setCurrentPage(1);
+                if (!isSilent) setCurrentPage(1);
             }
         } catch (err) {
             console.error('Failed to load review:', err);
-            setPdfError('An unexpected error occurred.');
+            if (!isSilent) setPdfError('An unexpected error occurred.');
         } finally {
-            setLoading(false);
+            if (!isSilent) setLoading(false);
         }
     }, []);
 
     useEffect(() => {
-        if (token) loadData(token);
-    }, [token, loadData]);
+        if (token) {
+            loadData(token);
+            // Polling for real-time sync (every 5 seconds)
+            const interval = setInterval(() => loadData(token, currentVersion?.versionId, true), 5000);
+            return () => clearInterval(interval);
+        }
+    }, [token, loadData, currentVersion?.versionId]);
 
     const renderPage = useCallback(async (pageNum, currentScale) => {
         if (!pdf || !canvasRef.current || !overlayRef.current) return;
@@ -128,99 +176,177 @@ const ReviewPage = () => {
         const { width, height } = overlayRef.current;
         ctx.clearRect(0, 0, width, height);
 
+        const { width: drawWidth, height: drawHeight } = overlayRef.current;
         annotations.filter(ann => ann.page === currentPage).forEach(ann => {
-            const xPos = ann.x * width / 100;
-            const yPos = ann.y * height / 100;
+            const isHighlighted = ann.id === highlightedPinId;
 
-            if (ann.type === 'draw' && ann.data) {
+            if (ann.type === 'highlight' && ann.data) {
+                ctx.fillStyle = isHighlighted ? 'rgba(255, 255, 0, 0.5)' : 'rgba(255, 255, 0, 0.3)';
+                ctx.fillRect(
+                    ann.data.x * drawWidth / 100,
+                    ann.data.y * drawHeight / 100,
+                    ann.data.width * drawWidth / 100,
+                    ann.data.height * drawHeight / 100
+                );
+                if (isHighlighted) {
+                    ctx.strokeStyle = 'rgba(255, 165, 0, 0.8)';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(
+                        ann.data.x * drawWidth / 100,
+                        ann.data.y * drawHeight / 100,
+                        ann.data.width * drawWidth / 100,
+                        ann.data.height * drawHeight / 100
+                    );
+                }
+            } else if (ann.type === 'strike' && ann.data) {
                 ctx.beginPath();
-                ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
-                ctx.lineWidth = 2;
-                ann.data.path.forEach((p, i) => {
-                    if (i === 0) ctx.moveTo(p.x * width / 100, p.y * height / 100);
-                    else ctx.lineTo(p.x * width / 100, p.y * height / 100);
-                });
-                ctx.stroke();
-            } else if (ann.type === 'comment') {
-                ctx.beginPath();
-                ctx.arc(xPos, yPos, 8, 0, Math.PI * 2);
-                ctx.fillStyle = ann.is_resolved ? '#94A3B8' : '#FB923C';
-                ctx.fill();
-                ctx.strokeStyle = 'white';
-                ctx.lineWidth = 2;
+                ctx.strokeStyle = isHighlighted ? 'rgba(255, 0, 0, 1)' : 'rgba(255, 0, 0, 0.6)';
+                ctx.lineWidth = isHighlighted ? 3 : 2;
+                const midY = (ann.data.y + ann.data.height / 2) * drawHeight / 100;
+                ctx.moveTo(ann.data.x * drawWidth / 100, midY);
+                ctx.lineTo((ann.data.x + ann.data.width) * drawWidth / 100, midY);
                 ctx.stroke();
             }
         });
-    }, [annotations, currentPage]);
+    }, [annotations, currentPage, highlightedPinId]);
 
     useEffect(() => {
         renderPage(currentPage, scale);
     }, [currentPage, scale, renderPage]);
 
     const handleMouseDown = (e) => {
-        if (activeTool !== 'draw') return;
-        setIsDrawing(true);
+        if (activeTool !== 'highlight' && activeTool !== 'strike') return;
+        setIsDragging(true);
         const rect = overlayRef.current.getBoundingClientRect();
         const x = ((e.clientX - rect.left) / rect.width) * 100;
         const y = ((e.clientY - rect.top) / rect.height) * 100;
-        setCurrentPath([{ x, y }]);
+        setDragStart({ x, y });
+        setDragEnd({ x, y });
     };
 
     const handleMouseMove = (e) => {
-        if (!isDrawing || activeTool !== 'draw') return;
+        if (!isDragging || (activeTool !== 'highlight' && activeTool !== 'strike')) return;
         const rect = overlayRef.current.getBoundingClientRect();
         const x = ((e.clientX - rect.left) / rect.width) * 100;
         const y = ((e.clientY - rect.top) / rect.height) * 100;
-        setCurrentPath([...currentPath, { x, y }]);
+        setDragEnd({ x, y });
 
         const ctx = overlayRef.current.getContext('2d');
         const { width, height } = overlayRef.current;
         ctx.clearRect(0, 0, width, height);
         drawAnnotations();
-        ctx.beginPath();
-        ctx.strokeStyle = 'rgba(255, 0, 0, 0.4)';
-        ctx.lineWidth = 2;
-        currentPath.forEach((p, i) => {
-            if (i === 0) ctx.moveTo(p.x * width / 100, p.y * height / 100);
-            else ctx.lineTo(p.x * width / 100, p.y * height / 100);
-        });
-        ctx.stroke();
+
+        const xMin = Math.min(dragStart.x, x);
+        const yMin = Math.min(dragStart.y, y);
+        const xMax = Math.max(dragStart.x, x);
+        const yMax = Math.max(dragStart.y, y);
+
+        if (activeTool === 'highlight') {
+            ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
+            ctx.fillRect(xMin * width / 100, yMin * height / 100, (xMax - xMin) * width / 100, (yMax - yMin) * height / 100);
+            ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+            ctx.strokeRect(xMin * width / 100, yMin * height / 100, (xMax - xMin) * width / 100, (yMax - yMin) * height / 100);
+        } else if (activeTool === 'strike') {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.4)';
+            ctx.lineWidth = 2;
+            const midY = (yMin + (yMax - yMin) / 2) * height / 100;
+            ctx.moveTo(xMin * width / 100, midY);
+            ctx.lineTo(xMax * width / 100, midY);
+            ctx.stroke();
+        }
     };
 
     const handleMouseUp = async () => {
-        if (!isDrawing || activeTool !== 'draw') return;
-        setIsDrawing(false);
-        if (currentPath.length < 2) return;
+        if (!isDragging) return;
+        setIsDragging(false);
+
+        const xMin = Math.min(dragStart.x, dragEnd.x);
+        const yMin = Math.min(dragStart.y, dragEnd.y);
+        const width = Math.max(dragStart.x, dragEnd.x) - xMin;
+        const height = Math.max(dragStart.y, dragEnd.y) - yMin;
+
+        if (width < 1 && height < 1) return;
 
         try {
             const res = await dataService.createReviewComment(currentVersion.versionId, {
-                type: 'draw',
-                annotation_data: JSON.stringify({ path: currentPath }),
+                type: activeTool,
+                annotation_data: JSON.stringify({ x: xMin, y: yMin, width, height }),
                 page_number: currentPage,
-                x: currentPath[0].x,
-                y: currentPath[0].y,
-                content: 'Drawing',
+                x: xMin,
+                y: yMin,
+                content: activeTool === 'highlight' ? 'Highlight' : 'Strike-through',
                 author_name: 'Admin'
             });
             setAnnotations([...annotations, {
-                id: res.id, page: currentPage, type: 'draw', data: { path: currentPath }, x: currentPath[0].x, y: currentPath[0].y
+                id: res.id, page: currentPage, type: activeTool, data: { x: xMin, y: yMin, width, height }, x: xMin, y: yMin, content: activeTool === 'highlight' ? 'Highlight' : 'Strike-through'
             }]);
-            setCurrentPath([]);
+            setDragStart(null);
+            setDragEnd(null);
         } catch (err) { }
     };
 
+    const handleFileUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setLoading(true);
+        try {
+            const res = await dataService.uploadReview(review.project_id, file, review.title);
+            if (res.error) {
+                toast.error(res.error);
+            } else {
+                // Success - reload data for the new version
+                await loadData(token);
+                toast.success(`Version ${res.version_number} uploaded successfully!`);
+            }
+        } catch (err) {
+            console.error('Upload failed:', err);
+            toast.error('Upload failed. Check console.');
+        } finally {
+            setLoading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
     const handleCanvasClick = async (e) => {
-        if (activeTool !== 'pin') return;
         const rect = overlayRef.current.getBoundingClientRect();
         const x = ((e.clientX - rect.left) / rect.width) * 100;
         const y = ((e.clientY - rect.top) / rect.height) * 100;
 
-        const content = prompt('Add a comment:');
-        if (!content) return;
+        // Hit testing for Highlights and Strikes
+        const hit = annotations.find(ann => {
+            if (ann.page !== currentPage) return false;
+            if (ann.type === 'highlight' || ann.type === 'strike') {
+                const { x: ax, y: ay, width: aw, height: ah } = ann.data;
+                return x >= ax && x <= ax + aw && y >= ay && y <= ay + ah;
+            }
+            return false;
+        });
+
+        if (hit) {
+            const el = document.getElementById(`comment-${hit.id}`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setHighlightedCommentId(hit.id);
+                setTimeout(() => setHighlightedCommentId(null), 3000);
+            }
+            return;
+        }
+
+        if (activeTool !== 'pin') return;
+
+        setPendingCommentPos({ x, y });
+        setIsCommentModalOpen(true);
+    };
+
+    const handleAddComment = async () => {
+        if (!newCommentText.trim() || !pendingCommentPos) return;
+        const { x, y } = pendingCommentPos;
 
         try {
             const res = await dataService.createReviewComment(currentVersion.versionId, {
-                content,
+                content: newCommentText,
                 x,
                 y,
                 page_number: currentPage,
@@ -230,15 +356,18 @@ const ReviewPage = () => {
 
             setAnnotations([...annotations, {
                 id: res.id,
-                page: currentPage,
                 type: 'comment',
                 x,
                 y,
-                content,
-                created_by: 'Designer'
+                page: currentPage,
+                content: newCommentText,
+                author: 'Designer'
             }]);
+            setNewCommentText('');
+            setIsCommentModalOpen(false);
+            setPendingCommentPos(null);
         } catch (err) {
-            console.error('Save comment failed:', err);
+            toast.error('Failed to add comment');
         }
     };
     if (loading) return <PageLoader />;
@@ -257,51 +386,120 @@ const ReviewPage = () => {
         <div className="flex flex-col h-screen bg-[var(--bg-app)] overflow-hidden font-sans">
             <header className="h-16 border-b border-[var(--border-subtle)] bg-white flex items-center justify-between px-6 shrink-0 shadow-sm z-10">
                 <div className="flex items-center gap-6">
-                    <button onClick={() => navigate('/reviews')} className="p-2 hover:bg-[var(--bg-app)] rounded-lg text-[var(--text-secondary)] transition-colors"><ChevronLeft size={20} /></button>
+                    <button onClick={() => navigate('/reviews')} className="p-2 hover:bg-[var(--bg-app)] rounded-lg text-[var(--text-secondary)] transition-colors">
+                        <ChevronLeft size={20} />
+                    </button>
                     <div>
-                        <div className="flex items-center gap-3">
-                            <h1 className="font-bold text-[15px] text-[var(--text-main)] truncate max-w-[300px]">{review.project_name} - {review.title}</h1>
-                            <div className="flex items-center gap-1.5 bg-[var(--bg-app)] rounded-lg border border-[var(--border-subtle)] h-[28px] px-2">
-                                <History size={12} className="text-[var(--text-muted)]" />
-                                <select
-                                    value={currentVersion.versionId}
+                        <div className="flex items-center gap-2">
+                            <h1 className="font-bold text-[15px] text-[var(--text-main)] truncate max-w-[240px]">
+                                {review.title || review.file_url?.split('/').pop()?.replace(/^comp-/, '') || 'Review PDF'}
+                            </h1>
+                            <div className="flex items-center gap-2 px-3 py-1 bg-[var(--bg-app)] rounded-xl border border-[var(--border-subtle)] shadow-sm">
+                                <History size={14} className="text-[var(--text-muted)]" />
+                                <Select
+                                    value={currentVersion.id}
                                     onChange={(e) => loadData(token, e.target.value)}
-                                    className="bg-transparent text-[11px] font-bold focus:outline-none"
-                                >
-                                    {review.allVersions?.map(v => (
-                                        <option key={v.id} value={v.id}>v{v.version_number} {v.id === review.current_version_id ? '(Current)' : ''}</option>
-                                    ))}
-                                </select>
+                                    options={review.allVersions?.map(v => ({
+                                        value: v.id,
+                                        label: `v${v.version_number}`
+                                    }))}
+                                    className="min-w-[50px]"
+                                    triggerStyle={{
+                                        height: '24px',
+                                        paddingLeft: '0',
+                                        paddingRight: '0',
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        fontSize: '11px',
+                                        fontWeight: '900',
+                                        color: 'var(--text-secondary)'
+                                    }}
+                                />
                             </div>
-                            <StatusPill status={review.status} />
                         </div>
-                        <div className="flex items-center gap-4 mt-1">
-                            <span className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Designer Mode</span>
-                            <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--text-muted)]">
-                                Link: <code className="bg-gray-100 px-1 rounded">{review.token}</code>
-                                <button onClick={() => { navigator.clipboard.writeText(publicUrl); alert('Copied!'); }} className="text-[var(--primary)] hover:underline">Copy Public URL</button>
-                            </div>
+                        <div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-0.5">
+                            {review.project_name}
                         </div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-1 bg-[var(--bg-app)] p-1 rounded-xl border border-[var(--border-subtle)] shadow-inner">
-                    <button onClick={() => setActiveTool('select')} className={`p-2 rounded-lg ${activeTool === 'select' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`} title="Select"><MousePointer2 size={18} /></button>
-                    <button onClick={() => setActiveTool('pan')} className={`p-2 rounded-lg ${activeTool === 'pan' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`} title="Pan"><Hand size={18} /></button>
-                    <button onClick={() => setActiveTool('pin')} className={`p-2 rounded-lg ${activeTool === 'pin' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`} title="Pin Comment"><MessageSquare size={18} /></button>
-                    <button onClick={() => setActiveTool('draw')} className={`p-2 rounded-lg ${activeTool === 'draw' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`} title="Freehand Draw"><Edit3 size={18} /></button>
+                <div className="flex items-center gap-2 bg-[var(--bg-app)] p-1 rounded-xl border border-[var(--border-subtle)]">
+                    <button
+                        onClick={() => setActiveTool('pin')}
+                        className={`p-1.5 rounded-lg transition-all ${activeTool === 'pin' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`}
+                        title="Comment Pin"
+                    >
+                        <MessageSquare size={16} />
+                    </button>
+                    <button
+                        onClick={() => setActiveTool('highlight')}
+                        className={`p-1.5 rounded-lg transition-all ${activeTool === 'highlight' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`}
+                        title="Highlight"
+                    >
+                        <Highlighter size={16} />
+                    </button>
+                    <button
+                        onClick={() => setActiveTool('strike')}
+                        className={`p-1.5 rounded-lg transition-all ${activeTool === 'strike' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`}
+                        title="Strike-through"
+                    >
+                        <Strikethrough size={16} />
+                    </button>
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-3 mr-4">
-                        <span className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Credits</span>
-                        <div className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
-                            <span className="text-xs font-bold text-[var(--text-main)]">{review.revisions_used} / {review.review_limit}</span>
+                    <div className={`px-4 py-2 rounded-full border text-[11px] font-black uppercase tracking-widest shadow-sm flex items-center gap-3 ${review.revisions_used >= review.review_limit ? 'bg-red-50 border-red-200 text-red-600' :
+                        review.revisions_used >= review.review_limit * 0.6 ? 'bg-amber-50 border-amber-200 text-amber-600' :
+                            'bg-emerald-50 border-emerald-200 text-emerald-600'
+                        }`}>
+                        <span className="opacity-60 text-[10px]">Revisions</span>
+                        <div className="flex items-center gap-1.5 min-w-[32px] justify-center">
+                            <span className="text-[14px]">{review.revisions_used || 0}</span>
+                            <span className="opacity-40 text-[10px]">/</span>
+                            <span className="text-[14px]">{review.review_limit || 3}</span>
                         </div>
                     </div>
-                    <Button onClick={() => setIsUploadModalOpen(true)} className="btn-sm text-xs py-2">Upload v{review.allVersions.length + 1}</Button>
-                    <div className="h-8 w-px bg-[var(--border-subtle)]" />
-                    <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`p-2.5 rounded-xl ${isSidebarOpen ? 'bg-[var(--primary)]/10 text-[var(--primary)]' : 'text-[var(--text-secondary)] hover:bg-gray-100'}`}><Layout size={20} /></button>
+
+                    <div className="w-px h-8 bg-[var(--border-subtle)] mx-1" />
+
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        className="hidden"
+                        accept="application/pdf"
+                        onChange={handleFileUpload}
+                    />
+                    {review.revisions_used < review.review_limit ? (
+                        <Button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="h-9 px-4 !bg-[var(--primary)] !text-white text-[12px] font-bold shadow-sm"
+                        >
+                            Upload v{(review.allVersions?.length || 1) + 1}
+                        </Button>
+                    ) : (
+                        <div className="h-9 px-4 flex items-center gap-2 bg-red-50 text-red-600 text-[11px] font-bold border border-red-100 rounded-xl">
+                            <ShieldAlert size={14} />
+                            Limit Reached
+                        </div>
+                    )}
+
+                    <div className="w-px h-8 bg-[var(--border-subtle)] mx-1" />
+
+                    <a
+                        href={`${review.file_url}?download=1`}
+                        download
+                        className="p-2.5 bg-white border border-[var(--border-subtle)] rounded-xl text-[var(--text-secondary)] hover:text-[var(--primary)] hover:border-[var(--primary)] transition-all shadow-sm"
+                        title="Download PDF"
+                    >
+                        <Download size={18} />
+                    </a>
+
+                    <button
+                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                        className={`p-2 rounded-xl transition-all ${isSidebarOpen ? 'bg-[var(--primary)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-app)]'}`}
+                    >
+                        <Layout size={18} />
+                    </button>
                 </div>
             </header>
 
@@ -319,7 +517,20 @@ const ReviewPage = () => {
                         />
                         <div className="absolute inset-0 pointer-events-none">
                             {annotations.filter(c => c.page === currentPage && c.type === 'comment').map(comment => (
-                                <div key={comment.id} className="absolute w-8 h-8 -ml-4 -mt-4 bg-white text-[var(--primary)] border-2 border-[var(--primary)] rounded-full flex items-center justify-center shadow-lg pointer-events-auto cursor-pointer" style={{ left: `${comment.x}%`, top: `${comment.y}%` }}>
+                                <div
+                                    key={comment.id}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        const el = document.getElementById(`comment-${comment.id}`);
+                                        if (el) {
+                                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                            setHighlightedCommentId(comment.id);
+                                            setTimeout(() => setHighlightedCommentId(null), 3000);
+                                        }
+                                    }}
+                                    className={`absolute w-8 h-8 -ml-4 -mt-4 text-white border-2 border-white rounded-full flex items-center justify-center shadow-lg pointer-events-auto cursor-pointer transition-all hover:scale-110 ${comment.is_resolved ? 'bg-slate-400' : 'bg-orange-500'} ${highlightedPinId === comment.id ? 'scale-125 ring-4 ring-orange-400 ring-offset-2 z-30' : ''}`}
+                                    style={{ left: `${comment.x}%`, top: `${comment.y}%` }}
+                                >
                                     <MessageSquare size={16} />
                                 </div>
                             ))}
@@ -344,11 +555,58 @@ const ReviewPage = () => {
                     <ReviewSidebar
                         comments={comments}
                         activeVersion={currentVersion}
-                        onCommentClick={(c) => setCurrentPage(c.page_number || 1)}
-                        onResolveComment={(id) => setComments(comments.filter(c => c.id !== id))}
+                        highlightedCommentId={highlightedCommentId}
+                        onCommentClick={(c) => {
+                            setCurrentPage(c.page_number || 1);
+                            setHighlightedPinId(c.id);
+                            setTimeout(() => setHighlightedPinId(null), 3000);
+                        }}
+                        onResolveComment={handleDeleteCommentClick}
                     />
                 )}
             </div>
+
+            <ConfirmationDialog
+                isOpen={isDeleteCommentDialogOpen}
+                onClose={() => setIsDeleteCommentDialogOpen(false)}
+                onConfirm={confirmDeleteComment}
+                title="Delete Comment"
+                message="Are you sure you want to delete this comment? This action cannot be undone."
+                confirmText="Delete"
+                isDestructive={true}
+            />
+
+            {isCommentModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+                        <h3 className="text-lg font-bold mb-4">Add Comment</h3>
+                        <textarea
+                            autoFocus
+                            className="w-full h-32 p-4 bg-gray-50 border rounded-xl mb-4 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                            placeholder="Type your feedback here..."
+                            value={newCommentText}
+                            onChange={(e) => setNewCommentText(e.target.value)}
+                        />
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => {
+                                    setIsCommentModalOpen(false);
+                                    setNewCommentText('');
+                                }}
+                                className="px-5 py-2 text-gray-500 font-bold hover:bg-gray-100 rounded-lg"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleAddComment}
+                                className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-lg shadow-blue-200"
+                            >
+                                Add Comment
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -8,6 +8,7 @@ import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 import ListPageHeader from '../components/layout/ListPageHeader';
 import Table from '../components/ui/Table';
 import EmptyState from '../components/common/EmptyState';
+import { toast } from 'react-hot-toast';
 
 const TrashPage = () => {
     const { t } = useI18n();
@@ -39,7 +40,7 @@ const TrashPage = () => {
             await dataService.restoreItem(type, id);
             loadTrash();
         } catch (err) {
-            alert('Failed to restore item: ' + err.message);
+            toast.error('Failed to restore item: ' + err.message);
         }
     };
 
@@ -49,7 +50,7 @@ const TrashPage = () => {
             setShowConfirmEmpty(false);
             loadTrash();
         } catch (err) {
-            alert('Failed to empty trash: ' + err.message);
+            toast.error('Failed to empty trash: ' + err.message);
         }
     };
 
@@ -61,7 +62,7 @@ const TrashPage = () => {
             setItemToDelete(null);
             loadTrash();
         } catch (err) {
-            alert('Failed to delete item: ' + err.message);
+            toast.error('Failed to delete item: ' + err.message);
         }
     };
 
@@ -72,6 +73,7 @@ const TrashPage = () => {
             case 'customers': return <Users size={16} />;
             case 'services': return <Zap size={16} />;
             case 'packages': return <Box size={16} />;
+            case 'reviews': return <FileText size={16} />;
             default: return <Trash2 size={16} />;
         }
     };
@@ -83,6 +85,7 @@ const TrashPage = () => {
             case 'customers': return t('nav.customers');
             case 'services': return t('nav.services');
             case 'packages': return 'Bundle';
+            case 'reviews': return t('nav.reviews') || 'Review';
             default: return type;
         }
     };

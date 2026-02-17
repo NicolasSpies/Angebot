@@ -10,6 +10,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { formatDate, formatTime } from '../utils/dateUtils';
 import ListPageToolbar from '../components/layout/ListPageToolbar';
 import Button from '../components/ui/Button';
+import { toast } from 'react-hot-toast';
 
 const ReviewsPage = () => {
     const { t } = useI18n();
@@ -127,7 +128,6 @@ const ReviewsPage = () => {
                             <tr className="bg-[var(--bg-app)]/50 border-b border-[var(--border-subtle)]">
                                 <th className="text-left px-6 py-3.5 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Project</th>
                                 <th className="text-left px-6 py-3.5 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Review Title</th>
-                                <th className="text-center px-6 py-3.5 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Version</th>
                                 <th className="text-left px-6 py-3.5 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Status</th>
                                 <th className="text-center px-6 py-3.5 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Revisions</th>
                                 <th className="text-left px-6 py-3.5 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Last Updated</th>
@@ -142,7 +142,9 @@ const ReviewsPage = () => {
                                             <div className="w-7 h-7 rounded-lg bg-[var(--primary-light)] flex items-center justify-center text-[var(--primary)] text-[11px] font-bold">
                                                 {review.project_name?.substring(0, 2).toUpperCase()}
                                             </div>
-                                            <span className="text-[13px] font-bold text-[var(--text-main)]">{review.project_name}</span>
+                                            <Link to={`/projects/${review.project_id}`} className="text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--primary)] transition-colors">
+                                                {review.project_name}
+                                            </Link>
                                         </div>
                                     </td>
                                     <td className="px-6 py-3.5">
@@ -158,16 +160,18 @@ const ReviewsPage = () => {
                                             )}
                                         </Link>
                                     </td>
-                                    <td className="px-6 py-3.5 text-center">
-                                        <span className="text-[12px] font-bold px-2 py-0.5 bg-[var(--bg-app)] text-[var(--text-secondary)] rounded-full border border-[var(--border-subtle)]">v{review.version_number || 1}</span>
-                                    </td>
                                     <td className="px-6 py-3.5">
                                         <StatusPill status={review.status} hideWaitingOn={true} />
                                     </td>
                                     <td className="px-6 py-3.5 text-center">
-                                        <span className="text-[12px] font-medium text-[var(--text-secondary)]">
-                                            {review.revisions_used || 0} / {review.revision_limit || '∞'}
-                                        </span>
+                                        <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest shadow-sm ${(review.revisions_used || 0) >= (review.review_limit || 3) ? 'bg-red-50 border-red-200 text-red-600' :
+                                            (review.revisions_used || 0) >= (review.review_limit || 3) * 0.6 ? 'bg-amber-50 border-amber-200 text-amber-600' :
+                                                'bg-emerald-50 border-emerald-200 text-emerald-600'
+                                            }`}>
+                                            <span className="text-[12px]">{review.revisions_used || 0}</span>
+                                            <span className="opacity-40">/</span>
+                                            <span className="text-[12px]">{review.review_limit || 3}</span>
+                                        </div>
                                     </td>
                                     <td className="px-6 py-3.5">
                                         <div className="flex flex-col">
@@ -181,23 +185,15 @@ const ReviewsPage = () => {
                                     </td>
                                     <td className="px-6 py-3.5 text-right">
                                         <div className="flex items-center justify-end gap-2">
-                                            <button
-                                                onClick={() => {
-                                                    const url = `${window.location.origin}/review/${review.token}`;
-                                                    navigator.clipboard.writeText(url);
-                                                    alert('Public review link copied to clipboard!');
-                                                }}
-                                                className="p-1.5 hover:bg-[var(--bg-app)] rounded-lg text-[var(--text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
-                                                title="Copy Public Link"
+                                            <a
+                                                href={`${window.location.origin}/review/${review.token}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="p-1.5 hover:bg-[var(--bg-app)] rounded-lg text-[var(--text-secondary)] transition-colors"
+                                                title="Open Public Review"
                                             >
                                                 <LinkIcon size={14} />
-                                            </button>
-                                            <Link
-                                                to={`/reviews/${review.token}`}
-                                                className="p-1.5 hover:bg-[var(--bg-app)] rounded-lg text-[var(--primary)] transition-colors opacity-0 group-hover:opacity-100"
-                                            >
-                                                <ArrowRight size={16} />
-                                            </Link>
+                                            </a>
                                         </div>
                                     </td>
                                 </tr>

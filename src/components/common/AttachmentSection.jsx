@@ -3,11 +3,15 @@ import { dataService } from '../../data/dataService';
 import { Paperclip, Download, File, Trash2, Loader2, Plus, UploadCloud, FileText, Image } from 'lucide-react';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
+import ConfirmationDialog from '../ui/ConfirmationDialog';
+import { toast } from 'react-hot-toast';
 
 const AttachmentSection = ({ entityType, entityId }) => {
     const [attachments, setAttachments] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isUploading, setIsUploading] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [attachmentToDelete, setAttachmentToDelete] = useState(null);
 
     useEffect(() => {
         if (entityId) {
@@ -50,20 +54,29 @@ const AttachmentSection = ({ entityType, entityId }) => {
             }
         } catch (err) {
             console.error('Upload failed', err);
-            alert('Failed to upload file');
+            toast.error('Failed to upload file');
         } finally {
             setIsUploading(false);
         }
     };
 
-    const handleDelete = async (id) => {
-        if (!window.confirm('Are you sure you want to delete this attachment?')) return;
+    const handleDeleteClick = (id) => {
+        setAttachmentToDelete(id);
+        setIsDeleteModalOpen(true);
+    };
 
+    const confirmDelete = async () => {
+        if (!attachmentToDelete) return;
         try {
-            await dataService.deleteAttachment(id);
-            setAttachments(prev => prev.filter(a => a.id !== id));
+            await dataService.deleteAttachment(attachmentToDelete);
+            setAttachments(prev => prev.filter(a => a.id !== attachmentToDelete));
+            toast.success('Attachment deleted');
         } catch (err) {
             console.error('Delete failed', err);
+            toast.error('Failed to delete attachment');
+        } finally {
+            setIsDeleteModalOpen(false);
+            setAttachmentToDelete(null);
         }
     };
 
@@ -152,7 +165,7 @@ const AttachmentSection = ({ entityType, entityId }) => {
                                     <Download size={14} />
                                 </a>
                                 <button
-                                    onClick={() => handleDelete(file.id)}
+                                    onClick={() => handleDeleteClick(file.id)}
                                     className="p-2 text-[var(--text-secondary)] hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                 >
                                     <Trash2 size={14} />
@@ -162,6 +175,16 @@ const AttachmentSection = ({ entityType, entityId }) => {
                     ))
                 )}
             </div>
+
+            <ConfirmationDialog
+                isOpen={isDeleteModalOpen}
+                onClose={() => setIsDeleteModalOpen(false)}
+                onConfirm={confirmDelete}
+                title="Delete Attachment"
+                message="Are you sure you want to delete this attachment? This action cannot be undone."
+                confirmText="Delete"
+                isDestructive={true}
+            />
         </Card>
     );
 };

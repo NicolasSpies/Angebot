@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { dataService } from '../../data/dataService';
-import { FileText, Plus, ExternalLink, Calendar, ChevronRight, Upload, Link2, Clock } from 'lucide-react';
+import { FileText, Plus, ExternalLink, Calendar, ChevronRight, Upload, Link2, Clock, Trash2, Pencil } from 'lucide-react';
 import StatusPill from '../ui/StatusPill';
 import ReviewUploadModal from './ReviewUploadModal';
+import ConfirmationDialog from '../ui/ConfirmationDialog';
 import { formatDate } from '../../utils/dateUtils';
-import { Pencil } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 const ReviewsCard = ({ projectId }) => {
     const [reviews, setReviews] = useState([]);
     const [project, setProject] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+    const [uploadTitle, setUploadTitle] = useState('');
+    const [isDeleteReviewDialogOpen, setIsDeleteReviewDialogOpen] = useState(false);
+    const [reviewToDelete, setReviewToDelete] = useState(null);
 
     useEffect(() => {
         if (projectId) {
@@ -44,6 +48,26 @@ const ReviewsCard = ({ projectId }) => {
         }
     };
 
+    const handleDeleteReviewClick = (review) => {
+        setReviewToDelete(review);
+        setIsDeleteReviewDialogOpen(true);
+    };
+
+    const confirmDeleteReview = async () => {
+        if (!reviewToDelete) return;
+        try {
+            await dataService.deleteReview(reviewToDelete.id);
+            toast.success('Review moved to trash');
+            loadReviews();
+        } catch (error) {
+            console.error('Failed to delete review:', error);
+            toast.error('Failed to delete review');
+        } finally {
+            setIsDeleteReviewDialogOpen(false);
+            setReviewToDelete(null);
+        }
+    };
+
     return (
         <div className="card h-full flex flex-col">
             <div className="flex items-center justify-between mb-6">
@@ -52,26 +76,6 @@ const ReviewsCard = ({ projectId }) => {
                         <FileText size={18} className="text-[var(--text-secondary)]" />
                         <h3 className="font-bold text-[15px] text-[var(--text-main)]">Reviews</h3>
                     </div>
-                    {project && (
-                        <div className="flex items-center gap-2 group/limit">
-                            <p className="text-[11px] font-black uppercase text-[var(--text-muted)] tracking-wider">
-                                Revisions: {project.revisions_used || 0} /
-                            </p>
-                            <input
-                                type="text"
-                                value={project.review_limit === null ? '' : project.review_limit}
-                                placeholder="3"
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    const num = val === '' ? null : parseInt(val.replace(/\D/g, ''));
-                                    setProject({ ...project, review_limit: num });
-                                }}
-                                onBlur={() => handleUpdateLimit(project.review_limit)}
-                                className="w-8 bg-transparent border-none p-0 focus:ring-0 font-black text-[var(--text-main)] text-[11px] text-center"
-                            />
-                            <Pencil size={10} className="text-[var(--text-muted)] opacity-0 group-hover/limit:opacity-100 transition-opacity" />
-                        </div>
-                    )}
                 </div>
                 <button
                     className={`btn-secondary btn-sm gap-1.5 ${(project?.review_limit ?? 3) !== null && project?.revisions_used >= (project?.review_limit ?? 3) && (reviews.length === 0 || reviews[0].status !== 'approved')
@@ -81,15 +85,16 @@ const ReviewsCard = ({ projectId }) => {
                     onClick={() => {
                         const limit = project?.review_limit ?? 3;
                         if (project?.revisions_used >= limit && (reviews.length === 0 || reviews[0].status !== 'approved')) {
-                            alert('Review limit reached. Please contact support or upgrade your plan.');
+                            toast.error('Review limit reached.');
                             return;
                         }
+                        setUploadTitle('');
                         setIsUploadModalOpen(true);
                     }}
                     title={(project?.review_limit ?? 3) !== null && project?.revisions_used >= (project?.review_limit ?? 3) && (reviews.length === 0 || reviews[0].status !== 'approved') ? 'Review limit reached' : ''}
                 >
                     <Upload size={14} />
-                    <span>{(project?.review_limit ?? 3) !== null && project?.revisions_used >= (project?.review_limit ?? 3) && (reviews.length === 0 || reviews[0].status !== 'approved') ? 'Limit Reached' : 'Upload New'}</span>
+                    <span>Upload New Review</span>
                 </button>
             </div>
 
@@ -121,14 +126,18 @@ const ReviewsCard = ({ projectId }) => {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <StatusPill status={review.status} />
-                                        {(review.version_number !== null && review.version_number !== undefined) && (
-                                            <span className="text-[11px] font-bold text-[var(--text-muted)] bg-[var(--bg-app)] px-2 py-0.5 rounded uppercase tracking-tight">v{review.version_number}</span>
-                                        )}
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <p className="text-[11px] font-black text-[var(--text-secondary)] uppercase tracking-widest leading-none mb-1">Usage</p>
-                                    <p className="text-[13px] font-bold text-[var(--text-main)]">{review.revisions_used || 0} / {review.review_limit ?? 3}</p>
+                                    <p className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-[0.1em] mb-1">Revision Usage</p>
+                                    <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest shadow-sm ${(review.revisions_used || 0) >= (review.review_limit || 3) ? 'bg-red-50 border-red-200 text-red-600' :
+                                        (review.revisions_used || 0) >= (review.review_limit || 3) * 0.6 ? 'bg-amber-50 border-amber-200 text-amber-600' :
+                                            'bg-emerald-50 border-emerald-200 text-emerald-600'
+                                        }`}>
+                                        <span className="text-[12px]">{review.revisions_used || 0}</span>
+                                        <span className="opacity-40">/</span>
+                                        <span className="text-[12px]">{review.review_limit || 3}</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -136,26 +145,42 @@ const ReviewsCard = ({ projectId }) => {
                                 <div className="flex items-center gap-3 text-[11px] text-[var(--text-muted)] font-medium">
                                     <div className="flex items-center gap-1">
                                         <Clock size={12} />
-                                        <span>Updated {formatDate(review.updated_at)}</span>
+                                        <span>{formatDate(review.updated_at)}</span>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => {
+                                            setUploadTitle(review.title);
+                                            setIsUploadModalOpen(true);
+                                        }}
+                                        className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--primary)] hover:bg-[var(--bg-app)] rounded-md transition-all"
+                                        title="Upload New Version"
+                                    >
+                                        <Upload size={16} />
+                                    </button>
                                     <button
                                         onClick={() => {
                                             const url = `${window.location.origin}/review/${review.token}`;
                                             navigator.clipboard.writeText(url);
-                                            // Optional: show toast
                                         }}
                                         className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--primary)] hover:bg-[var(--bg-app)] rounded-md transition-all"
                                         title="Copy Public Link"
                                     >
                                         <Link2 size={16} />
                                     </button>
+                                    <button
+                                        onClick={() => handleDeleteReviewClick(review)}
+                                        className="p-1.5 text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-50 rounded-md transition-all"
+                                        title="Move to Trash"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
                                     <Link
                                         to={`/reviews/${review.token}`}
-                                        className="btn-primary btn-xs px-3 py-1.5 rounded-md"
+                                        className="btn-primary btn-xs px-3 py-1.5 rounded-md ml-1"
                                     >
-                                        Open Review
+                                        Open
                                     </Link>
                                 </div>
                             </div>
@@ -169,6 +194,17 @@ const ReviewsCard = ({ projectId }) => {
                 onClose={() => setIsUploadModalOpen(false)}
                 projectId={projectId}
                 onUploadSuccess={loadReviews}
+                initialTitle={uploadTitle}
+            />
+
+            <ConfirmationDialog
+                isOpen={isDeleteReviewDialogOpen}
+                onClose={() => setIsDeleteReviewDialogOpen(false)}
+                onConfirm={confirmDeleteReview}
+                title="Move Review to Trash"
+                message={`Are you sure you want to move "${reviewToDelete?.title || 'this review'}" to the trash?`}
+                confirmText="Move to Trash"
+                isDestructive={true}
             />
         </div>
     );

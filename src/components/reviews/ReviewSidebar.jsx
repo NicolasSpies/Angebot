@@ -5,10 +5,13 @@ import {
     Clock,
     User,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    Trash2,
+    Highlighter,
+    Strikethrough
 } from 'lucide-react';
 
-const ReviewSidebar = ({ comments, activeVersion, onCommentClick, onResolveComment }) => {
+const ReviewSidebar = ({ comments, activeVersion, onCommentClick, onResolveComment, highlightedCommentId }) => {
     // Group comments by page
     const groupedComments = (comments || []).reduce((acc, comment) => {
         const page = comment.page_number || 1;
@@ -51,12 +54,18 @@ const ReviewSidebar = ({ comments, activeVersion, onCommentClick, onResolveComme
                                 {groupedComments[page].map(comment => (
                                     <div
                                         key={comment.id}
+                                        id={`comment-${comment.id}`}
                                         onClick={() => onCommentClick(comment)}
-                                        className="p-4 hover:bg-[var(--bg-app)] transition-colors cursor-pointer group"
+                                        className={`p-4 hover:bg-[var(--bg-app)] transition-all cursor-pointer group relative ${highlightedCommentId === comment.id
+                                            ? 'bg-orange-50 ring-2 ring-orange-200 ring-inset shadow-inner'
+                                            : ''
+                                            }`}
                                     >
                                         <div className="flex items-start gap-3 mb-2">
                                             <div className="w-8 h-8 rounded-full bg-[var(--primary)] text-white flex items-center justify-center shrink-0 shadow-sm font-bold text-[12px]">
-                                                {comment.author_name?.[0] || <User size={14} />}
+                                                {comment.type === 'highlight' ? <Highlighter size={14} /> :
+                                                    comment.type === 'strike' ? <Strikethrough size={14} /> :
+                                                        <MessageSquare size={14} />}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center justify-between mb-0.5">
@@ -64,7 +73,7 @@ const ReviewSidebar = ({ comments, activeVersion, onCommentClick, onResolveComme
                                                         {comment.author_name || 'Anonymous'}
                                                     </span>
                                                     <span className="text-[10px] text-[var(--text-muted)] font-medium">
-                                                        12:45
+                                                        {new Date(comment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     </span>
                                                 </div>
                                                 <p className="text-[13px] text-[var(--text-secondary)] leading-snug break-words">
@@ -79,10 +88,10 @@ const ReviewSidebar = ({ comments, activeVersion, onCommentClick, onResolveComme
                                                     e.stopPropagation();
                                                     onResolveComment(comment.id);
                                                 }}
-                                                className="text-[11px] font-bold text-[var(--text-secondary)] hover:text-green-600 flex items-center gap-1.5 bg-[var(--bg-app)] px-2 py-1 rounded border border-[var(--border-subtle)]"
+                                                className="text-[11px] font-bold text-[var(--text-secondary)] hover:text-red-500 flex items-center gap-1.5 bg-[var(--bg-app)] px-2 py-1 rounded border border-[var(--border-subtle)]"
                                             >
-                                                <CheckCircle2 size={12} />
-                                                Resolve
+                                                <Trash2 size={12} />
+                                                Delete
                                             </button>
                                         </div>
                                     </div>

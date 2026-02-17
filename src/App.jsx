@@ -48,6 +48,7 @@ function App() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/review/:token" element={<PublicReviewPage />} />
+            <Route path="/offer/sign/:token" element={<OfferPublicPage />} />
 
             {/* App Routes */}
             <Route path="/" element={<PageShell />}>

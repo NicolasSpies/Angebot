@@ -266,11 +266,14 @@ export const dataService = {
         return res.json();
     },
 
-    uploadReview: async (projectId, file) => {
+    uploadReview: async (projectId, file, title = null, limit = null, policy = null) => {
         const formData = new FormData();
         formData.append('project_id', projectId);
         formData.append('file', file);
-        formData.append('created_by', 'System'); // Placeholder for auth context
+        if (title) formData.append('title', title);
+        if (limit) formData.append('review_limit', limit);
+        if (policy) formData.append('review_policy', policy);
+        formData.append('created_by', 'Designer');
 
         const res = await fetch(`${API_URL}/reviews/upload`, {
             method: 'POST',
@@ -428,6 +431,10 @@ export const dataService = {
         const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
         return res.json();
     },
+    deleteReview: async (id) => {
+        const res = await fetch(`${API_URL}/reviews/${id}`, { method: 'DELETE' });
+        return res.json();
+    },
     getNotifications: async () => {
         const res = await fetch(`${API_URL}/notifications`);
         return res.json();
@@ -438,6 +445,14 @@ export const dataService = {
     },
     markAllNotificationsRead: async () => {
         const res = await fetch(`${API_URL}/notifications/read-all`, { method: 'PUT' });
+        return res.json();
+    },
+    deleteNotification: async (id) => {
+        const res = await fetch(`${API_URL}/notifications/${id}`, { method: 'DELETE' });
+        return res.json();
+    },
+    clearAllNotifications: async () => {
+        const res = await fetch(`${API_URL}/notifications/clear-all`, { method: 'DELETE' });
         return res.json();
     },
     checkExpiringNotifications: async () => {

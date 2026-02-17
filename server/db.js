@@ -373,6 +373,8 @@ const migrations = [
     'ALTER TABLE review_versions ADD COLUMN is_pinned INTEGER DEFAULT 0;',
     'ALTER TABLE review_versions ADD COLUMN file_deleted INTEGER DEFAULT 0;',
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_offers_token ON offers(token);',
+    'ALTER TABLE reviews ADD COLUMN deleted_at DATETIME;',
+    'CREATE INDEX IF NOT EXISTS idx_reviews_deleted_at ON reviews(deleted_at);',
 ];
 
 migrations.forEach(sql => {

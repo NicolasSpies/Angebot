@@ -216,6 +216,24 @@ app.put('/api/notifications/read-all', (req, res) => {
     }
 });
 
+app.delete('/api/notifications/clear-all', (req, res) => {
+    try {
+        db.prepare('DELETE FROM notifications').run();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/notifications/:id', (req, res) => {
+    try {
+        db.prepare('DELETE FROM notifications WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // --- CHECK EXPIRING OFFERS & PROJECTS ---
 app.get('/api/notifications/check-expiring', (req, res) => {
     try {
@@ -512,6 +530,7 @@ app.delete('/api/customers/:id', (req, res) => {
         db.transaction(() => {
             db.prepare('UPDATE projects SET deleted_at = CURRENT_TIMESTAMP WHERE customer_id = ?').run(req.params.id);
             db.prepare('UPDATE offers SET deleted_at = CURRENT_TIMESTAMP WHERE customer_id = ?').run(req.params.id);
+            db.prepare('UPDATE reviews SET deleted_at = CURRENT_TIMESTAMP WHERE project_id IN (SELECT id FROM projects WHERE customer_id = ?)').run(req.params.id);
             db.prepare('UPDATE customers SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
         })();
         res.json({ success: true });
@@ -645,6 +664,7 @@ app.get('/api/offers/public/:token', (req, res) => {
 });
 
 const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNotes, customerId, internalNotes) => {
+    console.log(`[Sync] Starting sync for Offer ${offerId} (Status: ${status})`);
     const finalStrategicNotes = strategicNotes || internalNotes;
 
     // 1. Determine Target Project Status
@@ -716,13 +736,22 @@ const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNote
             }
         }
     } else if ((status === 'sent' || status === 'signed' || status === 'pending') && customerId) {
+        console.log(`[Sync] No project found, creating new project for Offer ${offerId}`);
         // Auto-Create Project if missing
         const initialStatus = targetStatus || 'pending';
         // Note: project deadline is independent from offer validity, so it defaults to null here
-        db.prepare(`
-            INSERT INTO projects (offer_id, customer_id, name, status, deadline, strategic_notes, review_limit)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(offerId, customerId, offerName || 'Untitled Project', initialStatus, null, finalStrategicNotes || null, 3);
+        try {
+            const result = db.prepare(`
+                INSERT INTO projects (offer_id, customer_id, name, status, deadline, strategic_notes, review_limit)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run(offerId, customerId, offerName || 'Untitled Project', initialStatus, null, finalStrategicNotes || null, 3);
+            console.log(`[Sync] Project created successfully. New Project ID: ${result.lastInsertRowid}`);
+        } catch (err) {
+            console.error('[Sync] Failed to create project:', err);
+            // Silent failure for sync to prevent offer route from crashing, but logged
+        }
+    } else {
+        console.log(`[Sync] No sync action required for Offer ${offerId} (Status: ${status}, Customer: ${customerId})`);
     }
 };
 
@@ -988,6 +1017,9 @@ app.put('/api/offers/:id/status', (req, res) => {
 
     try {
         db.transaction(() => {
+            const offer = db.prepare('SELECT * FROM offers WHERE id = ?').get(offerId);
+            const oldStatus = offer.status;
+
             db.prepare('UPDATE offers SET status = ? WHERE id = ?').run(status, offerId);
 
             if (status === 'sent') {
@@ -997,7 +1029,6 @@ app.put('/api/offers/:id/status', (req, res) => {
                 db.prepare("UPDATE offers SET signed_at = COALESCE(signed_at, CURRENT_TIMESTAMP) WHERE id = ?").run(offerId);
             }
 
-            const offer = db.prepare('SELECT * FROM offers WHERE id = ?').get(offerId);
             if (offer) {
                 if (status === 'sent' && !offer.customer_id) {
                     throw new Error('Cannot set status to "sent" without an assigned customer.');
@@ -1009,8 +1040,8 @@ app.put('/api/offers/:id/status', (req, res) => {
                     createNotification('offer', 'Offer Signed! ✍️', `Offer "${offer.offer_name}" has been signed.`, '/projects', `offer_signed_${offerId}`);
                 }
 
-                if (offer.status !== status) {
-                    logActivity('offer', offerId, 'status_change', { oldStatus: offer.status, newStatus: status });
+                if (oldStatus !== status) {
+                    logActivity('offer', offerId, 'status_change', { oldStatus, newStatus: status });
                 }
             }
         })();
@@ -1186,7 +1217,10 @@ app.get('/api/projects/:id/activity', (req, res) => {
 
 app.delete('/api/projects/:id', (req, res) => {
     try {
-        db.prepare('UPDATE projects SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+        db.transaction(() => {
+            db.prepare('UPDATE reviews SET deleted_at = CURRENT_TIMESTAMP WHERE project_id = ?').run(req.params.id);
+            db.prepare('UPDATE projects SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+        })();
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1203,11 +1237,17 @@ app.get('/api/viewer-test', (req, res) => {
 app.get('/api/reviews', (req, res) => {
     try {
         const reviews = db.prepare(`
-            SELECT r.*, p.name as project_name, rv.status as current_status, rv.version_number, rv.token
+            SELECT 
+                r.id, r.project_id, r.title, r.status, r.review_limit, r.review_policy, 
+                r.created_by, r.token as token, r.created_at, r.updated_at, 
+                r.revisions_used, r.current_version_id, r.is_token_active,
+                p.name as project_name, 
+                rv.status as current_status, rv.version_number, 
+                rv.token as version_token
             FROM reviews r
             JOIN projects p ON r.project_id = p.id
             LEFT JOIN review_versions rv ON r.current_version_id = rv.id
-            WHERE p.deleted_at IS NULL
+            WHERE p.deleted_at IS NULL AND r.deleted_at IS NULL
             ORDER BY r.updated_at DESC
         `).all();
         res.json(reviews);
@@ -1295,7 +1335,19 @@ app.get('/api/review-by-token/:token', (req, res) => {
             ORDER BY version_number DESC
         `).all(container.id);
 
-        res.json({ ...container, ...version, isCurrent, allVersions, containerId: container.id, versionId: version.id });
+        // Alias version token to avoid collision with container token
+        const { token: version_token, ...versionData } = version;
+
+        res.json({
+            ...container,
+            review_limit: container.review_limit || 3,
+            ...versionData,
+            version_token,
+            isCurrent,
+            allVersions,
+            containerId: container.id,
+            versionId: version.id
+        });
     } catch (err) {
         console.error('[API] /api/review-by-token failed:', err);
         res.status(500).json({ error: err.message });
@@ -1408,7 +1460,12 @@ app.get('/api/reviews/version/:id', (req, res) => {
 app.get('/api/projects/:id/reviews', (req, res) => {
     try {
         const reviews = db.prepare(`
-            SELECT r.*, rv.status as current_status, rv.version_number, rv.token, rv.is_token_active
+            SELECT 
+                r.id, r.project_id, r.title, r.status, r.review_limit, r.review_policy, 
+                r.created_by, r.token as token, r.created_at, r.updated_at, 
+                r.revisions_used, r.current_version_id, r.is_token_active,
+                rv.status as current_status, rv.version_number, 
+                rv.token as version_token, rv.is_token_active as is_version_token_active
             FROM reviews r
             LEFT JOIN review_versions rv ON r.current_version_id = rv.id
             WHERE r.project_id = ?
@@ -2260,28 +2317,7 @@ app.post('/api/:resource/:id/archive', (req, res) => {
     }
 });
 
-app.post('/api/:resource/:id/restore', (req, res) => {
-    const { resource, id } = req.params;
-    const validResources = ['offers', 'projects', 'customers', 'services', 'packages'];
-    if (!validResources.includes(resource)) return res.status(400).json({ error: 'Invalid resource' });
-
-    try {
-        db.transaction(() => {
-            db.prepare(`UPDATE ${resource} SET deleted_at = NULL WHERE id = ? `).run(id);
-
-            if (resource === 'customers') {
-                // Cascading Restore: Customer -> Projects -> Offers
-                db.prepare(`UPDATE projects SET deleted_at = NULL WHERE customer_id = ? `).run(id);
-                db.prepare(`UPDATE offers SET deleted_at = NULL WHERE customer_id = ? `).run(id);
-            }
-
-            logActivity(resource.slice(0, -1), id, 'restored', {});
-        })();
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+// REMOVED REDUNDANT RESTORE ENDPOINT
 
 app.get('/api/archive', (req, res) => {
     try {
@@ -2394,8 +2430,9 @@ app.get('/api/trash', (req, res) => {
         const projects = db.prepare("SELECT 'projects' as type, id, name, deleted_at FROM projects WHERE deleted_at IS NOT NULL").all();
         const services = db.prepare("SELECT 'services' as type, id, name_de as name, deleted_at FROM services WHERE deleted_at IS NOT NULL").all();
         const packages = db.prepare("SELECT 'packages' as type, id, name, deleted_at FROM packages WHERE deleted_at IS NOT NULL").all();
+        const reviews = db.prepare("SELECT 'reviews' as type, id, (SELECT title FROM reviews r2 WHERE r2.id = reviews.id) as name, deleted_at FROM reviews WHERE deleted_at IS NOT NULL").all();
 
-        const allTrash = [...customers, ...offers, ...projects, ...services, ...packages]
+        const allTrash = [...customers, ...offers, ...projects, ...services, ...packages, ...reviews]
             .sort((a, b) => new Date(b.deleted_at) - new Date(a.deleted_at));
 
         res.json(allTrash);
@@ -2406,11 +2443,22 @@ app.get('/api/trash', (req, res) => {
 
 app.post('/api/:resource/:id/restore', (req, res) => {
     const { resource, id } = req.params;
-    const allowed = ['customers', 'offers', 'projects', 'services', 'packages'];
+    const allowed = ['customers', 'offers', 'projects', 'services', 'packages', 'reviews'];
     if (!allowed.includes(resource)) return res.status(400).json({ error: 'Invalid resource' });
 
     try {
-        db.prepare(`UPDATE ${resource} SET deleted_at = NULL WHERE id = ? `).run(id);
+        db.transaction(() => {
+            db.prepare(`UPDATE ${resource} SET deleted_at = NULL WHERE id = ? `).run(id);
+
+            if (resource === 'customers') {
+                db.prepare('UPDATE projects SET deleted_at = NULL WHERE customer_id = ?').run(id);
+                db.prepare('UPDATE offers SET deleted_at = NULL WHERE customer_id = ?').run(id);
+                db.prepare('UPDATE reviews SET deleted_at = NULL WHERE project_id IN (SELECT id FROM projects WHERE customer_id = ?)').run(id);
+            }
+            if (resource === 'projects') {
+                db.prepare('UPDATE reviews SET deleted_at = NULL WHERE project_id = ?').run(id);
+            }
+        })();
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -2419,7 +2467,7 @@ app.post('/api/:resource/:id/restore', (req, res) => {
 
 app.delete('/api/:resource/:id/permanent', (req, res) => {
     const { resource, id } = req.params;
-    const allowed = ['customers', 'offers', 'projects', 'services', 'packages'];
+    const allowed = ['customers', 'offers', 'projects', 'services', 'packages', 'reviews'];
     if (!allowed.includes(resource)) return res.status(400).json({ error: 'Invalid resource' });
 
     try {
@@ -2465,7 +2513,7 @@ app.delete('/api/trash/empty', (req, res) => {
                 db.prepare('UPDATE projects SET customer_id = NULL WHERE customer_id > 0 AND customer_id NOT IN (SELECT id FROM customers)').run();
 
                 // 3. Purge everything in trash
-                const tables = ['projects', 'offers', 'customers', 'services', 'packages'];
+                const tables = ['projects', 'offers', 'customers', 'services', 'packages', 'reviews'];
                 for (const table of tables) {
                     db.prepare(`DELETE FROM ${table} WHERE deleted_at IS NOT NULL`).run();
                 }

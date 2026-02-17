@@ -4,7 +4,6 @@ import { User, Calendar, GripVertical } from 'lucide-react';
 import { getStatusColor } from '../../utils/statusColors';
 
 const COLUMNS = [
-    { id: 'pending', label: 'Pending' },
     { id: 'todo', label: 'To Do' },
     { id: 'in_progress', label: 'In Progress' },
     { id: 'feedback', label: 'Feedback' },

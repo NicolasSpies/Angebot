@@ -37,7 +37,6 @@ const ProjectsPage = () => {
 
     const PROJECT_STATUS_OPTIONS = [
         { value: 'all', label: 'All', color: 'var(--primary)' },
-        { value: 'pending', label: 'Pending', color: '#94a3b8' },
         { value: 'todo', label: 'To Do', color: '#64748b' },
         { value: 'in_progress', label: 'In Progress', color: '#3b82f6' },
         { value: 'feedback', label: 'Feedback', color: '#f59e0b' },
@@ -45,9 +44,8 @@ const ProjectsPage = () => {
         { value: 'cancelled', label: 'Cancelled', color: '#ef4444' }
     ];
 
-    const STATUS_OPTIONS = ['pending', 'todo', 'in_progress', 'feedback', 'done', 'cancelled'];
+    const STATUS_OPTIONS = ['todo', 'in_progress', 'feedback', 'done', 'cancelled'];
     const STATUS_LABELS = {
-        pending: 'Pending',
         todo: 'To Do',
         in_progress: 'In Progress',
         feedback: 'Feedback',
@@ -270,9 +268,6 @@ const ProjectsPage = () => {
                                                 >
                                                     <div className="flex items-center gap-1.5">
                                                         <StatusPill status={project.latest_review_status} hideWaitingOn={true} />
-                                                        {(project.latest_review_version !== null && project.latest_review_version !== undefined) && (
-                                                            <span className="text-[10px] font-bold text-[var(--text-muted)] bg-[var(--bg-app)] px-1.5 py-0.5 rounded uppercase tracking-tighter border border-[var(--border-subtle)]">v{project.latest_review_version}</span>
-                                                        )}
                                                         {project.latest_review_unread > 0 && (
                                                             <span className="flex items-center justify-center min-w-[14px] h-[14px] px-0.5 bg-red-500 text-white text-[8px] font-black rounded-full shadow-sm">
                                                                 {project.latest_review_unread}

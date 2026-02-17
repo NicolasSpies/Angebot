@@ -10,6 +10,7 @@ import { FileText, CheckCircle, Clock, Download, Loader2, XCircle } from 'lucide
 import { useI18n } from '../i18n/I18nContext';
 import DeadlineIndicator from '../components/ui/DeadlineIndicator';
 import { formatDate } from '../utils/dateUtils';
+import { toast } from 'react-hot-toast';
 
 const OfferPublicPage = () => {
     const { token } = useParams();
@@ -41,7 +42,8 @@ const OfferPublicPage = () => {
             setOffer(oData);
             setSettings(sData);
         } catch (err) {
-            setError(err.message || 'Failed to load offer');
+            console.error(err);
+            toast.error('Failed to load offer');
         } finally {
             setIsLoading(false);
         }
@@ -105,7 +107,7 @@ const OfferPublicPage = () => {
             setShowDeclineModal(false);
         } catch (err) {
             console.error('Decline failed:', err);
-            alert('Failed to decline offer. Please try again.');
+            toast.error('Failed to decline offer. Please try again.');
         } finally {
             setIsDeclining(false);
         }

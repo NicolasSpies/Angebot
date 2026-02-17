@@ -3,8 +3,10 @@ import { dataService } from '../../data/dataService';
 import { X, Upload, File, AlertCircle, CheckCircle } from 'lucide-react';
 import Button from '../ui/Button';
 
-const ReviewUploadModal = ({ isOpen, onClose, projectId, onUploadSuccess }) => {
+const ReviewUploadModal = ({ isOpen, onClose, projectId, onUploadSuccess, initialTitle = '' }) => {
     const [file, setFile] = useState(null);
+    const [title, setTitle] = useState(initialTitle || 'Project Review');
+    const [limit, setLimit] = useState(3);
     const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
@@ -36,7 +38,7 @@ const ReviewUploadModal = ({ isOpen, onClose, projectId, onUploadSuccess }) => {
         setIsUploading(true);
         setError(null);
         try {
-            await dataService.uploadReview(projectId, file);
+            await dataService.uploadReview(projectId, file, title, limit);
             setSuccess(true);
             setTimeout(() => {
                 onUploadSuccess();
@@ -79,6 +81,33 @@ const ReviewUploadModal = ({ isOpen, onClose, projectId, onUploadSuccess }) => {
                         </div>
                     ) : (
                         <div className="space-y-6">
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[11px] font-black uppercase text-[var(--text-muted)] tracking-wider mb-2 block">Review Title</label>
+                                    <input
+                                        type="text"
+                                        value={title}
+                                        onChange={(e) => setTitle(e.target.value)}
+                                        disabled={!!initialTitle}
+                                        placeholder="e.g. Logo Design, Website Mockup"
+                                        className="w-full px-4 py-3 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-xl text-[14px] font-bold focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/10 transition-all outline-none disabled:opacity-50"
+                                    />
+                                </div>
+                                {!initialTitle && (
+                                    <div>
+                                        <label className="text-[11px] font-black uppercase text-[var(--text-muted)] tracking-wider mb-2 block">Revision Limit (Credits)</label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="10"
+                                            value={limit}
+                                            onChange={(e) => setLimit(parseInt(e.target.value))}
+                                            className="w-full px-4 py-3 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-xl text-[14px] font-bold focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/10 transition-all outline-none"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
                             <div
                                 className={`border-2 border-dashed rounded-[var(--radius-lg)] p-8 text-center transition-all cursor-pointer
                                     ${file ? 'border-[var(--primary)] bg-[var(--primary-light)]/5' : 'border-[var(--border-strong)] hover:border-[var(--primary)] hover:bg-[var(--bg-app)]'}
