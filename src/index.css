@@ -172,8 +172,8 @@
   --z-sticky: 40;
   --z-sidebar: 50;
   --z-header: 60;
-  --z-dropdown: 100;
-  --z-popover: 100;
+  --z-dropdown: 250;
+  --z-popover: 250;
   --z-modal: 200;
   --z-overlay: 300;
 }

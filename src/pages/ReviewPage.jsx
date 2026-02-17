@@ -129,6 +129,9 @@ const ReviewPage = () => {
         ctx.clearRect(0, 0, width, height);
 
         annotations.filter(ann => ann.page === currentPage).forEach(ann => {
+            const xPos = ann.x * width / 100;
+            const yPos = ann.y * height / 100;
+
             if (ann.type === 'draw' && ann.data) {
                 ctx.beginPath();
                 ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
@@ -137,6 +140,14 @@ const ReviewPage = () => {
                     if (i === 0) ctx.moveTo(p.x * width / 100, p.y * height / 100);
                     else ctx.lineTo(p.x * width / 100, p.y * height / 100);
                 });
+                ctx.stroke();
+            } else if (ann.type === 'comment') {
+                ctx.beginPath();
+                ctx.arc(xPos, yPos, 8, 0, Math.PI * 2);
+                ctx.fillStyle = ann.is_resolved ? '#94A3B8' : '#FB923C';
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
                 ctx.stroke();
             }
         });
@@ -209,12 +220,27 @@ const ReviewPage = () => {
 
         try {
             const res = await dataService.createReviewComment(currentVersion.versionId, {
-                content, x, y, page_number: currentPage, type: 'comment', author_name: 'Admin'
+                content,
+                x,
+                y,
+                page_number: currentPage,
+                type: 'comment',
+                created_by: 'Designer' // Internal context
             });
-            setAnnotations([...annotations, { id: res.id, page: currentPage, type: 'comment', x, y, content }]);
-        } catch (err) { }
-    };
 
+            setAnnotations([...annotations, {
+                id: res.id,
+                page: currentPage,
+                type: 'comment',
+                x,
+                y,
+                content,
+                created_by: 'Designer'
+            }]);
+        } catch (err) {
+            console.error('Save comment failed:', err);
+        }
+    };
     if (loading) return <PageLoader />;
     if (pdfError) return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--bg-app)] p-6 text-center">

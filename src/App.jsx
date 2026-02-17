@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import PageShell from './components/layout/PageShell';
 import { I18nProvider } from './i18n/I18nContext';
+import { Toaster } from 'react-hot-toast';
 
 // Lazy Load Pages for Performance
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
@@ -42,6 +43,7 @@ function App() {
 
   return (
     <I18nProvider>
+      <Toaster position="top-right" />
       <BrowserRouter>
         <Suspense fallback={<PageLoader />}>
           <Routes>

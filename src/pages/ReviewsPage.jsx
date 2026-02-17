@@ -1,17 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
-import { FileText, Search, Filter, ArrowRight, Clock, User, Briefcase, Link as LinkIcon } from 'lucide-react';
+import {
+    FileText, Search, Filter, ArrowRight, Clock, User, Briefcase,
+    Link as LinkIcon, List, LayoutGrid
+} from 'lucide-react';
 import StatusPill from '../components/ui/StatusPill';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { formatDate, formatTime } from '../utils/dateUtils';
+import ListPageToolbar from '../components/layout/ListPageToolbar';
+import Button from '../components/ui/Button';
 
 const ReviewsPage = () => {
     const { t } = useI18n();
+    const navigate = useNavigate();
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [viewMode, setViewMode] = useState('list');
+
+    const REVIEW_STATUS_OPTIONS = [
+        { value: 'all', label: 'All', color: 'var(--primary)' },
+        { value: 'pending', label: 'Pending', color: '#94a3b8' },
+        { value: 'in_review', label: 'In Review', color: '#3b82f6' },
+        { value: 'feedback', label: 'Feedback', color: '#f59e0b' },
+        { value: 'approved', label: 'Approved', color: '#10b981' }
+    ];
 
     useEffect(() => {
         loadData();
@@ -35,41 +51,55 @@ const ReviewsPage = () => {
         }
     };
 
-    const filteredReviews = reviews.filter(r =>
-        r.project_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.status?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredReviews = reviews.filter(r => {
+        const matchesSearch =
+            r.project_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            r.title?.toLowerCase().includes(searchTerm.toLowerCase());
+
+        // Status matching logic
+        let currentStatus = (r.status || '').toLowerCase();
+        if (currentStatus === 'changes_requested') currentStatus = 'feedback';
+
+        const matchesStatus = filterStatus === 'all' || currentStatus === filterStatus;
+
+        return matchesSearch && matchesStatus;
+    });
 
     return (
-        <div className="page-container">
-            <div className="flex justify-between items-center mb-8">
-                <div>
-                    <h1 className="text-2xl font-bold text-[var(--text-main)] mb-1">Reviews</h1>
-                    <p className="text-[13px] text-[var(--text-secondary)]">Manage and track all project review processes.</p>
-                </div>
-            </div>
+        <div className="page-container fade-in">
+            <ListPageToolbar
+                searchProps={{
+                    value: searchTerm,
+                    onChange: setSearchTerm,
+                    placeholder: "Search reviews..."
+                }}
+                filters={
+                    <div className="flex flex-wrap bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
+                        {REVIEW_STATUS_OPTIONS.map(opt => (
+                            <button
+                                key={opt.value}
+                                onClick={() => setFilterStatus(opt.value)}
+                                className={`
+                                    flex items-center gap-2 px-4 h-[32px] rounded-lg text-[12px] font-bold transition-all whitespace-nowrap
+                                    ${filterStatus === opt.value
+                                        ? 'text-white shadow-sm'
+                                        : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-white/50'}
+                                `}
+                                style={filterStatus === opt.value ? {
+                                    backgroundColor: opt.color,
+                                } : {}}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+                }
+                actions={null}
+            />
 
-            {/* Filters & Search */}
-            <div className="flex gap-4 mb-6">
-                <div className="relative flex-1 max-w-md">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={18} />
-                    <input
-                        type="text"
-                        placeholder="Search by project, title or status..."
-                        className="w-full pl-10 pr-4 py-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-[var(--radius-md)] text-[14px] outline-none focus:border-[var(--primary)] transition-all"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                </div>
-                <button className="btn-secondary gap-2">
-                    <Filter size={18} />
-                    <span>Filter</span>
-                </button>
-            </div>
+            <div className="h-px bg-[var(--border-subtle)] mb-8" />
 
-            {/* Reviews Table/List */}
-            <div className="card p-0 overflow-hidden">
+            <div className="card p-0 overflow-hidden shadow-sm border-[var(--border-subtle)] rounded-[var(--radius-lg)]">
                 {loading ? (
                     <div className="p-12 flex justify-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--primary)]"></div>
@@ -94,77 +124,79 @@ const ReviewsPage = () => {
                 ) : (
                     <table className="w-full border-collapse">
                         <thead>
-                            <tr className="bg-[var(--bg-app)] border-b border-[var(--border-subtle)]">
-                                <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Project</th>
-                                <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Review Title</th>
-                                <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Version</th>
-                                <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Status</th>
-                                <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Revisions</th>
-                                <th className="text-left px-6 py-4 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Last Updated</th>
-                                <th className="px-6 py-4"></th>
+                            <tr className="bg-[var(--bg-app)]/50 border-b border-[var(--border-subtle)]">
+                                <th className="text-left px-6 py-3.5 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Project</th>
+                                <th className="text-left px-6 py-3.5 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Review Title</th>
+                                <th className="text-center px-6 py-3.5 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Version</th>
+                                <th className="text-left px-6 py-3.5 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Status</th>
+                                <th className="text-center px-6 py-3.5 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Revisions</th>
+                                <th className="text-left px-6 py-3.5 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">Last Updated</th>
+                                <th className="px-6 py-3.5"></th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--border-subtle)]">
                             {filteredReviews.map((review) => (
-                                <tr key={review.id} className="hover:bg-[var(--bg-app)]/50 transition-colors">
-                                    <td className="px-6 py-4">
+                                <tr key={review.id} className="hover:bg-[var(--bg-app)]/30 transition-colors group">
+                                    <td className="px-6 py-3.5">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-lg bg-[var(--primary-light)] flex items-center justify-center text-[var(--primary)] text-[12px] font-bold">
+                                            <div className="w-7 h-7 rounded-lg bg-[var(--primary-light)] flex items-center justify-center text-[var(--primary)] text-[11px] font-bold">
                                                 {review.project_name?.substring(0, 2).toUpperCase()}
                                             </div>
-                                            <span className="text-[14px] font-bold text-[var(--text-main)]">{review.project_name}</span>
+                                            <span className="text-[13px] font-bold text-[var(--text-main)]">{review.project_name}</span>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[14px] font-medium text-[var(--text-main)]">{review.title || 'Untitled Review'}</span>
+                                    <td className="px-6 py-3.5">
+                                        <Link
+                                            to={`/reviews/${review.token}`}
+                                            className="flex items-center gap-2 group/title"
+                                        >
+                                            <span className="text-[13px] font-semibold text-[var(--text-main)] group-hover/title:text-[var(--primary)] transition-colors">{review.title || 'Untitled Review'}</span>
                                             {review.unread_count > 0 && (
                                                 <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-black rounded-full shadow-sm">
                                                     {review.unread_count}
                                                 </span>
                                             )}
-                                        </div>
+                                        </Link>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <span className="text-[13px] font-medium px-2 py-1 bg-[var(--bg-app)] rounded-md">v{review.version_number || 1}</span>
+                                    <td className="px-6 py-3.5 text-center">
+                                        <span className="text-[12px] font-bold px-2 py-0.5 bg-[var(--bg-app)] text-[var(--text-secondary)] rounded-full border border-[var(--border-subtle)]">v{review.version_number || 1}</span>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <StatusPill status={review.status} />
+                                    <td className="px-6 py-3.5">
+                                        <StatusPill status={review.status} hideWaitingOn={true} />
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <span className="text-[13px] text-[var(--text-secondary)]">
+                                    <td className="px-6 py-3.5 text-center">
+                                        <span className="text-[12px] font-medium text-[var(--text-secondary)]">
                                             {review.revisions_used || 0} / {review.revision_limit || '∞'}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-6 py-3.5">
                                         <div className="flex flex-col">
-                                            <span className="text-[13px] text-[var(--text-main)]">
+                                            <span className="text-[12px] font-semibold text-[var(--text-main)]">
                                                 {formatDate(review.updated_at)}
                                             </span>
-                                            <span className="text-[11px] text-[var(--text-muted)]">
+                                            <span className="text-[10px] text-[var(--text-muted)]">
                                                 {formatTime(review.updated_at)}
                                             </span>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex items-center justify-end gap-3">
+                                    <td className="px-6 py-3.5 text-right">
+                                        <div className="flex items-center justify-end gap-2">
                                             <button
                                                 onClick={() => {
                                                     const url = `${window.location.origin}/review/${review.token}`;
                                                     navigator.clipboard.writeText(url);
                                                     alert('Public review link copied to clipboard!');
                                                 }}
-                                                className="p-2 hover:bg-[var(--bg-app)] rounded-full text-[var(--text-secondary)] transition-colors"
+                                                className="p-1.5 hover:bg-[var(--bg-app)] rounded-lg text-[var(--text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
                                                 title="Copy Public Link"
                                             >
                                                 <LinkIcon size={14} />
                                             </button>
                                             <Link
                                                 to={`/reviews/${review.token}`}
-                                                className="inline-flex items-center gap-2 text-[12px] font-bold text-[var(--primary)] hover:underline"
+                                                className="p-1.5 hover:bg-[var(--bg-app)] rounded-lg text-[var(--primary)] transition-colors opacity-0 group-hover:opacity-100"
                                             >
-                                                View Review
-                                                <ArrowRight size={14} />
+                                                <ArrowRight size={16} />
                                             </Link>
                                         </div>
                                     </td>

@@ -229,21 +229,32 @@ export const dataService = {
     },
 
     createPublicComment: async (versionId, commentData) => {
-        const res = await fetch(`${API_URL}/public/reviews/versions/${versionId}/comments`, {
+        return dataService.createReviewComment(versionId, commentData);
+    },
+
+    submitReviewAction: async (reviewId, actionData) => {
+        const res = await fetch(`${API_URL}/reviews/${reviewId}/action`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(commentData)
+            body: JSON.stringify(actionData)
         });
         return res.json();
     },
 
-    approveReview: async (versionId, authorData) => {
-        const res = await fetch(`${API_URL}/public/reviews/versions/${versionId}/approve`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(authorData)
+    approveReview: async (reviewId, versionId, identityData) => {
+        return dataService.submitReviewAction(reviewId, {
+            action: 'approve',
+            versionId,
+            ...identityData
         });
-        return res.json();
+    },
+
+    requestChanges: async (reviewId, versionId, identityData) => {
+        return dataService.submitReviewAction(reviewId, {
+            action: 'request-changes',
+            versionId,
+            ...identityData
+        });
     },
 
     createReview: async (reviewData) => {

@@ -19,6 +19,22 @@ app.use((req, res, next) => {
     next();
 });
 
+// --- DEFENSIVE TIMEOUT MIDDLEWARE ---
+app.use('/api', (req, res, next) => {
+    const timeout = setTimeout(() => {
+        if (!res.headersSent) {
+            console.error(`[TIMEOUT] Request hanging: ${req.method} ${req.url}`);
+            res.status(504).json({
+                error: 'Request Timeout',
+                message: 'The server took too long to respond. Please try again.'
+            });
+        }
+    }, 5000); // 5 second timeout
+    res.on('finish', () => clearTimeout(timeout));
+    res.on('close', () => clearTimeout(timeout));
+    next();
+});
+
 app.get('/api/status', (req, res) => {
     res.json({ status: 'ok', version: '1.0.1-phase3', time: new Date().toISOString() });
 });
@@ -1182,30 +1198,7 @@ app.get('/api/viewer-test', (req, res) => {
     res.json({ message: 'Viewer test route active', timestamp: new Date().toISOString() });
 });
 
-app.get('/api/reviews/:id', (req, res) => {
-    try {
-        const review = db.prepare(`
-            SELECT r.*, p.name as project_name 
-            FROM reviews r
-            JOIN projects p ON r.project_id = p.id
-            WHERE r.id = ?
-        `).get(req.params.id);
-
-        if (!review) {
-            return res.status(404).json({ error: 'Review not found' });
-        }
-
-        const versions = db.prepare(`
-            SELECT * FROM review_versions 
-            WHERE review_id = ? 
-            ORDER BY version_number DESC
-        `).all(req.params.id);
-
-        res.json({ ...review, versions });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+// DELETED DUPLICATE app.get('/api/reviews/:id')
 
 app.get('/api/reviews', (req, res) => {
     try {
@@ -1267,26 +1260,13 @@ app.get('/api/reviews/:id/versions', (req, res) => {
 
 app.get('/api/review-by-token/:token', (req, res) => {
     try {
-        // Find container (Review) by token - Check container first, then version
-        let container = db.prepare(`
+        // Find container (Review) by token
+        const container = db.prepare(`
             SELECT r.*, p.name as project_name
             FROM reviews r
             JOIN projects p ON r.project_id = p.id
             WHERE r.token = ?
         `).get(req.params.token);
-
-        if (!container) {
-            // Try looking up by version token
-            const v = db.prepare('SELECT review_id FROM review_versions WHERE token = ?').get(req.params.token);
-            if (v) {
-                container = db.prepare(`
-                    SELECT r.*, p.name as project_name
-                    FROM reviews r
-                    JOIN projects p ON r.project_id = p.id
-                    WHERE r.id = ?
-                `).get(v.review_id);
-            }
-        }
 
         if (!container) {
             return res.status(404).json({ error: 'Review not found' });
@@ -1321,17 +1301,30 @@ app.get('/api/review-by-token/:token', (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
 app.post('/api/reviews/:id/action', (req, res) => {
     const { action, firstName, lastName, email, versionId } = req.body;
     const reviewId = req.params.id;
 
+    console.log('[DEBUG] Entering /api/reviews/:id/action');
+    console.log('[DEBUG] Body:', req.body);
+    console.log('[DEBUG] Params:', req.params);
+
     try {
         const review = db.prepare('SELECT * FROM reviews WHERE id = ?').get(reviewId);
+        console.log('[DEBUG] Review found:', review ? 'YES' : 'NO');
         if (!review) return res.status(404).json({ error: 'Review not found' });
 
-        const version = db.prepare('SELECT * FROM review_versions WHERE id = ?').get(versionId);
-        if (!version) return res.status(404).json({ error: 'Version not found' });
+        // Fallback to current_version_id if versionId is missing or wrong
+        const actualVersionId = versionId || review.current_version_id;
+        console.log('[DEBUG] Actual Version ID:', actualVersionId);
+
+        const version = db.prepare('SELECT * FROM review_versions WHERE id = ?').get(actualVersionId);
+        console.log('[DEBUG] Version found:', version ? 'YES' : 'NO');
+
+        if (!version) {
+            console.error(`[ReviewAction] Version mismatch: review ${reviewId} target ${versionId}`);
+            return res.status(404).json({ error: 'Version not found for this review' });
+        }
 
         // Revision limit check for request-changes
         if (action === 'request-changes') {
@@ -1340,41 +1333,45 @@ app.post('/api/reviews/:id/action', (req, res) => {
             }
         }
 
-        // Store identity action
-        db.prepare(`
-            INSERT INTO review_actions (review_id, version_id, action_type, first_name, last_name, email)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).run(reviewId, versionId, action, firstName, lastName, email);
-
-        // Update status
-        if (action !== 'approve' && action !== 'request-changes') {
-            return res.status(400).json({ error: 'Invalid action' });
-        }
-
         const newStatus = action === 'approve' ? 'approved' : 'changes_requested';
-        db.prepare('UPDATE review_versions SET status = ? WHERE id = ?').run(newStatus, versionId);
+        console.log('[DEBUG] New status will be:', newStatus);
 
-        // If request changes, increment revisions_used
-        if (action === 'request-changes') {
-            db.prepare('UPDATE reviews SET revisions_used = revisions_used + 1, status = "changes_requested" WHERE id = ?').run(reviewId);
-        } else if (action === 'approve') {
-            db.prepare('UPDATE reviews SET status = "approved" WHERE id = ?').run(reviewId);
-        }
+        db.transaction(() => {
+            console.log('[DEBUG] Starting transaction');
+            db.prepare(`
+                INSERT INTO review_actions (review_id, version_id, action_type, first_name, last_name, email)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `).run(reviewId, actualVersionId, action === 'approve' ? 'approve' : 'request-changes', firstName || null, lastName || null, email || null);
 
-        // Create notification
-        const clientName = `${firstName} ${lastName}`.trim() || email;
-        const msg = `${clientName} (${email}) ${action === 'approve' ? 'approved' : 'requested changes for'} "${review.title}" v${version.version_number}.`;
+            db.prepare('UPDATE review_versions SET status = ? WHERE id = ?').run(newStatus, actualVersionId);
 
-        db.prepare('INSERT INTO notifications (type, title, message, link) VALUES (?, ?, ?, ?)').run(
-            'review_action',
-            action === 'approve' ? 'Review Approved' : 'Changes Requested',
-            msg,
-            `/projects/${review.project_id}`
-        );
+            if (action === 'request-changes') {
+                const countRes = db.prepare("SELECT COUNT(*) as count FROM review_actions WHERE version_id = ? AND action_type = 'request-changes'").get(actualVersionId);
+                const alreadyRequested = countRes ? countRes.count : 0;
+
+                if (alreadyRequested <= 1) {
+                    db.prepare("UPDATE reviews SET revisions_used = revisions_used + 1, status = 'changes_requested', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(reviewId);
+                } else {
+                    db.prepare("UPDATE reviews SET status = 'changes_requested', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(reviewId);
+                }
+            } else {
+                db.prepare("UPDATE reviews SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(reviewId);
+            }
+
+            const clientName = `${firstName || ''} ${lastName || ''}`.trim() || email || 'Client';
+            const msg = `${clientName} ${action === 'approve' ? 'approved' : 'requested changes for'} "${review.title || 'Review'}" v${version.version_number}.`;
+
+            db.prepare('INSERT INTO notifications (type, title, message, link) VALUES (?, ?, ?, ?)').run(
+                'review_action',
+                action === 'approve' ? 'Review Approved' : 'Changes Requested',
+                msg,
+                `/projects/${review.project_id}`
+            );
+        })();
 
         res.json({ success: true, status: newStatus });
     } catch (err) {
-        console.error('[API] /api/reviews/:id/action failed:', err);
+        console.error('[CRITICAL] /api/reviews/:id/action failure:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -1389,6 +1386,10 @@ app.get('/api/reviews/version/:id', (req, res) => {
             WHERE rv.id = ?
         `).get(req.params.id);
 
+        if (!version) {
+            return res.status(404).json({ error: 'Version not found' });
+        }
+
         if (version.file_deleted === 1) {
             return res.status(410).json({
                 code: 'FILE_EXPIRED',
@@ -1396,11 +1397,10 @@ app.get('/api/reviews/version/:id', (req, res) => {
             });
         }
 
-        trackAccess(version.id);
         const isCurrent = version.id === version.current_version_id;
-
         res.json({ ...version, isCurrent });
     } catch (err) {
+        console.error('[API] /api/reviews/version/:id failed:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -1411,9 +1411,9 @@ app.get('/api/projects/:id/reviews', (req, res) => {
             SELECT r.*, rv.status as current_status, rv.version_number, rv.token, rv.is_token_active
             FROM reviews r
             LEFT JOIN review_versions rv ON r.current_version_id = rv.id
-            WHERE r.project_id = ? 
+            WHERE r.project_id = ?
             ORDER BY r.created_at DESC
-        `).all(req.params.id);
+            `).all(req.params.id);
         res.json(reviews);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1493,11 +1493,11 @@ app.post('/api/reviews/upload', upload.single('file'), async (req, res) => {
 
         db.prepare(`
             UPDATE review_versions 
-            SET is_active = 0, 
-                status = 'superseded', 
-                retention_expires_at = ? 
-            WHERE review_id = ? AND is_active = 1
-        `).run(ninetyDaysOut.toISOString(), review.id);
+            SET is_active = 0,
+            status = 'superseded',
+            retention_expires_at = ?
+                WHERE review_id = ? AND is_active = 1
+                    `).run(ninetyDaysOut.toISOString(), review.id);
 
         // 5. Insert New Version
         const lastVer = db.prepare('SELECT MAX(version_number) as last FROM review_versions WHERE review_id = ?').get(review.id);
@@ -1505,13 +1505,13 @@ app.post('/api/reviews/upload', upload.single('file'), async (req, res) => {
         const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
         const versionResult = db.prepare(`
-            INSERT INTO review_versions (
-                review_id, project_id, file_url, compressed_file_url, version_number, 
-                status, token, is_token_active, created_by, 
-                original_size_bytes, compressed_size_bytes, compression_ratio,
-                is_active, last_accessed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
-        `).run(
+            INSERT INTO review_versions(
+                        review_id, project_id, file_url, compressed_file_url, version_number,
+                        status, token, is_token_active, created_by,
+                        original_size_bytes, compressed_size_bytes, compression_ratio,
+                        is_active, last_accessed_at
+                    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+            `).run(
             review.id, project_id, compressedUrl, compressedUrl, nextVer,
             'active', token, 1, created_by || 'System',
             originalSize, compressedSize, compressionRatio
@@ -1523,10 +1523,11 @@ app.post('/api/reviews/upload', upload.single('file'), async (req, res) => {
         logActivity('project', project_id, 'review_version_uploaded', {
             reviewId: review.id,
             version: nextVer,
-            compression: `${(compressionRatio * 100).toFixed(1)}%`
+            compression: `${(compressionRatio * 100).toFixed(1)}% `
         });
 
-        console.log(`[Upload] SUCCESS: ${nextVer} (Ratio: ${(compressionRatio * 100).toFixed(1)}%)`);
+        console.log(`[Upload] SUCCESS: ${nextVer} (Ratio: ${(compressionRatio * 100).toFixed(1)
+            }%)`);
         res.json({ success: true, version_id: versionId, ratio: compressionRatio });
     } catch (err) {
         console.error('[Upload] Critical error:', err);
@@ -1534,23 +1535,12 @@ app.post('/api/reviews/upload', upload.single('file'), async (req, res) => {
     }
 });
 
-
-// --- REVIEW COMMENTS ---
-app.get('/api/public/reviews/versions/:id/comments', (req, res) => {
-    try {
-        const comments = db.prepare('SELECT * FROM review_comments WHERE version_id = ? ORDER BY created_at ASC').all(req.params.id);
-        res.json(comments);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// Get public comments for a version
+// Get comments for a version (internal & public unified)
 app.get('/api/public/reviews/versions/:id/comments', (req, res) => {
     try {
         const comments = db.prepare(`
             SELECT * FROM review_comments 
-            WHERE version_id = ? 
+            WHERE version_id = ?
             ORDER BY page_number ASC, created_at ASC
         `).all(req.params.id);
         res.json(comments);
@@ -1567,12 +1557,12 @@ app.post('/api/public/reviews/versions/:id/comments', (req, res) => {
         const screenshotUrl = saveBase64Image(req.body.screenshot);
 
         const result = db.prepare(`
-            INSERT INTO review_comments (version_id, page_number, x, y, width, height, type, content, author_name, author_email, parent_id, screenshot_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(versionId, page_number, x, y, width || null, height || null, type || 'comment', content, author_name, author_email, parent_id || null, screenshotUrl);
+            INSERT INTO review_comments(version_id, page_number, x, y, width, height, type, content, author_name, author_email, parent_id, screenshot_url)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(versionId, page_number, x, y, width || null, height || null, type || 'comment', content, author_name, author_email, parent_id || null, screenshotUrl);
 
-        // Status should remain neutral on comments (unless explicitly requested via plan)
-        // db.prepare("UPDATE review_versions SET status = 'changes_requested' WHERE id = ? AND status = 'open'").run(versionId);
+        // REMOVED: Implicit status update to 'changes_requested'
+        // We now enforce status changes ONLY through explicit actions.
 
         const newComment = db.prepare('SELECT * FROM review_comments WHERE id = ?').get(result.lastInsertRowid);
 
@@ -1583,7 +1573,7 @@ app.post('/api/public/reviews/versions/:id/comments', (req, res) => {
             JOIN reviews r ON rv.review_id = r.id
             JOIN projects p ON r.project_id = p.id
             WHERE rv.id = ?
-        `).get(versionId);
+    `).get(versionId);
 
         logActivity('project', version.project_id, 'review_comment_added', { versionId, author: author_name });
 
@@ -1591,7 +1581,7 @@ app.post('/api/public/reviews/versions/:id/comments', (req, res) => {
             'project',
             'Review Comment',
             `${author_name} added feedback on ${version.project_name} (Version ${version.version_number})`,
-            `/review/${version.token}`
+            `/ review / ${version.token} `
         );
 
         res.json(newComment);
@@ -1607,12 +1597,12 @@ app.post('/api/public/reviews/versions/:id/approve', (req, res) => {
     try {
         db.prepare(`
             UPDATE review_versions 
-            SET status = 'approved', 
-                approved_at = CURRENT_TIMESTAMP,
-                approved_by_name = ?,
-                approved_by_email = ?
-            WHERE id = ?
-        `).run(author_name, author_email, versionId);
+            SET status = 'approved',
+    approved_at = CURRENT_TIMESTAMP,
+    approved_by_name = ?,
+    approved_by_email = ?
+        WHERE id = ?
+            `).run(author_name, author_email, versionId);
 
         const version = db.prepare(`
             SELECT rv.*, r.project_id, r.id as review_id, p.name as project_name 
@@ -1620,15 +1610,15 @@ app.post('/api/public/reviews/versions/:id/approve', (req, res) => {
             JOIN reviews r ON rv.review_id = r.id
             JOIN projects p ON r.project_id = p.id
             WHERE rv.id = ?
-        `).get(versionId);
+    `).get(versionId);
 
         // Sync parent review status
         db.prepare(`
             UPDATE reviews 
             SET status = 'approved',
-                updated_at = CURRENT_TIMESTAMP
+    updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-        `).run(version.review_id);
+    `).run(version.review_id);
 
         logActivity('project', version.project_id, 'review_approved', { versionId, approvedBy: author_name });
 
@@ -1636,14 +1626,14 @@ app.post('/api/public/reviews/versions/:id/approve', (req, res) => {
             'project',
             'Review Approved',
             `${author_name} approved ${version.project_name} (Version ${version.version_number})`,
-            `/review/${version.token}`
+            `/ review / ${version.token} `
         );
 
         createNotification(
             'project',
             'Project Updated',
             `Review for ${version.project_name} has been approved.`,
-            `/projects/${version.project_id}`
+            `/ projects / ${version.project_id} `
         );
 
         res.json({ success: true });
@@ -1663,7 +1653,7 @@ app.post('/api/public/review/:token/request-changes', (req, res) => {
             JOIN reviews r ON rv.review_id = r.id
             JOIN projects p ON r.project_id = p.id
             WHERE rv.token = ?
-        `).get(token);
+    `).get(token);
 
         if (!version) return res.status(404).json({ error: 'Review not found' });
 
@@ -1679,16 +1669,16 @@ app.post('/api/public/review/:token/request-changes', (req, res) => {
             UPDATE review_versions 
             SET status = 'changes_requested'
             WHERE id = ?
-        `).run(version.id);
+    `).run(version.id);
 
         db.prepare(`
             UPDATE reviews 
             SET status = 'changes_requested',
-                unread_count = unread_count + 1,
-                revisions_used = revisions_used + 1,
-                updated_at = CURRENT_TIMESTAMP
+    unread_count = unread_count + 1,
+    revisions_used = revisions_used + 1,
+    updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-        `).run(version.review_id);
+    `).run(version.review_id);
 
         logActivity('project', version.project_id, 'review_feedback', { versionId: version.id, author: author_name });
 
@@ -1696,7 +1686,7 @@ app.post('/api/public/review/:token/request-changes', (req, res) => {
             'project',
             'Feedback Received',
             `${author_name} requested changes on ${version.project_name} (Version ${version.version_number})`,
-            `/review/${version.token}`
+            `/ review / ${version.token} `
         );
 
         res.json({ success: true });
@@ -1727,9 +1717,9 @@ app.get('/api/reviews/versions/:id/comments', (req, res) => {
 app.get('/api/reviews/versions/:id/export', (req, res) => {
     try {
         const comments = db.prepare(`
-            SELECT * FROM review_comments 
-            WHERE version_id = ? 
-            ORDER BY page_number ASC, created_at ASC
+SELECT * FROM review_comments 
+            WHERE version_id = ?
+    ORDER BY page_number ASC, created_at ASC
         `).all(req.params.id);
         res.json(comments);
     } catch (err) {
@@ -1763,7 +1753,7 @@ app.put('/api/review-comments/:id', (req, res) => {
 
         if (updates.length > 0) {
             params.push(req.params.id);
-            db.prepare(`UPDATE review_comments SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+            db.prepare(`UPDATE review_comments SET ${updates.join(', ')} WHERE id = ? `).run(...params);
         }
 
         res.json({ success: true });
@@ -1781,9 +1771,9 @@ app.post('/api/reviews/versions/:versionId/comments', (req, res) => {
         const screenshotUrl = saveBase64Image(req.body.screenshot);
 
         const result = db.prepare(`
-            INSERT INTO review_comments (version_id, page_number, x, y, width, height, type, content, created_by, parent_id, screenshot_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(versionId, page_number, x, y, width || null, height || null, type || 'comment', content, created_by || 'System', parent_id || null, screenshotUrl);
+            INSERT INTO review_comments(version_id, page_number, x, y, width, height, type, content, created_by, parent_id, screenshot_url)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(versionId, page_number, x, y, width || null, height || null, type || 'comment', content, created_by || 'System', parent_id || null, screenshotUrl);
 
         const newComment = db.prepare('SELECT * FROM review_comments WHERE id = ?').get(result.lastInsertRowid);
         res.json(newComment);
@@ -1815,8 +1805,8 @@ app.put('/api/reviews/comments/:id/resolve', (req, res) => {
     try {
         db.prepare(`
             UPDATE review_comments 
-            SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP, resolved_by = ? 
-            WHERE id = ?
+            SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP, resolved_by = ?
+    WHERE id = ?
         `).run(resolved_by || 'System', req.params.id);
         res.json({ success: true });
     } catch (err) {
@@ -1831,17 +1821,17 @@ app.post('/api/reviews/comments/:id/convert-task', (req, res) => {
             FROM review_comments rc
             JOIN reviews r ON rc.review_id = r.id
             WHERE rc.id = ?
-        `).get(req.params.id);
+    `).get(req.params.id);
 
         if (!comment) return res.status(404).json({ error: 'Comment not found' });
 
         const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM tasks WHERE project_id = ?').get(comment.project_id).max || 0;
         const result = db.prepare(`
-            INSERT INTO tasks (project_id, title, description, status, due_date, priority, sort_order)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tasks(project_id, title, description, status, due_date, priority, sort_order)
+VALUES(?, ?, ?, ?, ?, ?, ?)
         `).run(
             comment.project_id,
-            `Review Task: ${comment.content.substring(0, 50)}${comment.content.length > 50 ? '...' : ''}`,
+            `Review Task: ${comment.content.substring(0, 50)}${comment.content.length > 50 ? '...' : ''} `,
             comment.content,
             'todo',
             null,
@@ -1867,14 +1857,14 @@ app.get('/api/reviews/:id/export', (req, res) => {
             FROM reviews r
             JOIN projects p ON r.project_id = p.id
             WHERE r.id = ?
-        `).get(reviewId);
+    `).get(reviewId);
 
         if (!review) return res.status(404).json({ error: 'Review not found' });
 
         const comments = db.prepare(`
             SELECT * FROM review_comments 
-            WHERE review_id = ? 
-            ORDER BY created_at ASC
+            WHERE review_id = ?
+    ORDER BY created_at ASC
         `).all(reviewId);
 
         // Build hierarchy
@@ -1918,9 +1908,9 @@ app.post('/api/projects/:id/tasks', (req, res) => {
     try {
         const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM tasks WHERE project_id = ?').get(projectId).max || 0;
         const result = db.prepare(`
-            INSERT INTO tasks (project_id, title, description, status, due_date, priority, sort_order)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(projectId, title, description || null, status || 'todo', due_date || null, priority || 'medium', maxOrder + 1);
+            INSERT INTO tasks(project_id, title, description, status, due_date, priority, sort_order)
+VALUES(?, ?, ?, ?, ?, ?, ?)
+    `).run(projectId, title, description || null, status || 'todo', due_date || null, priority || 'medium', maxOrder + 1);
         res.json({ id: result.lastInsertRowid });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1932,7 +1922,7 @@ app.put('/api/tasks/:id', (req, res) => {
     try {
         db.prepare(`
             UPDATE tasks SET title = ?, description = ?, status = ?, due_date = ?, priority = ?, completed = ? WHERE id = ?
-        `).run(title, description || null, status || 'todo', due_date || null, priority || 'medium', completed ? 1 : 0, req.params.id);
+    `).run(title, description || null, status || 'todo', due_date || null, priority || 'medium', completed ? 1 : 0, req.params.id);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1980,7 +1970,7 @@ app.get('/api/dashboard/stats', (req, res) => {
             JOIN offers o ON oi.offer_id = o.id
             JOIN services s ON oi.service_id = s.id
             WHERE o.status = 'signed'
-                `).get().cost || 0;
+    `).get().cost || 0;
         const signedRevenue = db.prepare("SELECT SUM(subtotal) as sum FROM offers WHERE status = 'signed'").get().sum || 0;
         const profitEstimate = signedRevenue - signedCost;
 
@@ -1992,7 +1982,7 @@ app.get('/api/dashboard/stats', (req, res) => {
             GROUP BY month
             ORDER BY month DESC
             LIMIT 6
-                `).all().map(row => ({
+    `).all().map(row => ({
             ...row,
             month: row.month || 'Unknown'
         })).reverse();
@@ -2026,7 +2016,7 @@ app.get('/api/dashboard/stats', (req, res) => {
             AND o.due_date <= date('now', '+7 days')
             ORDER BY o.due_date ASC
             LIMIT 5
-                `).all();
+    `).all();
         const expiringSoonCount = expiringOffers.length;
 
         // Top categories
@@ -2039,21 +2029,21 @@ app.get('/api/dashboard/stats', (req, res) => {
             GROUP BY s.category
             ORDER BY revenue DESC
             LIMIT 5
-                `).all();
+    `).all();
 
         // Lead time
         const avgLeadTimeRaw = db.prepare(`
             SELECT AVG(julianday(signed_at) - julianday(created_at)) as avg_days
             FROM offers
             WHERE status = 'signed' AND signed_at IS NOT NULL
-                `).get().avg_days;
+    `).get().avg_days;
         const avgLeadTime = avgLeadTimeRaw || 0;
 
         // Old drafts
         const oldDraftsCount = db.prepare(`
             SELECT COUNT(*) as count FROM offers
             WHERE status = 'draft' AND created_at <= date('now', '-3 days')
-                `).get().count;
+    `).get().count;
 
         // Top clients
         const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
@@ -2062,10 +2052,10 @@ app.get('/api/dashboard/stats', (req, res) => {
             FROM offers o
             JOIN customers c ON o.customer_id = c.id
             WHERE o.status = 'signed' AND o.signed_at >= ?
-                GROUP BY c.id
+    GROUP BY c.id
             ORDER BY revenue DESC
             LIMIT 5
-                `).all(startOfYear);
+    `).all(startOfYear);
 
         const recentActivity = db.prepare('SELECT * FROM global_activities ORDER BY created_at DESC LIMIT 10').all().map(a => ({
             ...a,
@@ -2100,13 +2090,13 @@ app.get('/api/dashboard/stats', (req, res) => {
         const ninetyDaysAgo = new Date();
         ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
         const winRateStats = db.prepare(`
-            SELECT
-            COUNT(*) as total,
-                SUM(CASE WHEN status = 'signed' THEN 1 ELSE 0 END) as signed
+SELECT
+COUNT(*) as total,
+    SUM(CASE WHEN status = 'signed' THEN 1 ELSE 0 END) as signed
             FROM offers 
             WHERE status IN('signed', 'declined')
-            AND(signed_at >= ? OR date(updated_at) >= ?)
-                `).get(ninetyDaysAgo.toISOString(), ninetyDaysAgo.toISOString());
+AND(signed_at >= ? OR date(updated_at) >= ?)
+    `).get(ninetyDaysAgo.toISOString(), ninetyDaysAgo.toISOString());
 
         const winRate = winRateStats.total > 0 ? Math.round((winRateStats.signed / winRateStats.total) * 100) : 0;
 
@@ -2186,7 +2176,7 @@ app.post('/api/packages', (req, res) => {
         const transaction = db.transaction(() => {
             const result = db.prepare(`
                 INSERT INTO packages(name, description, discount_type, discount_value)
-            VALUES(?, ?, ?, ?)
+VALUES(?, ?, ?, ?)
             `).run(name, description || '', discount_type || 'percent', discount_value || 0);
 
             const packageId = result.lastInsertRowid;
@@ -2258,18 +2248,8 @@ app.post('/api/:resource/:id/archive', (req, res) => {
 
             if (resource === 'customers') {
                 // Cascading Archive: Customer -> Projects -> Offers
-                db.prepare(`UPDATE projects SET deleted_at = CURRENT_TIMESTAMP WHERE customer_id = ?`).run(id);
-                db.prepare(`
-                    UPDATE offers 
-                    SET deleted_at = CURRENT_TIMESTAMP 
-                    WHERE id IN (
-                        SELECT o.id FROM offers o
-                        JOIN projects p ON o.project_id = p.id
-                        WHERE p.customer_id = ?
-                    )
-                `).run(id);
-                // Also archive unlinked offers directly associated with customer
-                db.prepare(`UPDATE offers SET deleted_at = CURRENT_TIMESTAMP WHERE customer_id = ? AND project_id IS NULL`).run(id);
+                db.prepare(`UPDATE projects SET deleted_at = CURRENT_TIMESTAMP WHERE customer_id = ? `).run(id);
+                db.prepare(`UPDATE offers SET deleted_at = CURRENT_TIMESTAMP WHERE customer_id = ? `).run(id);
             }
 
             logActivity(resource.slice(0, -1), id, 'archived', {});
@@ -2291,17 +2271,8 @@ app.post('/api/:resource/:id/restore', (req, res) => {
 
             if (resource === 'customers') {
                 // Cascading Restore: Customer -> Projects -> Offers
-                db.prepare(`UPDATE projects SET deleted_at = NULL WHERE customer_id = ?`).run(id);
-                db.prepare(`
-                    UPDATE offers 
-                    SET deleted_at = NULL 
-                    WHERE id IN (
-                        SELECT o.id FROM offers o
-                        JOIN projects p ON o.project_id = p.id
-                        WHERE p.customer_id = ?
-                    )
-                `).run(id);
-                db.prepare(`UPDATE offers SET deleted_at = NULL WHERE customer_id = ? AND project_id IS NULL`).run(id);
+                db.prepare(`UPDATE projects SET deleted_at = NULL WHERE customer_id = ? `).run(id);
+                db.prepare(`UPDATE offers SET deleted_at = NULL WHERE customer_id = ? `).run(id);
             }
 
             logActivity(resource.slice(0, -1), id, 'restored', {});
@@ -2339,7 +2310,7 @@ app.get('/api/audit/checks', (req, res) => {
             FROM offers o 
             LEFT JOIN projects p ON o.id = p.offer_id 
             WHERE o.status = 'signed' AND p.id IS NULL AND o.archived_at IS NULL
-                `).all();
+    `).all();
         offersNoProject.forEach(o => issues.push({
             type: 'offer',
             id: o.id,
@@ -2352,7 +2323,7 @@ app.get('/api/audit/checks', (req, res) => {
         // Projects without customer
         const projectsNoCustomer = db.prepare(`
             SELECT id, name FROM projects WHERE customer_id IS NULL AND archived_at IS NULL
-                `).all();
+    `).all();
         projectsNoCustomer.forEach(p => issues.push({
             type: 'project',
             id: p.id,
@@ -2366,7 +2337,7 @@ app.get('/api/audit/checks', (req, res) => {
         const signedNoSignature = db.prepare(`
             SELECT id, offer_name FROM offers 
             WHERE status = 'signed' AND signature_data IS NULL AND archived_at IS NULL
-        `).all();
+    `).all();
 
         signedNoSignature.forEach(o => issues.push({
             type: 'offer',
@@ -2383,7 +2354,7 @@ app.get('/api/audit/checks', (req, res) => {
             WHERE status = 'draft' 
             AND date(updated_at) < date('now', '-30 days')
             AND archived_at IS NULL
-        `).all();
+    `).all();
         staleDrafts.forEach(o => issues.push({
             type: 'offer',
             id: o.id,
@@ -2396,7 +2367,7 @@ app.get('/api/audit/checks', (req, res) => {
         // Active Projects without Offer
         const projectsNoOffer = db.prepare(`
             SELECT id, name FROM projects 
-            WHERE status IN ('todo', 'in_progress') 
+            WHERE status IN('todo', 'in_progress') 
             AND offer_id IS NULL 
             AND archived_at IS NULL
         `).all();
@@ -2439,7 +2410,7 @@ app.post('/api/:resource/:id/restore', (req, res) => {
     if (!allowed.includes(resource)) return res.status(400).json({ error: 'Invalid resource' });
 
     try {
-        db.prepare(`UPDATE ${resource} SET deleted_at = NULL WHERE id = ?`).run(id);
+        db.prepare(`UPDATE ${resource} SET deleted_at = NULL WHERE id = ? `).run(id);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -2465,7 +2436,7 @@ app.delete('/api/:resource/:id/permanent', (req, res) => {
                 db.prepare('DELETE FROM offer_items WHERE service_id = ?').run(id);
             }
 
-            db.prepare(`DELETE FROM ${resource} WHERE id = ?`).run(id);
+            db.prepare(`DELETE FROM ${resource} WHERE id = ? `).run(id);
         });
         trans();
         res.json({ success: true });
@@ -2557,8 +2528,8 @@ app.post('/api/:entityType/:entityId/attachments', (req, res) => {
     try {
         const result = db.prepare(`
             INSERT INTO attachments(entity_type, entity_id, file_name, file_path, file_size, file_type, created_by)
-            VALUES(?, ?, ?, ?, ?, ?, ?)
-        `).run(entityType, entityId, fileName, filePath, fileSize, fileType, 'System');
+VALUES(?, ?, ?, ?, ?, ?, ?)
+    `).run(entityType, entityId, fileName, filePath, fileSize, fileType, 'System');
         res.json({ id: result.lastInsertRowid });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -2590,10 +2561,10 @@ app.post('/api/reviews/:id/request-changes', (req, res) => {
         db.prepare(`
             UPDATE reviews 
             SET revisions_used = revisions_used + 1,
-                status = 'changes_requested',
-                updated_at = CURRENT_TIMESTAMP 
+    status = 'changes_requested',
+    updated_at = CURRENT_TIMESTAMP 
             WHERE id = ?
-        `).run(id);
+    `).run(id);
 
         // Mark current version as 'changes_requested'
         if (review.current_version_id) {
@@ -2616,9 +2587,9 @@ app.post('/api/reviews/:id/approve', (req, res) => {
         db.prepare(`
             UPDATE reviews 
             SET status = 'approved',
-                updated_at = CURRENT_TIMESTAMP 
+    updated_at = CURRENT_TIMESTAMP 
             WHERE id = ?
-        `).run(id);
+    `).run(id);
 
         if (review.current_version_id) {
             db.prepare("UPDATE review_versions SET status = 'approved', approved_at = CURRENT_TIMESTAMP WHERE id = ?").run(review.current_version_id);
@@ -2641,7 +2612,7 @@ app.get('/api/public/review/:token', (req, res) => {
             JOIN reviews r ON rv.review_id = r.id
             JOIN projects p ON r.project_id = p.id
             WHERE rv.token = ? AND rv.is_token_active = 1
-        `).get(token);
+    `).get(token);
 
         if (!version) {
             return res.status(404).json({ error: 'Review not found or link expired.' });
@@ -2674,7 +2645,7 @@ function runRetentionPolicy() {
             WHERE status = 'approved' 
             AND created_at < datetime('now', '-30 days')
             AND is_token_active = 1
-        `).run();
+    `).run();
         console.log(`[Retention] Deactivated ${result.changes} expired public links.`);
     } catch (err) {
         console.error('[Retention] Cleanup failed:', err);
@@ -2687,12 +2658,12 @@ function runRetentionCleanup() {
     try {
         const now = new Date().toISOString();
         const expiredVersions = db.prepare(`
-            SELECT * FROM review_versions 
+SELECT * FROM review_versions 
             WHERE status != 'file_deleted' 
             AND is_active = 0 
             AND is_pinned = 0 
             AND retention_expires_at < ?
-        `).all(now);
+    `).all(now);
 
         let freedBytes = 0;
         expiredVersions.forEach(ver => {
@@ -2704,14 +2675,14 @@ function runRetentionCleanup() {
                     freedBytes += stats.size;
                 }
                 db.prepare("UPDATE review_versions SET file_url = NULL, compressed_file_url = NULL, status = 'file_deleted', file_deleted = 1 WHERE id = ?").run(ver.id);
-                console.log(`[Retention] Deleted expired version: ${ver.id}`);
+                console.log(`[Retention] Deleted expired version: ${ver.id} `);
             } catch (err) {
-                console.error(`[Retention] Failed to delete file for version ${ver.id}:`, err.message);
+                console.error(`[Retention] Failed to delete file for version ${ver.id}: `, err.message);
             }
         });
 
         if (freedBytes > 0) {
-            console.log(`[Retention] Cleanup complete. Freed ${(freedBytes / 1024 / 1024).toFixed(2)} MB`);
+            console.log(`[Retention] Cleanup complete.Freed ${(freedBytes / 1024 / 1024).toFixed(2)} MB`);
         }
     } catch (err) {
         console.error('[Background] Retention cleanup failed:', err);
@@ -2727,11 +2698,11 @@ setTimeout(runRetentionCleanup, 5000);
 app.get('/api/admin/storage-stats', (req, res) => {
     try {
         const stats = db.prepare(`
-            SELECT 
-                SUM(compressed_size_bytes) as total_compressed,
-                SUM(original_size_bytes) as total_original,
-                COUNT(*) as total_versions,
-                SUM(CASE WHEN file_deleted = 1 THEN 1 ELSE 0 END) as deleted_count
+SELECT
+SUM(compressed_size_bytes) as total_compressed,
+    SUM(original_size_bytes) as total_original,
+    COUNT(*) as total_versions,
+    SUM(CASE WHEN file_deleted = 1 THEN 1 ELSE 0 END) as deleted_count
             FROM review_versions
         `).get();
 

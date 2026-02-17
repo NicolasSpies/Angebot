@@ -4,7 +4,8 @@ import { dataService } from '../data/dataService';
 import { formatCurrency } from '../utils/pricingEngine';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-    Plus, FileText, Eye, Edit2, Send, Link as LinkIcon, Trash2, ExternalLink
+    Plus, FileText, Eye, Edit2, Send, Link as LinkIcon, Trash2, ExternalLink,
+    LayoutGrid, List
 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -28,6 +29,7 @@ const OffersPage = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [viewMode, setViewMode] = useState(() => localStorage.getItem('offersViewMode') || 'list');
     const [deleteId, setDeleteId] = useState(null);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
@@ -77,6 +79,11 @@ const OffersPage = () => {
         }
     };
 
+    const handleViewModeChange = (mode) => {
+        setViewMode(mode);
+        localStorage.setItem('offersViewMode', mode);
+    };
+
     const copyLink = (token) => {
         const url = `${window.location.origin}/offer/sign/${token}`;
         navigator.clipboard.writeText(url);
@@ -91,7 +98,7 @@ const OffersPage = () => {
     });
 
     const STATUS_OPTIONS = [
-        { value: 'all', label: 'All' },
+        { value: 'all', label: 'All', color: 'var(--primary)' },
         { value: 'draft', label: 'Draft', color: '#64748b' },
         { value: 'sent', label: 'Sent', color: '#f59e0b' },
         { value: 'signed', label: 'Signed', color: '#10b981' },
@@ -100,18 +107,7 @@ const OffersPage = () => {
 
     return (
         <div className="page-container fade-in">
-            <ListPageHeader
-                title={t('nav.offers')}
-                description="Create and manage your professional offers and proposals."
-                action={
-                    <Link to="/offer/new">
-                        <Button className="btn-primary shadow-sm">
-                            <Plus size={18} /> New Offer
-                        </Button>
-                    </Link>
-                }
-            />
-
+            {/* Block 1: Compact Toolbar */}
             <ListPageToolbar
                 searchProps={{
                     value: searchTerm,
@@ -119,18 +115,38 @@ const OffersPage = () => {
                     placeholder: "Search by name, customer or project..."
                 }}
                 filters={
-                    <div className="flex items-center gap-3">
-                        <span className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider">Status Filter</span>
-                        <Select
-                            className="w-48"
-                            containerStyle={{ gap: 0 }}
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                            options={STATUS_OPTIONS}
-                        />
+                    <div className="flex flex-wrap bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
+                        {STATUS_OPTIONS.map(opt => (
+                            <button
+                                key={opt.value}
+                                onClick={() => setStatusFilter(opt.value)}
+                                className={`
+                                    flex items-center gap-2 px-4 h-[32px] rounded-lg text-[12px] font-bold transition-all whitespace-nowrap
+                                    ${statusFilter === opt.value
+                                        ? 'text-white shadow-sm'
+                                        : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-white/50'}
+                                `}
+                                style={statusFilter === opt.value ? {
+                                    backgroundColor: opt.color,
+                                } : {}}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
                     </div>
                 }
+                actions={
+                    <Button
+                        size="sm"
+                        onClick={() => navigate('/offer/new')}
+                        className="bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] shadow-sm hover:shadow-md transition-all whitespace-nowrap font-bold rounded-lg px-4 h-9"
+                    >
+                        <Plus size={16} className="mr-1.5" /> New Offer
+                    </Button>
+                }
             />
+
+            <div className="h-px bg-[var(--border-subtle)] mb-8" />
 
             <Table headers={['Offer Name', 'Customer', 'Validity', 'Total Amount', 'Status', 'Actions']}>
                 {isLoading ? (

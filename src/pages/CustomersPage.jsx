@@ -7,10 +7,14 @@ import CustomerForm from '../components/customers/CustomerForm';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Table from '../components/ui/Table';
-import { Plus, User } from 'lucide-react';
+import { Plus, User, MoreHorizontal, Trash2, Edit2, ExternalLink } from 'lucide-react';
 import ListPageHeader from '../components/layout/ListPageHeader';
 import ListPageToolbar from '../components/layout/ListPageToolbar';
 import EmptyState from '../components/ui/EmptyState';
+import DropdownMenu from '../components/ui/DropdownMenu';
+import ConfirmationDialog from '../components/ui/ConfirmationDialog';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 
 const CustomersPage = () => {
     const { t } = useI18n();
@@ -19,6 +23,9 @@ const CustomersPage = () => {
     const [editingCustomer, setEditingCustomer] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [isTrashDialogOpen, setIsTrashDialogOpen] = useState(false);
+    const [customerToTrash, setCustomerToTrash] = useState(null);
+    const navigate = useNavigate();
 
     useEffect(() => {
         loadCustomers();
@@ -38,18 +45,29 @@ const CustomersPage = () => {
         setEditingCustomer(null);
     };
 
-    const handleDelete = async (id) => {
-        await dataService.deleteCustomer(id);
-        loadCustomers();
+    const handleTrashClick = (customer) => {
+        setCustomerToTrash(customer);
+        setIsTrashDialogOpen(true);
     };
 
-    const handleEdit = (customer) => {
-        setEditingCustomer(customer);
-        setIsModalOpen(true);
+    const confirmTrash = async () => {
+        if (!customerToTrash) return;
+        try {
+            await dataService.archiveResource('customers', customerToTrash.id);
+            toast.success('Client moved to Trash');
+            loadCustomers();
+        } catch (err) {
+            toast.error('Failed to move client to trash');
+        } finally {
+            setIsTrashDialogOpen(false);
+            setCustomerToTrash(null);
+        }
     };
 
     const filteredCustomers = customers.filter(c =>
-        c.company_name.toLowerCase().includes(searchTerm.toLowerCase())
+        c.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.country && c.country.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (c.vat_number && c.vat_number.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
     return (
@@ -57,17 +75,6 @@ const CustomersPage = () => {
             <ListPageHeader
                 title={t('nav.customers')}
                 description="Manage your customer database and billing profiles."
-                action={
-                    <Button
-                        onClick={() => {
-                            setEditingCustomer(null);
-                            setIsModalOpen(true);
-                        }}
-                        className="btn-primary shadow-sm"
-                    >
-                        <Plus size={18} /> Add Customer
-                    </Button>
-                }
             />
 
             <ListPageToolbar
@@ -76,6 +83,18 @@ const CustomersPage = () => {
                     onChange: setSearchTerm,
                     placeholder: "Search by company, country or VAT ID..."
                 }}
+                actions={
+                    <Button
+                        onClick={() => {
+                            setEditingCustomer(null);
+                            setIsModalOpen(true);
+                        }}
+                        className="btn-primary"
+                        size="sm"
+                    >
+                        <Plus size={16} /> New Client
+                    </Button>
+                }
             />
 
             <Table headers={['Customer Name', 'Location', 'VAT ID', 'Health', 'Actions']}>
@@ -132,11 +151,20 @@ const CustomersPage = () => {
                                     </span>
                                 )}
                             </td>
-                            <td className="py-3 px-6">
+                            <td className="py-3 px-6" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-end pr-2">
-                                    <Button variant="ghost" size="sm" onClick={() => handleEdit(customer)} className="text-[var(--primary)] font-bold hover:bg-[var(--bg-app)]">
-                                        Manage
-                                    </Button>
+                                    <DropdownMenu
+                                        trigger={
+                                            <Button variant="ghost" size="sm" className="w-8 h-8 p-0 rounded-full hover:bg-[var(--bg-app)]">
+                                                <MoreHorizontal size={16} className="text-[var(--text-muted)]" />
+                                            </Button>
+                                        }
+                                        actions={[
+                                            { label: 'View Profile', onClick: () => navigate(`/customers/${customer.id}`), icon: ExternalLink },
+                                            { label: 'Edit Details', onClick: () => handleEdit(customer), icon: Edit2 },
+                                            { label: 'Move to Trash', onClick: () => handleTrashClick(customer), isDestructive: true, icon: Trash2 }
+                                        ]}
+                                    />
                                 </div>
                             </td>
                         </tr>
@@ -163,11 +191,21 @@ const CustomersPage = () => {
                     <CustomerForm
                         customer={editingCustomer}
                         onSave={handleSave}
-                        onDelete={handleDelete}
+                        onDelete={handleTrashClick}
                         onCancel={() => setIsModalOpen(false)}
                     />
                 </div>
             </Modal>
+
+            <ConfirmationDialog
+                isOpen={isTrashDialogOpen}
+                onClose={() => setIsTrashDialogOpen(false)}
+                onConfirm={confirmTrash}
+                title="Move Client to Trash"
+                message={`Are you sure you want to move "${customerToTrash?.company_name}" and all its related projects and offers to the trash?`}
+                confirmText="Move to Trash"
+                isDestructive={true}
+            />
         </div>
     );
 };

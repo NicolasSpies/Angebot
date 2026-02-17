@@ -181,6 +181,9 @@ const PublicReviewPage = () => {
         ctx.clearRect(0, 0, width, height);
 
         annotations.filter(ann => ann.page === currentPage).forEach(ann => {
+            const xPos = ann.x * width / 100;
+            const yPos = ann.y * height / 100;
+
             if (ann.type === 'draw' && ann.data) {
                 ctx.beginPath();
                 ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
@@ -190,6 +193,17 @@ const PublicReviewPage = () => {
                     else ctx.lineTo(p.x * width / 100, p.y * height / 100);
                 });
                 ctx.stroke();
+            } else if (ann.type === 'comment') {
+                // Draw a pin for comments
+                ctx.beginPath();
+                ctx.arc(xPos, yPos, 8, 0, Math.PI * 2);
+                ctx.fillStyle = '#FB923C'; // Orange-400
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Optional: number or icon inside pin
             }
         });
     }, [annotations, currentPage]);
@@ -251,8 +265,10 @@ const PublicReviewPage = () => {
     };
 
     const handleCanvasClick = async (e) => {
-        if (activeTool !== 'pin') return;
+        if (activeTool !== 'pin' || isReadOnly) return;
         const rect = overlayRef.current.getBoundingClientRect();
+
+        // Use clientX/clientY and normalize to percentage of the visual container
         const x = ((e.clientX - rect.left) / rect.width) * 100;
         const y = ((e.clientY - rect.top) / rect.height) * 100;
 
@@ -261,42 +277,47 @@ const PublicReviewPage = () => {
 
         try {
             const res = await dataService.createReviewComment(data.versionId, {
-                content, x, y, page_number: currentPage, type: 'comment'
+                content,
+                x,
+                y,
+                page_number: currentPage,
+                type: 'comment',
+                author_name: 'Client', // Placeholder or from some state if available
+                author_email: ''
             });
-            setAnnotations([...annotations, { id: res.id, page: currentPage, type: 'comment', x, y, content }]);
+
+            setAnnotations([...annotations, {
+                id: res.id,
+                page: currentPage,
+                type: 'comment',
+                x,
+                y,
+                content,
+                author_name: 'Client'
+            }]);
         } catch (err) {
-            console.error('Save comment failed');
+            console.error('Save comment failed:', err);
         }
     };
 
     const handleActionSubmit = async (identity) => {
-        const idToUse = data.containerId || data.review_id || data.id;
-        console.log('[Review] Submitting action:', pendingAction, 'for ID:', idToUse);
-
-        if (!idToUse || idToUse === 'undefined') {
-            alert('Critial Error: Review ID not found. Please refresh the page.');
-            return;
-        }
-
         try {
-            const res = await fetch(`/api/reviews/${idToUse}/action`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: pendingAction,
-                    ...identity,
-                    versionId: data.versionId || data.id
-                })
-            });
-            const result = await res.json();
-            if (result.success) {
+            let res;
+            if (pendingAction === 'approve') {
+                res = await dataService.approveReview(data.containerId, data.versionId, identity);
+            } else {
+                res = await dataService.requestChanges(data.containerId, data.versionId, identity);
+            }
+
+            if (res.success) {
                 setShowIdentityModal(false);
                 loadData();
             } else {
-                alert(result.error);
+                alert(res.error || 'Action failed.');
             }
         } catch (err) {
-            alert('Action failed.');
+            console.error('Action failed:', err);
+            alert('An unexpected error occurred.');
         }
     };
 
@@ -411,18 +432,6 @@ const PublicReviewPage = () => {
                         onMouseLeave={handleMouseUp} // End drawing if mouse leaves canvas
                         onClick={handleCanvasClick}
                     />
-                    <div className="absolute inset-0 pointer-events-none">
-                        {annotations.filter(c => c.page === currentPage && c.type === 'comment').map(comment => (
-                            <div
-                                key={comment.id}
-                                className="absolute w-8 h-8 -ml-4 -mt-4 bg-white text-[var(--primary)] border-2 border-[var(--primary)] rounded-full flex items-center justify-center shadow-lg pointer-events-auto cursor-pointer hover:scale-110 transition-transform"
-                                style={{ left: `${comment.x}%`, top: `${comment.y}%` }}
-                                title={comment.content}
-                            >
-                                <MessageSquare size={16} />
-                            </div>
-                        ))}
-                    </div>
                 </div>
 
                 <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-md border border-white/20 shadow-2xl px-6 py-3 rounded-2xl flex items-center gap-6 z-20">

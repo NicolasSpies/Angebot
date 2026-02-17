@@ -50,12 +50,36 @@ else
     echo "✅ Dependencies found."
 fi
 
-# 4. Open Database Viewer
+# 4. Pre-flight Stability Checks
+echo "🔍 Performing Stability Checks..."
+
+# Verify Backend Syntax
+if node --check server/index.js; then
+    echo "✅ Backend Syntax: OK"
+else
+    echo "❌ Error: Backend syntax check failed (server/index.js). Please fix errors before launching."
+    exit 1
+fi
+
+# Explicit Database Integrity Check
+if [ -f "$DB_FILE" ]; then
+    echo "✅ Database File Found: OK"
+    # Basic check - can we read the tables?
+    TABLES=$(sqlite3 "$DB_FILE" ".tables")
+    if [[ $TABLES == *"reviews"* ]]; then
+        echo "✅ Database Integrity: OK (Core tables found)"
+    else
+        echo "⚠️  Database Warning: Core tables missing. Server will attempt initialization."
+    fi
+else
+    echo "ℹ️  Database File Not Found. It will be created on first start."
+fi
+
+# 5. Open Database Viewer
 echo "📂 Opening Database Viewer ($DB_FILE)..."
-# This opens the database with the default system application
 open "$DB_FILE"
 
-# 5. Start Services in Terminal tabs
+# 6. Start Services in Terminal tabs
 echo "🖥️  Opening Terminal tabs..."
 osascript <<EOF
 tell application "Terminal"

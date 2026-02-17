@@ -36,7 +36,7 @@ const ProjectsPage = () => {
     const [sortDir, setSortDir] = useState('asc');
 
     const PROJECT_STATUS_OPTIONS = [
-        { value: 'all', label: 'All Status' },
+        { value: 'all', label: 'All', color: 'var(--primary)' },
         { value: 'pending', label: 'Pending', color: '#94a3b8' },
         { value: 'todo', label: 'To Do', color: '#64748b' },
         { value: 'in_progress', label: 'In Progress', color: '#3b82f6' },
@@ -53,7 +53,7 @@ const ProjectsPage = () => {
         feedback: 'Feedback',
         done: 'Done',
         cancelled: 'Cancelled',
-        all: 'All Status'
+        all: 'All'
     };
 
     const loadProjects = async () => {
@@ -132,35 +132,7 @@ const ProjectsPage = () => {
 
     return (
         <div className="page-container fade-in max-w-[1600px] mx-auto pb-24">
-            {/* Block 1: Title */}
-            <ListPageHeader
-                title={t('nav.projects')}
-                action={
-                    <div className="flex items-center gap-3">
-                        <div className="flex bg-[var(--bg-subtle)] p-1 rounded-lg border border-[var(--border-subtle)]">
-                            <button
-                                onClick={() => handleViewModeChange('list')}
-                                className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-[var(--primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
-                                title="List View"
-                            >
-                                <List size={18} />
-                            </button>
-                            <button
-                                onClick={() => handleViewModeChange('kanban')}
-                                className={`p-1.5 rounded-md transition-all ${viewMode === 'kanban' ? 'bg-white shadow-sm text-[var(--primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
-                                title="Kanban View"
-                            >
-                                <LayoutGrid size={18} />
-                            </button>
-                        </div>
-                        <Button onClick={() => setIsCreateModalOpen(true)} className="btn-primary shadow-sm hover:shadow-md transition-all">
-                            <Plus size={18} /> New Project
-                        </Button>
-                    </div>
-                }
-            />
-
-            {/* Block 2: Toolbar */}
+            {/* Block 1: Compact Toolbar */}
             <ListPageToolbar
                 searchProps={{
                     value: filterText,
@@ -168,32 +140,56 @@ const ProjectsPage = () => {
                     placeholder: "Search projects..."
                 }}
                 filters={
-                    <div className="flex items-center gap-4 overflow-x-auto no-scrollbar pb-1">
-                        <div className="flex gap-2 shrink-0">
-                            {PROJECT_STATUS_OPTIONS.map(opt => (
-                                <button
-                                    key={opt.value}
-                                    onClick={() => setFilterStatus(opt.value)}
-                                    className={`
-                                        flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px] font-bold border transition-all whitespace-nowrap
-                                        ${filterStatus === opt.value
-                                            ? 'bg-[var(--primary)] text-white border-[var(--primary)] shadow-sm'
-                                            : 'bg-white text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-medium)] hover:text-[var(--text-main)]'}
-                                    `}
-                                >
-                                    {opt.color && (
-                                        <div
-                                            className="w-1.5 h-1.5 rounded-full shrink-0"
-                                            style={{ backgroundColor: filterStatus === opt.value ? 'white' : opt.color }}
-                                        />
-                                    )}
-                                    {opt.label}
-                                </button>
-                            ))}
+                    <div className="flex flex-wrap bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
+                        {PROJECT_STATUS_OPTIONS.map(opt => (
+                            <button
+                                key={opt.value}
+                                onClick={() => setFilterStatus(opt.value)}
+                                className={`
+                                    flex items-center gap-2 px-4 h-[32px] rounded-lg text-[12px] font-bold transition-all whitespace-nowrap
+                                    ${filterStatus === opt.value
+                                        ? 'text-white shadow-sm'
+                                        : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-white/50'}
+                                `}
+                                style={filterStatus === opt.value ? {
+                                    backgroundColor: opt.color,
+                                } : {}}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+                }
+                actions={
+                    <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
+                            <button
+                                onClick={() => handleViewModeChange('list')}
+                                className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-[var(--primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
+                                title="List View"
+                            >
+                                <List size={18} />
+                            </button>
+                            <button
+                                onClick={() => handleViewModeChange('kanban')}
+                                className={`p-1.5 rounded-lg transition-all ${viewMode === 'kanban' ? 'bg-white shadow-sm text-[var(--primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
+                                title="Kanban View"
+                            >
+                                <LayoutGrid size={18} />
+                            </button>
                         </div>
+                        <Button
+                            size="sm"
+                            onClick={() => setIsCreateModalOpen(true)}
+                            className="bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] shadow-sm hover:shadow-md transition-all whitespace-nowrap font-bold rounded-lg px-4 h-9"
+                        >
+                            <Plus size={16} className="mr-1.5" /> New Project
+                        </Button>
                     </div>
                 }
             />
+
+            <div className="h-px bg-[var(--border-subtle)] mb-8" />
 
             {/* Block 3: Content */}
             {viewMode === 'list' ? (
@@ -204,7 +200,7 @@ const ProjectsPage = () => {
                         { label: 'Status', onClick: () => handleSort('status'), sortField: 'status', currentSort: sortField, sortDir, width: '12%' },
                         { label: 'Latest Review', width: '18%' },
                         { label: 'Timeline', onClick: () => handleSort('deadline'), sortField: 'deadline', currentSort: sortField, sortDir, width: '15%' },
-                        { label: 'Linked Offer', width: '20%' }
+                        { label: 'Offer', width: '10%', align: 'center' }
                     ]}>
                         {loading ? (
                             <tr><td colSpan={5} className="py-[var(--space-10)] text-center text-[var(--text-muted)]">Loading projects...</td></tr>
@@ -315,26 +311,17 @@ const ProjectsPage = () => {
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="py-3 px-6" onClick={(e) => e.stopPropagation()}>
+                                    <td className="py-3 px-6 text-center" onClick={(e) => e.stopPropagation()}>
                                         {project.offer_id ? (
-                                            <div className="flex flex-col gap-1 items-start">
-                                                <Link to={`/offer/preview/${project.offer_id}`} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--bg-surface)] text-[var(--text-main)] text-[12px] font-bold hover:bg-[var(--primary)] hover:text-white transition-all border border-[var(--border-subtle)] group/offer">
-                                                    <FileText size={12} className="text-[var(--text-muted)] group-hover/offer:text-white" />
-                                                    {project.offer_name || `#${project.offer_id}`}
-                                                </Link>
-                                                {project.offer_status && (
-                                                    <span className={`text-[9px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded border ml-1 ${project.offer_status === 'signed' ? 'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success)]/20' :
-                                                        project.offer_status === 'declined' ? 'bg-[var(--danger-bg)] text-[var(--danger)] border-[var(--danger)]/20' :
-                                                            'bg-[var(--bg-app)] text-[var(--text-muted)] border-[var(--border-subtle)]'
-                                                        }`}>
-                                                        {project.offer_status}
-                                                    </span>
-                                                )}
-                                            </div>
+                                            <Link
+                                                to={`/offer/preview/${project.offer_id}`}
+                                                className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] border border-[var(--border-subtle)] hover:border-[var(--primary)] hover:text-[var(--primary)] hover:bg-[var(--primary-light)] transition-all"
+                                                title={project.offer_name || `#${project.offer_id}`}
+                                            >
+                                                <FileText size={16} />
+                                            </Link>
                                         ) : (
-                                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-muted)] text-[11px] font-medium border border-transparent">
-                                                No Offer Linked
-                                            </span>
+                                            <span className="text-[var(--text-muted)] font-medium opacity-50">—</span>
                                         )}
                                     </td>
                                 </tr>
