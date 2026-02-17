@@ -3,6 +3,7 @@ import cors from 'cors';
 import db from './db.js';
 import multer from 'multer';
 import { PDFDocument } from 'pdf-lib';
+import puppeteer from 'puppeteer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -755,6 +756,250 @@ const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNote
     }
 };
 
+// --- PDF GENERATION HELPER ---
+async function generateOfferPDF(offerId) {
+    const offer = db.prepare(`
+        SELECT o.*, 
+               c.company_name as customer_name, 
+               c.address as customer_address,
+               c.city as customer_city, 
+               c.postal_code as customer_postal_code,
+               c.country as customer_country,
+               c.vat_number as customer_vat
+        FROM offers o 
+        JOIN customers c ON o.customer_id = c.id 
+        WHERE o.id = ?
+    `).get(offerId);
+
+    if (!offer) throw new Error('Offer not found');
+
+    const items = db.prepare(`
+        SELECT oi.*, s.name_de, s.name_fr, s.description_de, s.description_fr 
+        FROM offer_items oi 
+        JOIN services s ON oi.service_id = s.id 
+        WHERE oi.offer_id = ?
+    `).all(offerId);
+
+    const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get();
+    const lang = offer.language || 'de';
+
+    // Group items
+    const groups = { one_time: [], yearly: [], monthly: [] };
+    items.forEach(item => {
+        const cycle = item.billing_cycle || 'one_time';
+        if (!groups[cycle]) groups[cycle] = [];
+        groups[cycle].push(item);
+    });
+
+    const cycleTitles = {
+        one_time: { de: 'Einmalige Kosten', fr: 'Frais uniques' },
+        yearly: { de: 'Jährliche Kosten', fr: 'Frais annuels' },
+        monthly: { de: 'Monatliche Kosten', fr: 'Frais mensuels' }
+    };
+
+    const formatDate = (date) => {
+        if (!date) return '—';
+        return new Date(date).toLocaleDateString(lang === 'de' ? 'de-DE' : 'fr-FR', {
+            day: '2-digit', month: '2-digit', year: 'numeric'
+        });
+    };
+
+    const formatCurrency = (amount) => {
+        return new Intl.NumberFormat(lang === 'de' ? 'de-DE' : 'fr-FR', {
+            style: 'currency',
+            currency: 'EUR'
+        }).format(amount || 0);
+    };
+
+    // Calculate totals helper
+    const calculateTotals = (items) => {
+        const subtotal = items.reduce((acc, i) => acc + ((i.unit_price || 0) * (i.quantity || 0)), 0);
+        const vatRate = offer.customer_country === 'BE' ? 0.21 : 0.0;
+        const vat = subtotal * vatRate;
+        return { subtotal, vat, total: subtotal + vat };
+    };
+
+    // Construct HTML
+    let html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            :root {
+                --primary: #0F172A;
+                --text-main: #0F172A;
+                --text-secondary: #64748B;
+                --text-muted: #94A3B8;
+                --border: #E2E8F0;
+                --bg-main: #F8F9FA;
+            }
+            body {
+                font-family: 'Inter', system-ui, sans-serif;
+                margin: 0;
+                padding: 40px;
+                color: var(--text-main);
+                font-size: 13px;
+                line-height: 1.5;
+            }
+            .header { display: flex; justify-content: space-between; margin-bottom: 60px; padding-bottom: 40px; border-bottom: 1px solid var(--border); }
+            .logo { max-height: 60px; margin-bottom: 20px; }
+            .company-info h2 { font-size: 16px; margin: 0 0 10px 0; }
+            .company-details { color: var(--text-secondary); font-size: 11px; }
+            .recipient-box { text-align: right; min-width: 250px; }
+            .offer-badge { background: var(--bg-main); padding: 15px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 30px; }
+            .offer-badge h1 { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: #0F172A; margin: 0 0 5px 0; font-weight: 900; }
+            .offer-name { font-size: 18px; font-weight: 800; margin-bottom: 5px; }
+            .recipient-details h3 { font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; }
+            .recipient-name { font-size: 16px; font-weight: 800; margin-bottom: 5px; }
+            
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th { text-align: left; font-size: 10px; text-transform: uppercase; color: var(--text-muted); padding: 10px 0; border-bottom: 2px solid var(--text-main); }
+            td { padding: 15px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+            .item-name { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+            .item-desc { color: var(--text-secondary); font-size: 11px; }
+            
+            .totals-container { display: flex; justify-content: flex-end; margin-top: 30px; }
+            .totals-box { width: 250px; background: var(--bg-main); padding: 20px; border-radius: 8px; border: 1px solid var(--border); }
+            .total-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+            .total-row.grand { margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border); font-weight: 800; font-size: 16px; color: #0F172A; }
+            
+            .signature-section { margin-top: 80px; display: flex; flex-direction: column; align-items: flex-end; }
+            .signature-img { height: 60px; max-width: 200px; object-fit: contain; margin-bottom: 10px; }
+            .signature-line { width: 200px; height: 1px; background: var(--text-main); margin-bottom: 10px; }
+            .signer-info { text-align: right; font-size: 10px; color: var(--text-secondary); }
+            .signer-name { font-weight: 800; color: var(--text-main); text-transform: uppercase; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="company-info">
+                ${settings.logo_url ? `<img src="${settings.logo_url}" class="logo">` : ''}
+                <h2>${settings.company_name}</h2>
+                <div class="company-details">
+                    ${settings.address || ''}<br>
+                    ${settings.email ? `@ ${settings.email}` : ''}
+                </div>
+            </div>
+            <div class="recipient-box">
+                <div class="offer-badge">
+                    <h1>${lang === 'de' ? 'Geschäftliches Angebot' : 'Proposition Commerciale'}</h1>
+                    <div class="offer-name">${offer.offer_name || `#${offer.id}`}</div>
+                    <div style="font-size: 11px; font-weight: 700;">${formatDate(offer.created_at)}</div>
+                </div>
+                <div class="recipient-details">
+                    <h3>Prepared for</h3>
+                    <div class="recipient-name">${offer.customer_name}</div>
+                    <div class="company-details">
+                        ${offer.customer_address || ''}<br>
+                        ${offer.customer_postal_code || ''} ${offer.customer_city || ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        ${['one_time', 'yearly', 'monthly'].map(cycle => {
+        const groupItems = groups[cycle];
+        if (!groupItems || groupItems.length === 0) return '';
+        const totals = calculateTotals(groupItems);
+
+        return `
+                <div style="margin-bottom: 40px; page-break-inside: avoid;">
+                    <div style="display: flex; align-items: center; margin-bottom: 15px;">
+                        <span style="font-weight: 800; text-transform: uppercase; letter-spacing: 1px; font-size: 11px;">
+                            ${lang === 'de' ? cycleTitles[cycle].de : cycleTitles[cycle].fr}
+                        </span>
+                        <div style="flex: 1; height: 1px; background: var(--border); margin-left: 20px;"></div>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>${lang === 'de' ? 'Service/Beschreibung' : 'Service/Description'}</th>
+                                <th style="width: 60px; text-align: center;">${lang === 'de' ? 'Menge' : 'Qté'}</th>
+                                <th style="width: 100px; text-align: right;">${lang === 'de' ? 'Einheit' : 'Unité'}</th>
+                                <th style="width: 100px; text-align: right;">${lang === 'de' ? 'Betrag' : 'Total'}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${groupItems.map(item => `
+                                <tr>
+                                    <td>
+                                        <div class="item-name">${item.item_name || (lang === 'de' ? item.name_de : item.name_fr)}</div>
+                                        <div class="item-desc">${item.item_description || (lang === 'de' ? item.description_de : item.description_fr)}</div>
+                                    </td>
+                                    <td style="text-align: center;">${item.quantity}</td>
+                                    <td style="text-align: right;">${formatCurrency(item.unit_price)}</td>
+                                    <td style="text-align: right; font-weight: 700;">${formatCurrency(item.quantity * item.unit_price)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    <div class="totals-container">
+                        <div class="totals-box">
+                            <div class="total-row">
+                                <span style="color: var(--text-muted); font-weight: 700;">Netto</span>
+                                <span>${formatCurrency(totals.subtotal)}</span>
+                            </div>
+                            <div class="total-row">
+                                <span style="color: var(--text-muted); font-weight: 700;">MwSt (${offer.customer_country === 'BE' ? '21%' : '0%'})</span>
+                                <span>${formatCurrency(totals.vat)}</span>
+                            </div>
+                            <div class="total-row grand">
+                                <span>TOTAL</span>
+                                <span>${formatCurrency(totals.total)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+    }).join('')}
+
+        ${offer.status === 'signed' ? `
+            <div class="signature-section" style="page-break-inside: avoid;">
+                <img src="${offer.signature_data}" class="signature-img">
+                <div class="signature-line"></div>
+                <div class="signer-info">
+                    <div class="signer-name">Signed by ${offer.signed_by_name}</div>
+                    <div>${formatDate(offer.signed_at)} • ${offer.signed_by_email}</div>
+                    <div style="margin-top: 4px; opacity: 0.5;">IP: ${offer.signed_ip || 'Verification code attached'}</div>
+                </div>
+            </div>
+        ` : ''}
+    </body>
+    </html>
+    `;
+
+    const browser = await puppeteer.launch({ headless: 'new' });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    const pdf = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '0', right: '0', bottom: '0', left: '0' }
+    });
+    await browser.close();
+    return pdf;
+}
+
+app.get('/api/offers/:id/signed-pdf', async (req, res) => {
+    try {
+        const offerId = req.params.id;
+        const offer = db.prepare('SELECT offer_name, id FROM offers WHERE id = ?').get(offerId);
+        if (!offer) return res.status(404).json({ error: 'Offer not found' });
+
+        const pdfBuffer = await generateOfferPDF(offerId);
+
+        const filename = `Offer_${offer.offer_name || offer.id}_Signed.pdf`.replace(/[^a-z0-9_\-.]/gi, '_');
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(pdfBuffer);
+    } catch (err) {
+        console.error('[PDF] Export failed:', err);
+        res.status(500).json({ error: 'Failed to generate PDF' });
+    }
+});
+
 app.post('/api/offers/public/:token/decline', (req, res) => {
     const { token } = req.params;
     const { comment } = req.body;
@@ -1094,7 +1339,7 @@ app.get('/api/projects', (req, res) => {
             LEFT JOIN (
                 SELECT r1.* 
                 FROM reviews r1
-                WHERE r1.id IN (SELECT MAX(id) FROM reviews GROUP BY project_id)
+                WHERE r1.id IN (SELECT MAX(id) FROM reviews WHERE deleted_at IS NULL GROUP BY project_id)
             ) r ON p.id = r.project_id
             LEFT JOIN review_versions rv ON r.current_version_id = rv.id
             WHERE p.archived_at IS NULL AND p.deleted_at IS NULL
@@ -1116,7 +1361,7 @@ app.get('/api/projects/:id', (req, res) => {
             FROM projects p
             LEFT JOIN customers c ON p.customer_id = c.id
             LEFT JOIN offers o ON p.offer_id = o.id
-            LEFT JOIN reviews r ON p.id = r.project_id
+            LEFT JOIN reviews r ON p.id = r.project_id AND r.deleted_at IS NULL
             LEFT JOIN review_versions rv ON r.current_version_id = rv.id
             WHERE p.id = ? AND p.deleted_at IS NULL
         `).get(req.params.id);
@@ -1146,12 +1391,48 @@ app.put('/api/projects/:id', (req, res) => {
             }
         }
 
-        db.transaction(() => {
-            db.prepare(`
-                UPDATE projects SET name = ?, status = ?, deadline = ?, internal_notes = ?, customer_id = ?, offer_id = ?, priority = ?, strategic_notes = ?, review_limit = ?, updated_by = ? WHERE id = ?
-            `).run(name, status, deadline || null, internal_notes || null, customer_id || null, offer_id || null, priority || 'medium', strategic_notes || null, review_limit === undefined ? currentProject.review_limit : (review_limit === '' ? null : review_limit), 'System', projectId);
+        if (name !== undefined && name.trim() === '') {
+            return res.status(400).json({ error: 'Project name cannot be empty' });
+        }
 
-            // Sync Offer Name if Project Name changed and Offer Name matches previous Project Name (heuristic for manual edits)
+        db.transaction(() => {
+            const allowedFields = {
+                name: 'name',
+                status: 'status',
+                deadline: 'deadline',
+                internal_notes: 'internal_notes',
+                customer_id: 'customer_id',
+                offer_id: 'offer_id',
+                priority: 'priority',
+                strategic_notes: 'strategic_notes',
+                review_limit: 'review_limit'
+            };
+
+            const updates = [];
+            const params = [];
+
+            for (const [key, val] of Object.entries(req.body)) {
+                if (allowedFields[key]) {
+                    updates.push(`${allowedFields[key]} = ?`);
+                    // Handle empty strings as null for optional fields
+                    if (['deadline', 'internal_notes', 'strategic_notes', 'customer_id', 'offer_id', 'review_limit'].includes(key) && val === '') {
+                        params.push(null);
+                    } else {
+                        params.push(val);
+                    }
+                }
+            }
+
+            if (updates.length > 0) {
+                updates.push('updated_at = CURRENT_TIMESTAMP');
+                updates.push('updated_by = ?');
+                params.push('System');
+                params.push(projectId);
+
+                db.prepare(`UPDATE projects SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+            }
+
+            // Sync Offer Name if Project Name changed
             if (name && name !== currentProject.name && currentProject.offer_id) {
                 const offer = db.prepare('SELECT offer_name FROM offers WHERE id = ?').get(currentProject.offer_id);
                 if (offer && offer.offer_name === currentProject.name) {
@@ -1160,16 +1441,16 @@ app.put('/api/projects/:id', (req, res) => {
             }
 
             // Log events for changes
-            if (status && status !== currentProject.status) {
-                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'status_change', `Status changed from ${currentProject.status} to ${status} `);
+            if (status !== undefined && status !== currentProject.status) {
+                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'status_change', `Status changed from ${currentProject.status} to ${status}`);
             }
-            if (deadline && deadline !== currentProject.deadline) {
-                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'deadline_update', `Deadline updated to ${deadline} `);
+            if (deadline !== undefined && deadline !== currentProject.deadline) {
+                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'deadline_update', `Deadline updated to ${deadline}`);
             }
-            if (priority && priority !== currentProject.priority) {
-                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'priority_change', `Priority updated to ${priority} `);
+            if (priority !== undefined && priority !== currentProject.priority) {
+                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'priority_change', `Priority updated to ${priority}`);
             }
-            if (strategic_notes && strategic_notes !== currentProject.strategic_notes) {
+            if (strategic_notes !== undefined && strategic_notes !== currentProject.strategic_notes) {
                 db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'notes_update', `Strategic notes updated`);
             }
 
@@ -1181,16 +1462,32 @@ app.put('/api/projects/:id', (req, res) => {
                 );
             }
 
-            // General Update Log
             logActivity('project', projectId, 'updated', {
                 status: status !== currentProject.status ? status : undefined,
-                deadline: deadline !== currentProject.deadline ? deadline : undefined,
-                priority: priority !== currentProject.priority ? priority : undefined,
                 renamed: name !== currentProject.name
             });
         })();
 
-        res.json({ success: true, ...req.body });
+        // Return the updated project object for frontend sync
+        const updatedProject = db.prepare(`
+            SELECT 
+                p.*, 
+                c.company_name as customer_name, 
+                o.offer_name, o.total as offer_total, o.status as offer_status, o.id as offer_id,
+                r.status as latest_review_status, 
+                rv.version_number as latest_review_version, 
+                r.unread_count as latest_review_unread,
+                r.id as latest_review_id, 
+                r.revisions_used
+            FROM projects p
+            LEFT JOIN customers c ON p.customer_id = c.id
+            LEFT JOIN offers o ON p.offer_id = o.id
+            LEFT JOIN reviews r ON p.id = r.project_id AND r.deleted_at IS NULL
+            LEFT JOIN review_versions rv ON r.current_version_id = rv.id
+            WHERE p.id = ? AND p.deleted_at IS NULL
+        `).get(projectId);
+
+        res.json({ success: true, project: updatedProject });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -1457,6 +1754,15 @@ app.get('/api/reviews/version/:id', (req, res) => {
     }
 });
 
+app.delete('/api/reviews/:id', (req, res) => {
+    try {
+        db.prepare('UPDATE reviews SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/projects/:id/reviews', (req, res) => {
     try {
         const reviews = db.prepare(`
@@ -1468,7 +1774,7 @@ app.get('/api/projects/:id/reviews', (req, res) => {
                 rv.token as version_token, rv.is_token_active as is_version_token_active
             FROM reviews r
             LEFT JOIN review_versions rv ON r.current_version_id = rv.id
-            WHERE r.project_id = ?
+            WHERE r.project_id = ? AND r.deleted_at IS NULL
             ORDER BY r.created_at DESC
             `).all(req.params.id);
         res.json(reviews);

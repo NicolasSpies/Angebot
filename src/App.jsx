@@ -22,6 +22,7 @@ const ReviewPage = lazy(() => import('./pages/ReviewPage'));
 const PublicReviewPage = lazy(() => import('./pages/PublicReviewPage'));
 const TrashPage = lazy(() => import('./pages/TrashPage'));
 const AuditPage = lazy(() => import('./pages/AuditPage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 
 // Loading Fallback
 const PageLoader = () => (
@@ -69,6 +70,7 @@ function App() {
               <Route path="reviews/:token" element={<ReviewPage />} />
               <Route path="services" element={<ServicesPage />} />
               <Route path="trash" element={<TrashPage />} />
+              <Route path="notifications" element={<NotificationsPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="settings/audit" element={<AuditPage />} />
             </Route>

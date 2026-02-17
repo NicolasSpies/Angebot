@@ -21,16 +21,12 @@ const DashboardPage = () => {
         analytics: { topCategories: [], topClients: [], recentActivity: [] },
         projects: { activeProjectCount: 0, overdueProjectCount: 0, projectsByStatus: [] }
     });
-    const [auditIssues, setAuditIssues] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const loadDashboard = async () => {
             try {
-                const [data, auditData] = await Promise.all([
-                    dataService.getDashboardStats(),
-                    dataService.getAuditChecks()
-                ]);
+                const data = await dataService.getDashboardStats();
 
                 if (data && !data.error) {
                     setStats(prev => ({
@@ -43,10 +39,6 @@ const DashboardPage = () => {
                         analytics: { ...prev.analytics, ...data.analytics },
                         projects: { ...prev.projects, ...data.projects }
                     }));
-                }
-
-                if (auditData && !auditData.error) {
-                    setAuditIssues(auditData.issues || []);
                 }
             } catch (err) {
                 console.error('Failed to load dashboard stats', err);
@@ -74,30 +66,6 @@ const DashboardPage = () => {
                     </Button>
                 </div>
             </div>
-
-            {/* Audit Alerts Section */}
-            {auditIssues.length > 0 && (
-                <div className="mb-10 bg-amber-50 border border-amber-200 rounded-xl p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                        <AlertTriangle className="text-amber-600" size={20} />
-                        <h2 className="text-[16px] font-bold text-amber-900">System Health Alerts</h2>
-                        <Badge variant="warning" className="ml-auto">{auditIssues.length} issues found</Badge>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {auditIssues.slice(0, 3).map((issue, idx) => (
-                            <div key={idx} className="bg-white/60 p-3 rounded-lg border border-amber-100 flex flex-col justify-between">
-                                <div>
-                                    <p className="text-[13px] font-bold text-amber-900 mb-1">{issue.title || 'Data Integrity Issue'}</p>
-                                    <p className="text-[11px] text-amber-700 leading-relaxed">{issue.description}</p>
-                                </div>
-                                <Button variant="ghost" size="sm" className="mt-3 text-amber-600 h-8 self-start px-0 hover:bg-transparent" onClick={() => navigate('/settings/audit')}>
-                                    Fix Issue <ArrowRight size={14} className="ml-1" />
-                                </Button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
 
             {/* Quick Actions Row */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">

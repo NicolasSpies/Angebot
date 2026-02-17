@@ -372,9 +372,11 @@ const migrations = [
     'ALTER TABLE review_versions ADD COLUMN is_active INTEGER DEFAULT 1;',
     'ALTER TABLE review_versions ADD COLUMN is_pinned INTEGER DEFAULT 0;',
     'ALTER TABLE review_versions ADD COLUMN file_deleted INTEGER DEFAULT 0;',
-    'CREATE UNIQUE INDEX IF NOT EXISTS idx_offers_token ON offers(token);',
+    'CREATE INDEX IF NOT EXISTS idx_reviews_token ON reviews(token);',
     'ALTER TABLE reviews ADD COLUMN deleted_at DATETIME;',
     'CREATE INDEX IF NOT EXISTS idx_reviews_deleted_at ON reviews(deleted_at);',
+    'ALTER TABLE projects ADD COLUMN updated_at DATETIME;',
+    'UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL;',
 ];
 
 migrations.forEach(sql => {

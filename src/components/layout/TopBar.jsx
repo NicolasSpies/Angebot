@@ -20,8 +20,11 @@ const TopBar = () => {
     const [isAuditLoading, setIsAuditLoading] = useState(false);
     const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false);
     const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
+    const [auditDropdownPos, setAuditDropdownPos] = useState({ top: 0, right: 0 });
     const triggerRef = useRef(null);
     const menuRef = useRef(null);
+    const auditTriggerRef = useRef(null);
+    const auditMenuRef = useRef(null);
 
     useEffect(() => {
         loadNotifications();
@@ -41,24 +44,33 @@ const TopBar = () => {
             ) {
                 setShowNotifications(false);
             }
+            if (
+                auditTriggerRef.current && !auditTriggerRef.current.contains(event.target) &&
+                auditMenuRef.current && !auditMenuRef.current.contains(event.target)
+            ) {
+                setShowAuditPanel(false);
+            }
         };
-        if (showNotifications) {
+        if (showNotifications || showAuditPanel) {
             document.addEventListener('mousedown', handleClickOutside);
         }
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [showNotifications]);
+    }, [showNotifications, showAuditPanel]);
 
     // Close on scroll/resize
     useEffect(() => {
-        if (!showNotifications) return;
-        const close = () => setShowNotifications(false);
+        if (!showNotifications && !showAuditPanel) return;
+        const close = () => {
+            setShowNotifications(false);
+            setShowAuditPanel(false);
+        };
         window.addEventListener('scroll', close, true);
         window.addEventListener('resize', close);
         return () => {
             window.removeEventListener('scroll', close, true);
             window.removeEventListener('resize', close);
         };
-    }, [showNotifications]);
+    }, [showNotifications, showAuditPanel]);
 
     const loadNotifications = async () => {
         try {
@@ -128,6 +140,19 @@ const TopBar = () => {
             });
         }
         setShowNotifications(!showNotifications);
+        setShowAuditPanel(false);
+    };
+
+    const toggleAuditPanel = () => {
+        if (!showAuditPanel && auditTriggerRef.current) {
+            const rect = auditTriggerRef.current.getBoundingClientRect();
+            setAuditDropdownPos({
+                top: rect.bottom + 8,
+                right: window.innerWidth - rect.right,
+            });
+        }
+        setShowAuditPanel(!showAuditPanel);
+        setShowNotifications(false);
     };
 
     const handleNotificationClick = async (notification) => {
@@ -181,9 +206,9 @@ const TopBar = () => {
                 </div>
 
                 {/* Audit Shield */}
-                <div className="relative">
+                <div ref={auditTriggerRef}>
                     <button
-                        onClick={() => setShowAuditPanel(true)}
+                        onClick={toggleAuditPanel}
                         className={`w-9 h-9 flex items-center justify-center rounded-full hover:bg-[var(--bg-app)] transition-colors relative ${auditIssues.length > 0 ? 'text-amber-500' : 'text-[var(--text-secondary)]'}`}
                     >
                         <ShieldCheck size={18} />
@@ -249,114 +274,90 @@ const TopBar = () => {
                     document.body
                 )}
 
-                {/* Audit Slide-over Panel — Portal */}
+                {/* Audit Dropdown — Portal */}
                 {showAuditPanel && createPortal(
-                    <>
-                        {/* Backdrop */}
-                        <div
-                            className="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-[var(--z-modal, 1000)] animate-in fade-in duration-300"
-                            onClick={() => setShowAuditPanel(false)}
-                        />
-                        {/* Panel */}
-                        <div
-                            className="fixed top-0 right-0 h-full w-[400px] bg-[var(--bg-surface)] border-l border-[var(--border-subtle)] shadow-[var(--shadow-modal)] z-[var(--z-modal, 1000)] flex flex-col animate-in slide-in-from-right duration-500"
-                        >
-                            {/* Panel Header */}
-                            <div className="h-[64px] flex items-center justify-between px-6 border-b border-[var(--border-subtle)] bg-[var(--bg-app)]/30">
-                                <div className="flex items-center gap-3">
-                                    <ShieldCheck className="text-[var(--primary)]" size={20} />
-                                    <h2 className="text-[14px] font-black uppercase tracking-wider text-[var(--text-main)]">System Health Audit</h2>
-                                </div>
-                                <button
-                                    onClick={() => setShowAuditPanel(false)}
-                                    className="p-2 hover:bg-[var(--bg-app)] rounded-full transition-colors text-[var(--text-muted)]"
-                                >
-                                    <X size={20} />
-                                </button>
+                    <div
+                        ref={auditMenuRef}
+                        className="fixed w-[340px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-[var(--radius-lg)] shadow-[var(--shadow-floating)] overflow-hidden"
+                        style={{
+                            top: auditDropdownPos.top,
+                            right: auditDropdownPos.right,
+                            zIndex: 'var(--z-dropdown, 100)',
+                        }}
+                    >
+                        <div className="p-3 border-b border-[var(--border-subtle)] flex justify-between items-center bg-[var(--bg-app)]/50">
+                            <div className="flex items-center gap-2">
+                                <ShieldCheck className="text-amber-500" size={16} />
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-main)]">System Health</span>
                             </div>
+                            <button
+                                onClick={runAuditRefresh}
+                                className={`text-[10px] font-black text-[var(--primary)] hover:underline uppercase flex items-center gap-1 ${isAuditLoading ? 'opacity-50 pointer-events-none' : ''}`}
+                            >
+                                <RefreshCw size={10} className={isAuditLoading ? 'animate-spin' : ''} />
+                                REFRESH
+                            </button>
+                        </div>
 
-                            {/* Panel Content */}
-                            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                                <div className="flex justify-between items-center mb-6">
-                                    <span className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-widest">
-                                        {auditIssues.length} Issue{auditIssues.length !== 1 ? 's' : ''} Detected
-                                    </span>
-                                    <button
-                                        onClick={runAuditRefresh}
-                                        className={`flex items-center gap-2 text-[11px] font-black text-[var(--primary)] hover:underline uppercase tracking-tight ${isAuditLoading ? 'opacity-50 pointer-events-none' : ''}`}
-                                    >
-                                        <RefreshCw size={12} className={isAuditLoading ? 'animate-spin' : ''} />
-                                        Refresh
-                                    </button>
-                                </div>
-
-                                <div className="space-y-4">
-                                    {auditIssues.length > 0 ? (
-                                        auditIssues.map((issue, idx) => (
-                                            <div
-                                                key={idx}
-                                                className={`group flex items-stretch border rounded-[var(--radius-lg)] overflow-hidden transition-all hover:shadow-md cursor-pointer ${issue.type === 'critical'
-                                                    ? 'bg-red-50 border-red-100 hover:border-red-200'
-                                                    : 'bg-amber-50 border-amber-100 hover:border-amber-200'
-                                                    }`}
-                                                onClick={() => {
-                                                    if (issue.offerId) navigate(`/offer/preview/${issue.offerId}`);
-                                                    else if (issue.projectId) navigate(`/projects/${issue.projectId}`);
-                                                    else if (issue.customerId) navigate(`/customers`);
-                                                    setShowAuditPanel(false);
-                                                }}
-                                            >
-                                                <div className={`w-1.5 shrink-0 ${issue.type === 'critical' ? 'bg-red-500' : 'bg-amber-500'}`} />
-                                                <div className="p-4 flex-1">
-                                                    <div className="flex items-start gap-3 mb-2">
-                                                        <div className={`p-1.5 rounded-lg ${issue.type === 'critical' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
-                                                            <AlertTriangle size={16} />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2 mb-0.5">
-                                                                <h3 className={`text-[13px] font-black truncate ${issue.type === 'critical' ? 'text-red-900' : 'text-amber-900'}`}>
-                                                                    {issue.title || 'Data Discrepancy'}
-                                                                </h3>
-                                                                <Badge variant={issue.type === 'critical' ? 'danger' : 'warning'} className="text-[8px] h-3.5 px-1 py-0 font-black">
-                                                                    {issue.type.toUpperCase()}
-                                                                </Badge>
-                                                            </div>
-                                                            <p className={`text-[12px] font-medium leading-relaxed ${issue.type === 'critical' ? 'text-red-700/80' : 'text-amber-700/80'}`}>
-                                                                {issue.description}
-                                                            </p>
-                                                        </div>
-                                                        <div className="self-center text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <ChevronRight size={16} />
-                                                        </div>
+                        <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+                            {auditIssues.length > 0 ? (
+                                <div className="divide-y divide-[var(--border-subtle)]">
+                                    {auditIssues.map((issue, idx) => (
+                                        <div key={idx} className="p-4 hover:bg-[var(--bg-app)] transition-colors group/audit bg-amber-50/30">
+                                            <div className="flex gap-3 mb-3">
+                                                <div className={`p-1.5 rounded-lg shrink-0 h-fit ${issue.type === 'critical' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
+                                                    <AlertTriangle size={14} />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <h4 className="text-[13px] font-bold text-[var(--text-main)] truncate">{issue.title || 'Data Discrepancy'}</h4>
+                                                        <Badge variant={issue.type === 'critical' ? 'danger' : 'warning'} className="text-[8px] h-3.5 px-1 py-0 font-black">
+                                                            {issue.type?.toUpperCase()}
+                                                        </Badge>
                                                     </div>
+                                                    <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed line-clamp-2">
+                                                        {issue.description}
+                                                    </p>
                                                 </div>
                                             </div>
-                                        ))
-                                    ) : (
-                                        <div className="py-12 flex flex-col items-center text-center px-4">
-                                            <div className="w-16 h-16 rounded-full bg-[var(--success-bg)]/20 flex items-center justify-center text-[var(--success)] mb-4 shadow-inner">
-                                                <CheckCircle2 size={32} />
+                                            <div className="flex justify-end pr-1">
+                                                <button
+                                                    onClick={() => {
+                                                        if (issue.offerId) navigate(`/offer/preview/${issue.offerId}`);
+                                                        else if (issue.projectId) navigate(`/projects/${issue.projectId}`);
+                                                        else if (issue.customerId) navigate(`/customers`);
+                                                        else navigate(`/settings/audit`);
+                                                        setShowAuditPanel(false);
+                                                    }}
+                                                    className="flex items-center gap-1.5 text-[11px] font-black text-[var(--primary)] hover:translate-x-1 transition-transform uppercase"
+                                                >
+                                                    Fix Issue <ChevronRight size={12} />
+                                                </button>
                                             </div>
-                                            <h3 className="text-[16px] font-black text-[var(--text-main)] mb-2">System Healthy</h3>
-                                            <p className="text-[13px] text-[var(--text-secondary)] font-medium leading-relaxed">
-                                                No logical discrepancies detected. All data relationships are currently synchronized.
-                                            </p>
                                         </div>
-                                    )}
+                                    ))}
                                 </div>
-                            </div>
-
-                            {/* Panel Footer */}
-                            <div className="p-6 border-t border-[var(--border-subtle)] bg-[var(--bg-app)]/10">
-                                <div className="flex gap-3">
-                                    <Info size={16} className="text-[var(--text-muted)] shrink-0 mt-0.5" />
-                                    <p className="text-[11px] text-[var(--text-secondary)] font-semibold leading-relaxed">
-                                        Audit mode scans for logical gaps like signed offers without projects or orphaned data records.
-                                    </p>
+                            ) : (
+                                <div className="py-12 flex flex-col items-center text-center px-6">
+                                    <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-500 mb-4 shadow-sm">
+                                        <CheckCircle2 size={24} />
+                                    </div>
+                                    <h4 className="text-[14px] font-bold text-[var(--text-main)] mb-1">All Systems Healthy</h4>
+                                    <p className="text-[11px] text-[var(--text-secondary)] font-medium">No logical discrepancies detected.</p>
                                 </div>
-                            </div>
+                            )}
                         </div>
-                    </>,
+
+                        <div className="p-2 border-t border-[var(--border-subtle)] bg-[var(--bg-app)]/30 text-center">
+                            <Link
+                                to="/settings/audit"
+                                className="text-[11px] font-bold text-[var(--text-secondary)] hover:text-[var(--primary)] tracking-wide uppercase px-3 py-1 block"
+                                onClick={() => setShowAuditPanel(false)}
+                            >
+                                Open Full Audit
+                            </Link>
+                        </div>
+                    </div>,
                     document.body
                 )}
             </div>

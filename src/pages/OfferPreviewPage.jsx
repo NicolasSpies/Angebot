@@ -65,8 +65,8 @@ const OfferPreviewPage = () => {
                     <Button variant="ghost" className="font-bold text-[var(--primary)] hover:bg-[var(--primary-light)]" onClick={() => navigate(`/offer/edit/${offer.id}`)}>
                         <Pencil size={18} className="mr-2" /> Modify Proposal
                     </Button>
-                    <Button size="lg" className="shadow-lg px-8" onClick={() => window.print()}>
-                        <Download size={18} className="mr-2" /> Download Signed PDF
+                    <Button size="lg" className="shadow-lg px-8" onClick={() => window.location.href = `/api/offers/${offer.id}/signed-pdf`}>
+                        <Download size={18} className="mr-2" /> Download Signed Offer PDF
                     </Button>
                     <Button
                         size="lg"

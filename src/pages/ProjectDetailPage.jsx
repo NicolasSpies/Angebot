@@ -103,10 +103,23 @@ const ProjectDetailPage = () => {
     // --- Actions ---
 
     const handleUpdateProject = async (updates) => {
-        const updated = { ...project, ...updates };
-        setProject(updated); // Optimistic
         try {
-            await dataService.updateProject(id, updates);
+            const response = await dataService.updateProject(id, updates);
+            if (response.success && response.project) {
+                setProject(response.project);
+                // Also update customer/offer if they changed
+                if (updates.customer_id !== undefined) {
+                    setCustomer(allCustomers.find(c => c.id === updates.customer_id) || null);
+                }
+                if (updates.offer_id !== undefined) {
+                    if (updates.offer_id === null) {
+                        setOffer(null);
+                    } else {
+                        const offerData = await dataService.getOffer(updates.offer_id);
+                        setOffer(offerData);
+                    }
+                }
+            }
             return true;
         } catch (error) {
             console.error('Update failed', error);
@@ -213,7 +226,7 @@ const ProjectDetailPage = () => {
         autosaveTimerRef.current = setTimeout(async () => {
             setNotesSaving(true);
             try {
-                await dataService.updateProject(id, { ...project, strategic_notes: newValue, internal_notes: newValue });
+                await dataService.updateProject(id, { strategic_notes: newValue, internal_notes: newValue });
                 setLastSaved(new Date().toISOString());
             } catch (error) {
                 console.error('Autosave failed', error);
@@ -308,16 +321,13 @@ const ProjectDetailPage = () => {
                                     {project.name === '' && <span className="absolute left-0 top-0 text-3xl font-extrabold text-[var(--text-muted)] pointer-events-none opacity-30">Unnamed Project</span>}
                                 </div>
 
-                                <div className="flex items-center gap-2 h-8">
-                                    {nameSaving && <span className="text-[11px] font-bold text-[var(--text-muted)] animate-pulse uppercase tracking-wider">Saving...</span>}
-                                    {!nameSaving && !nameError && project.name && <span className="text-[11px] font-bold text-[var(--success)] uppercase tracking-wider opacity-60">Saved</span>}
-                                    {nameError && <span className="text-[11px] font-bold text-[var(--danger)] uppercase tracking-wider">{nameError}</span>}
-                                </div>
+                                {nameSaving && <div className="animate-spin rounded-full h-3 w-3 border-[1px] border-[var(--primary)] border-t-transparent" />}
+                                {nameError && <span className="text-[11px] font-bold text-[var(--danger)] uppercase tracking-wider">{nameError}</span>}
                             </div>
                         </div>
 
                         {/* Metadata Row */}
-                        <div className="flex items-center gap-6 text-[13px] font-medium text-[var(--text-secondary)]">
+                        <div className="flex items-center gap-4 text-[13px] font-medium text-[var(--text-secondary)]">
                             <div className="flex items-center gap-2">
                                 <span className={`w-2.5 h-2.5 rounded-full ${project.status === 'done' ? 'bg-[var(--success)]' : project.status === 'in_progress' ? 'bg-[var(--primary)]' : project.status === 'cancelled' ? 'bg-[var(--danger)]' : project.status === 'on_hold' ? 'bg-amber-500' : 'bg-slate-400'} shadow-[0_0_8px_currentColor]`} />
                                 <span className="uppercase tracking-wider font-extrabold text-[11px] text-[var(--text-main)]">
@@ -325,47 +335,99 @@ const ProjectDetailPage = () => {
                                 </span>
                             </div>
 
-                            <SearchablePicker
-                                options={allCustomers.map(c => ({ value: c.id, label: c.company_name, subLabel: c.email }))}
-                                value={project.customer_id}
-                                onChange={(opt) => handleUpdateProject({ customer_id: opt.value }).then(loadProject)}
-                                trigger={
-                                    customer ? (
-                                        <div className="flex items-center gap-2 hover:text-[var(--primary)] transition-colors cursor-pointer">
-                                            <Globe size={14} className="text-[var(--text-muted)]" />
-                                            {customer.company_name}
-                                        </div>
-                                    ) : (
-                                        <div className="flex items-center gap-2 text-[var(--primary)] hover:underline cursor-pointer">
+                            {/* Client Chip */}
+                            {customer ? (
+                                <div className="flex items-center gap-1.5 p-1 px-2.5 bg-[var(--bg-active)] hover:bg-[var(--bg-hover)] rounded-full border border-[var(--border)] transition-all group/chip">
+                                    <div
+                                        className="flex items-center gap-1.5 cursor-pointer hover:text-[var(--primary)] transition-colors"
+                                        onClick={() => navigate(`/customers/${customer.id}`)}
+                                    >
+                                        <Globe size={14} className="text-[var(--text-muted)]" />
+                                        <span className="font-bold text-[12px] text-[var(--text-main)]">{customer.company_name}</span>
+                                    </div>
+                                    <div className="w-px h-3 bg-[var(--border)] mx-1" />
+                                    <SearchablePicker
+                                        options={[
+                                            { value: null, label: 'Unlink Client', color: 'var(--danger)' },
+                                            ...allCustomers.map(c => ({ value: c.id, label: c.company_name, subLabel: c.email }))
+                                        ]}
+                                        value={project.customer_id}
+                                        onChange={(opt) => handleUpdateProject({ customer_id: opt.value }).then(loadProject)}
+                                        trigger={
+                                            <div className="p-1 hover:bg-[var(--bg-app)] rounded-full transition-colors cursor-pointer">
+                                                <Pencil size={12} className="text-[var(--text-muted)] group-hover/chip:text-[var(--primary)]" />
+                                            </div>
+                                        }
+                                    />
+                                </div>
+                            ) : (
+                                <SearchablePicker
+                                    options={allCustomers.map(c => ({ value: c.id, label: c.company_name, subLabel: c.email }))}
+                                    value={project.customer_id}
+                                    onChange={(opt) => handleUpdateProject({ customer_id: opt.value }).then(loadProject)}
+                                    trigger={
+                                        <div className="flex items-center gap-2 text-[var(--primary)] font-bold hover:underline cursor-pointer">
                                             <Plus size={14} /> Link Client
                                         </div>
-                                    )
-                                }
-                            />
+                                    }
+                                />
+                            )}
 
-                            <SearchablePicker
-                                options={allOffers.filter(o => !project.offer_id || o.id !== project.offer_id).map(o => ({
-                                    value: o.id,
-                                    label: o.offer_name || `Offer #${o.id}`,
-                                    subLabel: `${formatCurrency(o.total)} • Status: ${o.status || 'Draft'}`,
-                                    data: o
-                                }))}
-                                value={project.offer_id}
-                                onChange={(opt) => handleLinkOffer(opt.data)}
-                                placeholder="Search by offer name or ID..."
-                                trigger={
-                                    offer ? (
-                                        <div className="flex items-center gap-2 hover:text-[var(--primary)] transition-colors cursor-pointer">
-                                            <FileText size={14} className="text-[var(--text-muted)]" />
-                                            {offer.offer_name}
-                                        </div>
-                                    ) : (
-                                        <div className="flex items-center gap-2 text-[var(--primary)] hover:underline cursor-pointer">
+                            {/* Offer Chip */}
+                            {offer ? (
+                                <div className="flex items-center gap-1.5 p-1 px-2.5 bg-[var(--bg-active)] hover:bg-[var(--bg-hover)] rounded-full border border-[var(--border)] transition-all group/chip">
+                                    <div
+                                        className="flex items-center gap-1.5 cursor-pointer hover:text-[var(--primary)] transition-colors"
+                                        onClick={() => navigate(`/offers/${offer.id}`)}
+                                    >
+                                        <FileText size={14} className="text-[var(--text-muted)]" />
+                                        <span className="font-bold text-[12px] text-[var(--text-main)]">{offer.offer_name}</span>
+                                    </div>
+                                    <div className="w-px h-3 bg-[var(--border)] mx-1" />
+                                    <SearchablePicker
+                                        options={[
+                                            { value: null, label: 'Unlink Offer', color: 'var(--danger)' },
+                                            ...allOffers.filter(o => !project.offer_id || o.id !== project.offer_id).map(o => ({
+                                                value: o.id,
+                                                label: o.offer_name || `Offer #${o.id}`,
+                                                subLabel: `${formatCurrency(o.total)} • Status: ${o.status || 'Draft'}`,
+                                                data: o
+                                            }))
+                                        ]}
+                                        value={project.offer_id}
+                                        onChange={(opt) => {
+                                            if (opt.value === null) {
+                                                handleUpdateProject({ offer_id: null }).then(loadProject);
+                                            } else {
+                                                handleLinkOffer(opt.data);
+                                            }
+                                        }}
+                                        placeholder="Search by offer name or ID..."
+                                        trigger={
+                                            <div className="p-1 hover:bg-[var(--bg-app)] rounded-full transition-colors cursor-pointer">
+                                                <Pencil size={12} className="text-[var(--text-muted)] group-hover/chip:text-[var(--primary)]" />
+                                            </div>
+                                        }
+                                    />
+                                </div>
+                            ) : (
+                                <SearchablePicker
+                                    options={allOffers.map(o => ({
+                                        value: o.id,
+                                        label: o.offer_name || `Offer #${o.id}`,
+                                        subLabel: `${formatCurrency(o.total)} • Status: ${o.status || 'Draft'}`,
+                                        data: o
+                                    }))}
+                                    value={project.offer_id}
+                                    onChange={(opt) => handleLinkOffer(opt.data)}
+                                    placeholder="Search by offer name or ID..."
+                                    trigger={
+                                        <div className="flex items-center gap-2 text-[var(--primary)] font-bold hover:underline cursor-pointer">
                                             <LinkIcon size={14} /> Link Offer
                                         </div>
-                                    )
-                                }
-                            />
+                                    }
+                                />
+                            )}
 
                             <span className="flex items-center gap-2 text-[var(--text-muted)]">
                                 <Clock size={14} /> Created {formatDate(project.created_at)}
@@ -466,12 +528,7 @@ const ProjectDetailPage = () => {
                                 Strategic Notes
                             </h3>
                             <div className="flex items-center gap-2">
-                                {notesSaving && <span className="text-[11px] text-[var(--text-muted)] animate-pulse">Saving...</span>}
-                                {!notesSaving && lastSaved && (
-                                    <span className="text-[11px] text-[var(--text-muted)] opacity-50">
-                                        Saved {new Date(lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                )}
+                                {notesSaving && <div className="animate-spin rounded-full h-3 w-3 border-[1px] border-[var(--warning)] border-t-transparent" />}
                             </div>
                         </div>
                         <Textarea
@@ -548,7 +605,7 @@ const ProjectDetailPage = () => {
                 isDestructive={false}
             />
 
-        </div>
+        </div >
     );
 };
 

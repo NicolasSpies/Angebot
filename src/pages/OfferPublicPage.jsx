@@ -83,11 +83,7 @@ const OfferPublicPage = () => {
             setTempSignature(null);
             setApiError(null);
 
-            // 5. Trigger Browser Print
-            // User sees the signed state and success toast first.
-            setTimeout(() => {
-                window.print();
-            }, 1000);
+            // 5. Success state handled by re-rendering with signed status
 
         } catch (err) {
             console.error('Signing failed:', err);
@@ -149,11 +145,10 @@ const OfferPublicPage = () => {
                         size="lg"
                         className="shadow-sm bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] border-[var(--primary)] hover:border-[var(--primary-dark)]"
                         onClick={() => {
-                            // Ensure non-print elements are hidden if they aren't already via CSS
-                            window.print();
+                            window.location.href = `/api/offers/${offer.id}/signed-pdf`;
                         }}
                     >
-                        <Download size={18} className="mr-2" /> Download Signed PDF
+                        <Download size={18} className="mr-2" /> Download Signed Offer PDF
                     </Button>
 
                     {(offer.status === 'sent' || offer.status === 'draft') && (
@@ -228,7 +223,7 @@ const OfferPublicPage = () => {
             {offer.status === 'signed' && !showSignModal && (
                 <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-[var(--success)] text-white px-6 py-3 rounded-full shadow-floating z-50 animate-in fade-in slide-in-from-bottom-4 flex items-center gap-2 no-print">
                     <CheckCircle size={20} />
-                    <span className="font-bold">Offer signed successfully! Downloading PDF...</span>
+                    <span className="font-bold">Offer signed successfully! You can now download your copy.</span>
                 </div>
             )}
 

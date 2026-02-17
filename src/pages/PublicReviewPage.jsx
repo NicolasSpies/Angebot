@@ -36,55 +36,118 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
     );
 };
 
+const ClientOnboardingModal = ({ isOpen, onSubmit, data }) => {
+    const [formData, setFormData] = useState({ firstName: '', lastName: '', email: '', company: '' });
+    const [isValidEmail, setIsValidEmail] = useState(true);
+
+    if (!isOpen) return null;
+
+    const validateEmail = (email) => {
+        return /\S+@\S+\.\S+/.test(email);
+    };
+
+    const handleEmailChange = (e) => {
+        const email = e.target.value;
+        setFormData({ ...formData, email });
+        setIsValidEmail(validateEmail(email));
+    };
+
+    const isComplete = formData.firstName.trim() && formData.lastName.trim() && formData.email.trim() && validateEmail(formData.email);
+
+    return (
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-[2.5rem] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] max-w-lg w-full p-10 animate-in zoom-in-95 duration-300">
+                <div className="w-16 h-16 bg-[var(--primary-light)] text-[var(--primary)] rounded-2xl flex items-center justify-center mb-8 mx-auto shadow-sm">
+                    <User size={32} />
+                </div>
+
+                <div className="text-center mb-10">
+                    <h2 className="text-2xl font-black text-[var(--text-main)] mb-3">Welcome to the Review</h2>
+                    <p className="text-[var(--text-secondary)] text-sm leading-relaxed px-4">
+                        Please provide your details to begin reviewing <strong>{data?.title || 'this document'}</strong>. This helps us track feedback and communicate progress.
+                    </p>
+                </div>
+
+                <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-5">
+                        <div className="space-y-2">
+                            <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em] ml-1">First Name</label>
+                            <input
+                                type="text"
+                                autoFocus
+                                value={formData.firstName}
+                                onChange={e => setFormData({ ...formData, firstName: e.target.value })}
+                                className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-[var(--primary)]/20 focus:border-[var(--primary)] transition-all text-[15px] font-medium"
+                                placeholder="Sabrina"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em] ml-1">Last Name</label>
+                            <input
+                                type="text"
+                                value={formData.lastName}
+                                onChange={e => setFormData({ ...formData, lastName: e.target.value })}
+                                className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-[var(--primary)]/20 focus:border-[var(--primary)] transition-all text-[15px] font-medium"
+                                placeholder="Cremer"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em] ml-1">Email Address</label>
+                        <input
+                            type="email"
+                            value={formData.email}
+                            onChange={handleEmailChange}
+                            className={`w-full p-4 bg-gray-50 border ${!isValidEmail && formData.email ? 'border-red-300 focus:border-red-500 ring-red-100' : 'border-gray-100 focus:border-[var(--primary)] focus:ring-[var(--primary)]/20'} rounded-2xl outline-none transition-all text-[15px] font-medium`}
+                            placeholder="sabrina@example.com"
+                        />
+                        {!isValidEmail && formData.email && <p className="text-[10px] text-red-500 font-bold ml-1">Please enter a valid email address.</p>}
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em] ml-1">Company (Optional)</label>
+                        <input
+                            type="text"
+                            value={formData.company}
+                            onChange={e => setFormData({ ...formData, company: e.target.value })}
+                            className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-[var(--primary)]/20 focus:border-[var(--primary)] transition-all text-[15px] font-medium"
+                            placeholder="Acme Inc."
+                        />
+                    </div>
+                </div>
+
+                <div className="mt-12">
+                    <button
+                        disabled={!isComplete}
+                        onClick={() => onSubmit(formData)}
+                        className="w-full btn-primary py-5 rounded-[1.5rem] text-[15px] font-black uppercase tracking-widest shadow-xl shadow-[var(--primary)]/20 disabled:opacity-30 disabled:grayscale transition-all hover:translate-y-[-2px] active:translate-y-[0px]"
+                    >
+                        Start Review
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const IdentityModal = ({ isOpen, onClose, onSubmit, action }) => {
     const [formData, setFormData] = useState({ firstName: '', lastName: '', email: '', confirm: false });
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[210] flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8">
                 <div className="w-12 h-12 bg-[var(--primary-light)] text-[var(--primary)] rounded-xl flex items-center justify-center mb-6">
                     <User size={24} />
                 </div>
-                <h2 className="text-xl font-bold text-[var(--text-main)] mb-2">Confirm Your Identity</h2>
+                <h2 className="text-xl font-bold text-[var(--text-main)] mb-2">Final Confirmation</h2>
                 <p className="text-[var(--text-secondary)] text-sm mb-6">
-                    Please provide your details to complete the <strong>{action === 'approve' ? 'Approval' : 'Change Request'}</strong>.
+                    You are about to complete the <strong>{action === 'approve' ? 'Approval' : 'Change Request'}</strong>.
                 </p>
 
                 <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                            <label className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">First Name</label>
-                            <input
-                                type="text"
-                                value={formData.firstName}
-                                onChange={e => setFormData({ ...formData, firstName: e.target.value })}
-                                className="w-full p-3 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-xl outline-none focus:border-[var(--primary)] text-sm"
-                                placeholder="Sabrina"
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Last Name</label>
-                            <input
-                                type="text"
-                                value={formData.lastName}
-                                onChange={e => setFormData({ ...formData, lastName: e.target.value })}
-                                className="w-full p-3 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-xl outline-none focus:border-[var(--primary)] text-sm"
-                                placeholder="Cremer"
-                            />
-                        </div>
-                    </div>
-                    <div className="space-y-1.5">
-                        <label className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Email Address</label>
-                        <input
-                            type="email"
-                            value={formData.email}
-                            onChange={e => setFormData({ ...formData, email: e.target.value })}
-                            className="w-full p-3 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-xl outline-none focus:border-[var(--primary)] text-sm"
-                            placeholder="sabrina@email.com"
-                        />
-                    </div>
                     <label className="flex items-start gap-3 cursor-pointer group mt-4">
                         <input
                             type="checkbox"
@@ -101,7 +164,7 @@ const IdentityModal = ({ isOpen, onClose, onSubmit, action }) => {
                 <div className="flex gap-3 mt-8">
                     <button onClick={onClose} className="flex-1 btn-secondary py-3">Cancel</button>
                     <button
-                        disabled={!formData.firstName || !formData.lastName || !formData.email || !formData.confirm}
+                        disabled={!formData.confirm}
                         onClick={() => onSubmit(formData)}
                         className="flex-1 btn-primary py-3 disabled:opacity-50"
                     >
@@ -123,10 +186,11 @@ const PublicReviewPage = () => {
     const [numPages, setNumPages] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
     const [scale, setScale] = useState(1.2);
-    const [activeTool, setActiveTool] = useState('pin'); // 'pin', 'draw'
+    const [activeTool, setActiveTool] = useState('pin'); // 'pin', 'highlight', 'strike'
     const [showIdentityModal, setShowIdentityModal] = useState(false);
     const [pendingAction, setPendingAction] = useState(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [isMoving, setIsMoving] = useState(false);
     const [dragStart, setDragStart] = useState(null);
     const [dragEnd, setDragEnd] = useState(null);
     const [annotations, setAnnotations] = useState([]);
@@ -135,8 +199,10 @@ const PublicReviewPage = () => {
     const [allVersions, setAllVersions] = useState([]);
     const [newCommentPos, setNewCommentPos] = useState(null);
     const [newCommentText, setNewCommentText] = useState('');
+    const [pendingAnnotation, setPendingAnnotation] = useState(null);
+    const [editingAnnotationId, setEditingAnnotationId] = useState(null);
     const [clientIdentity, setClientIdentity] = useState(() => {
-        const saved = localStorage.getItem(`client_identity_${token}`);
+        const saved = sessionStorage.getItem(`client_identity_${token}`);
         return saved ? JSON.parse(saved) : null;
     });
     const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -228,7 +294,7 @@ const PublicReviewPage = () => {
 
         const { width: drawWidth, height: drawHeight } = overlayRef.current;
         annotations.filter(ann => ann.page === currentPage).forEach(ann => {
-            const isHighlighted = ann.id === highlightedPinId;
+            const isHighlighted = ann.id === highlightedPinId || ann.id === editingAnnotationId;
 
             if (ann.type === 'highlight' && ann.data) {
                 ctx.fillStyle = isHighlighted ? 'rgba(255, 255, 0, 0.5)' : 'rgba(255, 255, 0, 0.3)';
@@ -239,19 +305,21 @@ const PublicReviewPage = () => {
                     ann.data.height * drawHeight / 100
                 );
                 if (isHighlighted) {
-                    ctx.strokeStyle = 'rgba(255, 165, 0, 0.8)';
+                    ctx.strokeStyle = '#FB923C';
                     ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
                     ctx.strokeRect(
                         ann.data.x * drawWidth / 100,
                         ann.data.y * drawHeight / 100,
                         ann.data.width * drawWidth / 100,
                         ann.data.height * drawHeight / 100
                     );
+                    ctx.setLineDash([]);
                 }
             } else if (ann.type === 'strike' && ann.data) {
                 ctx.beginPath();
                 ctx.strokeStyle = isHighlighted ? 'rgba(255, 0, 0, 1)' : 'rgba(255, 0, 0, 0.6)';
-                ctx.lineWidth = isHighlighted ? 3 : 2;
+                ctx.lineWidth = isHighlighted ? 4 : 2;
                 const midY = (ann.data.y + ann.data.height / 2) * drawHeight / 100;
                 ctx.moveTo(ann.data.x * drawWidth / 100, midY);
                 ctx.lineTo((ann.data.x + ann.data.width) * drawWidth / 100, midY);
@@ -266,57 +334,164 @@ const PublicReviewPage = () => {
                 ctx.strokeStyle = 'white';
                 ctx.lineWidth = 2;
                 ctx.stroke();
+
+                if (isHighlighted) {
+                    ctx.beginPath();
+                    ctx.arc(xPos, yPos, 12, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#FB923C';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([3, 3]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
             }
         });
-    }, [annotations, currentPage, highlightedPinId]);
+
+        // Draw pending annotation
+        if (pendingAnnotation && pendingAnnotation.page === currentPage) {
+            ctx.setLineDash([5, 5]);
+            if (pendingAnnotation.type === 'highlight') {
+                ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
+                ctx.fillRect(pendingAnnotation.data.x * drawWidth / 100, pendingAnnotation.data.y * drawHeight / 100, pendingAnnotation.data.width * drawWidth / 100, pendingAnnotation.data.height * drawHeight / 100);
+                ctx.strokeStyle = '#FB923C';
+                ctx.strokeRect(pendingAnnotation.data.x * drawWidth / 100, pendingAnnotation.data.y * drawHeight / 100, pendingAnnotation.data.width * drawWidth / 100, pendingAnnotation.data.height * drawHeight / 100);
+            } else if (pendingAnnotation.type === 'strike') {
+                ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+                ctx.lineWidth = 3;
+                const midY = (pendingAnnotation.data.y + pendingAnnotation.data.height / 2) * drawHeight / 100;
+                ctx.beginPath();
+                ctx.moveTo(pendingAnnotation.data.x * drawWidth / 100, midY);
+                ctx.lineTo((pendingAnnotation.data.x + pendingAnnotation.data.width) * drawWidth / 100, midY);
+                ctx.stroke();
+            } else if (pendingAnnotation.type === 'comment') {
+                ctx.beginPath();
+                ctx.arc(pendingAnnotation.x * drawWidth / 100, pendingAnnotation.y * drawHeight / 100, 8, 0, Math.PI * 2);
+                ctx.fillStyle = '#FB923C';
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+        }
+    }, [annotations, currentPage, highlightedPinId, editingAnnotationId, pendingAnnotation]);
 
     useEffect(() => { renderPage(); }, [renderPage]);
 
     const handleMouseDown = (e) => {
-        if (activeTool !== 'highlight' && activeTool !== 'strike') return;
-        setIsDragging(true);
+        if (isReadOnly) return;
         const rect = overlayRef.current.getBoundingClientRect();
         const x = ((e.clientX - rect.left) / rect.width) * 100;
         const y = ((e.clientY - rect.top) / rect.height) * 100;
-        setDragStart({ x, y });
-        setDragEnd({ x, y });
-    };
 
-    const handleMouseMove = (e) => {
-        if (!isDragging || (activeTool !== 'highlight' && activeTool !== 'strike')) return;
-        const rect = overlayRef.current.getBoundingClientRect();
-        const x = ((e.clientX - rect.left) / rect.width) * 100;
-        const y = ((e.clientY - rect.top) / rect.height) * 100;
-        setDragEnd({ x, y });
+        // Check for clicking on existing annotation to move
+        const hit = annotations.find(ann => {
+            if (ann.page !== currentPage) return false;
+            if (ann.type === 'comment') {
+                return Math.abs(ann.x - x) < 2 && Math.abs(ann.y - y) < 2;
+            } else if (ann.data) {
+                return x >= ann.data.x && x <= ann.data.x + ann.data.width &&
+                    y >= ann.data.y && y <= ann.data.y + ann.data.height;
+            }
+            return false;
+        });
 
-        // Preview rendering
-        const ctx = overlayRef.current.getContext('2d');
-        const { width, height } = overlayRef.current;
-        ctx.clearRect(0, 0, width, height);
-        drawAnnotations();
+        if (hit) {
+            setIsMoving(true);
+            setEditingAnnotationId(hit.id);
+            setDragStart({ x, y, originalAnn: { ...hit } });
+            return;
+        }
 
-        const xMin = Math.min(dragStart.x, x);
-        const yMin = Math.min(dragStart.y, y);
-        const xMax = Math.max(dragStart.x, x);
-        const yMax = Math.max(dragStart.y, y);
-
-        if (activeTool === 'highlight') {
-            ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
-            ctx.fillRect(xMin * width / 100, yMin * height / 100, (xMax - xMin) * width / 100, (yMax - yMin) * height / 100);
-            ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
-            ctx.strokeRect(xMin * width / 100, yMin * height / 100, (xMax - xMin) * width / 100, (yMax - yMin) * height / 100);
-        } else if (activeTool === 'strike') {
-            ctx.beginPath();
-            ctx.strokeStyle = 'rgba(255, 0, 0, 0.4)';
-            ctx.lineWidth = 2;
-            const midY = (yMin + (yMax - yMin) / 2) * height / 100;
-            ctx.moveTo(xMin * width / 100, midY);
-            ctx.lineTo(xMax * width / 100, midY);
-            ctx.stroke();
+        if (activeTool === 'highlight' || activeTool === 'strike') {
+            setIsDragging(true);
+            setDragStart({ x, y });
+            setDragEnd({ x, y });
         }
     };
 
-    const handleMouseUp = async () => {
+    const handleMouseMove = (e) => {
+        if (isReadOnly) return;
+        const rect = overlayRef.current.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+        if (isMoving && editingAnnotationId) {
+            const dx = x - dragStart.x;
+            const dy = y - dragStart.y;
+            setAnnotations(prev => prev.map(ann => {
+                if (ann.id === editingAnnotationId) {
+                    if (ann.type === 'comment') {
+                        return { ...ann, x: dragStart.originalAnn.x + dx, y: dragStart.originalAnn.y + dy };
+                    } else if (ann.data) {
+                        return {
+                            ...ann,
+                            x: dragStart.originalAnn.x + dx,
+                            y: dragStart.originalAnn.y + dy,
+                            data: { ...ann.data, x: dragStart.originalAnn.data.x + dx, y: dragStart.originalAnn.data.y + dy }
+                        };
+                    }
+                }
+                return ann;
+            }));
+            return;
+        }
+
+        if (isDragging && (activeTool === 'highlight' || activeTool === 'strike')) {
+            setDragEnd({ x, y });
+
+            // Preview rendering
+            const ctx = overlayRef.current.getContext('2d');
+            const { width, height } = overlayRef.current;
+            ctx.clearRect(0, 0, width, height);
+            drawAnnotations();
+
+            const xMin = Math.min(dragStart.x, x);
+            const yMin = Math.min(dragStart.y, y);
+            const xMax = Math.max(dragStart.x, x);
+            const yMax = Math.max(dragStart.y, y);
+
+            if (activeTool === 'highlight') {
+                ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
+                ctx.fillRect(xMin * width / 100, yMin * height / 100, (xMax - xMin) * width / 100, (yMax - yMin) * height / 100);
+                ctx.strokeStyle = '#FB923C';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.strokeRect(xMin * width / 100, yMin * height / 100, (xMax - xMin) * width / 100, (yMax - yMin) * height / 100);
+                ctx.setLineDash([]);
+            } else if (activeTool === 'strike') {
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255, 0, 0, 0.4)';
+                ctx.lineWidth = 3;
+                const midY = (yMin + (yMax - yMin) / 2) * height / 100;
+                ctx.moveTo(xMin * width / 100, midY);
+                ctx.lineTo(xMax * width / 100, midY);
+                ctx.stroke();
+            }
+        }
+    };
+
+    const handleMouseUp = async (e) => {
+        if (isMoving) {
+            const finalAnn = annotations.find(a => a.id === editingAnnotationId);
+            if (finalAnn) {
+                try {
+                    await dataService.updateReviewComment(finalAnn.id, {
+                        x: finalAnn.x,
+                        y: finalAnn.y,
+                        annotation_data: finalAnn.data ? JSON.stringify(finalAnn.data) : null
+                    });
+                    toast.success('Position updated');
+                } catch (err) {
+                    toast.error('Failed to save position');
+                    // Revert? For now keep UI as is
+                }
+            }
+            setIsMoving(false);
+            setEditingAnnotationId(null);
+            return;
+        }
+
         if (!isDragging) return;
         setIsDragging(false);
 
@@ -325,36 +500,22 @@ const PublicReviewPage = () => {
         const width = Math.max(dragStart.x, dragEnd.x) - xMin;
         const height = Math.max(dragStart.y, dragEnd.y) - yMin;
 
-        if (width < 1 && height < 1) return;
-
-        try {
-            const res = await dataService.createReviewComment(data.versionId, {
-                type: activeTool,
-                annotation_data: JSON.stringify({ x: xMin, y: yMin, width, height }),
-                page_number: currentPage,
-                x: xMin,
-                y: yMin,
-                content: activeTool === 'highlight' ? 'Highlight' : 'Strike-through',
-                author_name: clientIdentity ? `${clientIdentity.firstName} ${clientIdentity.lastName}` : 'Client',
-                author_email: clientIdentity?.email || ''
-            });
-            setAnnotations([...annotations, {
-                id: res.id,
-                page: currentPage,
-                type: activeTool,
-                data: { x: xMin, y: yMin, width, height },
-                x: xMin,
-                y: yMin,
-                content: activeTool === 'highlight' ? 'Highlight' : 'Strike-through',
-                author_name: clientIdentity ? `${clientIdentity.firstName} ${clientIdentity.lastName}` : 'Client',
-                is_resolved: false
-            }]);
+        if (width < 0.5 && height < 0.5) {
             setDragStart(null);
             setDragEnd(null);
-            toast.success(`${activeTool === 'highlight' ? 'Highlight' : 'Strike-through'} added`);
-        } catch (err) {
-            toast.error('Failed to add annotation');
+            return;
         }
+
+        // Instead of API, set pending for mandatory comment
+        setPendingAnnotation({
+            type: activeTool,
+            page: currentPage,
+            x: xMin,
+            y: yMin,
+            data: { x: xMin, y: yMin, width, height }
+        });
+        setNewCommentPos({ x: xMin, y: yMin });
+        setNewCommentText('');
     };
 
     const handleCanvasClick = async (e) => {
@@ -365,7 +526,9 @@ const PublicReviewPage = () => {
         // Hit testing for Highlights and Strikes
         const hit = annotations.find(ann => {
             if (ann.page !== currentPage) return false;
-            if (ann.type === 'highlight' || ann.type === 'strike') {
+            if (ann.type === 'comment') {
+                return Math.abs(ann.x - x) < 2 && Math.abs(ann.y - y) < 2;
+            } else if (ann.data) {
                 const { x: ax, y: ay, width: aw, height: ah } = ann.data;
                 return x >= ax && x <= ax + aw && y >= ay && y <= ay + ah;
             }
@@ -373,25 +536,30 @@ const PublicReviewPage = () => {
         });
 
         if (hit) {
+            // Select and open edit modal
+            setEditingAnnotationId(hit.id);
+            setNewCommentText(hit.content);
+            setNewCommentPos({ x: hit.x, y: hit.y });
+
             const el = document.getElementById(`comment-${hit.id}`);
             if (el) {
                 el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 setHighlightedCommentId(hit.id);
-                setTimeout(() => setHighlightedCommentId(null), 3000);
             }
             return;
         }
 
         if (activeTool !== 'pin' || isReadOnly) return;
 
+        setPendingAnnotation({ type: 'comment', page: currentPage, x, y });
         setNewCommentPos({ x, y });
         setNewCommentText('');
     };
 
-    const handleActionSubmit = async (identity) => {
+    const handleActionSubmit = async (confirmData) => {
         try {
-            setClientIdentity(identity);
-            localStorage.setItem(`client_identity_${token}`, JSON.stringify(identity));
+            const identity = { ...clientIdentity };
+            // identity.firstName and lastName are already in clientIdentity
 
             let res;
             if (pendingAction === 'approve') {
@@ -411,6 +579,12 @@ const PublicReviewPage = () => {
             console.error('Action failed:', err);
             toast.error('An unexpected error occurred.');
         }
+    };
+
+    const handleOnboardingSubmit = (identity) => {
+        setClientIdentity(identity);
+        sessionStorage.setItem(`client_identity_${token}`, JSON.stringify(identity));
+        toast.success(`Welcome, ${identity.firstName}!`);
     };
 
     const confirmDelete = (id) => {
@@ -434,35 +608,51 @@ const PublicReviewPage = () => {
     };
 
     const handleCommentSubmit = async () => {
-        if (!newCommentText.trim() || !newCommentPos) return;
+        if (!newCommentText.trim()) return;
 
         try {
-            const res = await dataService.createReviewComment(data.versionId, {
-                content: newCommentText,
-                x: newCommentPos.x,
-                y: newCommentPos.y,
-                page_number: currentPage,
-                type: 'comment',
-                author_name: clientIdentity ? `${clientIdentity.firstName} ${clientIdentity.lastName}` : 'Client',
-                author_email: clientIdentity?.email || ''
-            });
+            if (editingAnnotationId) {
+                // Update existing
+                await dataService.updateReviewComment(editingAnnotationId, {
+                    content: newCommentText
+                });
+                setAnnotations(prev => prev.map(a =>
+                    a.id === editingAnnotationId ? { ...a, content: newCommentText } : a
+                ));
+                toast.success('Comment updated');
+            } else if (pendingAnnotation) {
+                // Create new
+                const res = await dataService.createReviewComment(data.versionId, {
+                    content: newCommentText,
+                    x: pendingAnnotation.x,
+                    y: pendingAnnotation.y,
+                    page_number: pendingAnnotation.page,
+                    type: pendingAnnotation.type,
+                    annotation_data: pendingAnnotation.data ? JSON.stringify(pendingAnnotation.data) : null,
+                    author_name: clientIdentity ? `${clientIdentity.firstName} ${clientIdentity.lastName}` : 'Client',
+                    author_email: clientIdentity?.email || ''
+                });
 
-            setAnnotations([...annotations, {
-                id: res.id,
-                page: currentPage,
-                type: 'comment',
-                x: newCommentPos.x,
-                y: newCommentPos.y,
-                content: newCommentText,
-                author_name: clientIdentity ? `${clientIdentity.firstName} ${clientIdentity.lastName}` : 'Client',
-                is_resolved: false
-            }]);
+                setAnnotations([...annotations, {
+                    id: res.id,
+                    page: pendingAnnotation.page,
+                    type: pendingAnnotation.type,
+                    x: pendingAnnotation.x,
+                    y: pendingAnnotation.y,
+                    data: pendingAnnotation.data,
+                    content: newCommentText,
+                    author_name: clientIdentity ? `${clientIdentity.firstName} ${clientIdentity.lastName}` : 'Client',
+                    is_resolved: false
+                }]);
+                toast.success('Annotation added');
+            }
 
             setNewCommentPos(null);
             setNewCommentText('');
-            toast.success('Comment added');
+            setPendingAnnotation(null);
+            setEditingAnnotationId(null);
         } catch (err) {
-            toast.error('Failed to add comment');
+            toast.error('Failed to save comment');
         }
     };
 
@@ -541,8 +731,9 @@ const PublicReviewPage = () => {
 
                     <div className="w-px h-10 bg-gray-100 mx-2" />
 
-                    <div className="flex items-center gap-1.5 bg-[#F1F3F5] p-1.5 rounded-2xl border border-gray-200">
+                    <div className={`flex items-center gap-1.5 bg-[#F1F3F5] p-1.5 rounded-2xl border border-gray-200 ${!clientIdentity ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
                         <button
+                            disabled={!clientIdentity}
                             onClick={() => setActiveTool('pin')}
                             className={`p-2 rounded-xl transition-all ${activeTool === 'pin' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`}
                             title="Comment Pin"
@@ -550,6 +741,7 @@ const PublicReviewPage = () => {
                             <MessageSquare size={18} />
                         </button>
                         <button
+                            disabled={!clientIdentity}
                             onClick={() => setActiveTool('highlight')}
                             className={`p-2 rounded-xl transition-all ${activeTool === 'highlight' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`}
                             title="Highlight"
@@ -557,6 +749,7 @@ const PublicReviewPage = () => {
                             <Highlighter size={18} />
                         </button>
                         <button
+                            disabled={!clientIdentity}
                             onClick={() => setActiveTool('strike')}
                             className={`p-2 rounded-xl transition-all ${activeTool === 'strike' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`}
                             title="Strike-through"
@@ -570,20 +763,21 @@ const PublicReviewPage = () => {
                     {!isReadOnly ? (
                         <>
                             <button
+                                disabled={!clientIdentity}
                                 onClick={() => { setPendingAction('request-changes'); setShowIdentityModal(true); }}
-                                className="h-11 px-6 rounded-2xl bg-white border-2 border-orange-500 text-orange-500 text-sm font-black hover:bg-orange-50 transition-all active:scale-95 shadow-sm"
+                                className={`h-11 px-6 rounded-2xl bg-white border-2 border-orange-500 text-orange-500 text-sm font-black hover:bg-orange-50 transition-all active:scale-95 shadow-sm ${!clientIdentity ? 'opacity-30' : ''}`}
                             >
                                 REQUEST CHANGES
                             </button>
                             <div className="relative group">
                                 <button
-                                    disabled={hasComments}
+                                    disabled={hasComments || !clientIdentity}
                                     onClick={() => { setPendingAction('approve'); setShowIdentityModal(true); }}
-                                    className={`h-11 px-8 rounded-2xl bg-emerald-500 text-white text-sm font-black transition-all active:scale-95 shadow-lg shadow-emerald-200 ${hasComments ? 'opacity-40 cursor-not-allowed grayscale' : 'hover:brightness-110'}`}
+                                    className={`h-11 px-8 rounded-2xl bg-emerald-500 text-white text-sm font-black transition-all active:scale-95 shadow-lg shadow-emerald-200 ${hasComments || !clientIdentity ? 'opacity-40 cursor-not-allowed grayscale' : 'hover:brightness-110'}`}
                                 >
                                     APPROVE
                                 </button>
-                                {hasComments && (
+                                {hasComments && clientIdentity && (
                                     <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-gray-900 text-white text-[10px] p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none text-center font-bold">
                                         Please resolve all comments before approving.
                                     </div>
@@ -623,7 +817,7 @@ const PublicReviewPage = () => {
                         <canvas ref={canvasRef} className="block" />
                         <canvas
                             ref={overlayRef}
-                            className={`absolute top-0 left-0 ${activeTool === 'pin' ? 'cursor-crosshair' : activeTool === 'draw' ? 'cursor-cell' : 'cursor-default'}`}
+                            className={`absolute top-0 left-0 ${activeTool === 'pin' ? 'cursor-crosshair' : 'cursor-default'}`}
                             onMouseDown={handleMouseDown}
                             onMouseMove={handleMouseMove}
                             onMouseUp={handleMouseUp}
@@ -645,7 +839,11 @@ const PublicReviewPage = () => {
                                 />
                                 <div className="flex gap-2 mt-3">
                                     <button
-                                        onClick={() => setNewCommentPos(null)}
+                                        onClick={() => {
+                                            setNewCommentPos(null);
+                                            setPendingAnnotation(null);
+                                            setEditingAnnotationId(null);
+                                        }}
                                         className="flex-1 px-3 py-2 rounded-xl text-xs font-bold text-[var(--text-secondary)] hover:bg-gray-100 transition-colors"
                                     >
                                         Cancel
@@ -654,7 +852,7 @@ const PublicReviewPage = () => {
                                         onClick={handleCommentSubmit}
                                         className="flex-1 px-3 py-2 rounded-xl bg-[var(--primary)] text-white text-xs font-black shadow-lg shadow-[var(--primary)]/20 transition-all active:scale-95"
                                     >
-                                        Add Comment
+                                        {editingAnnotationId ? 'Update' : 'Add Comment'}
                                     </button>
                                 </div>
                             </div>
@@ -704,6 +902,7 @@ const PublicReviewPage = () => {
                         highlightedCommentId={highlightedCommentId}
                         onCommentClick={(c) => {
                             setCurrentPage(c.page || 1);
+                            setEditingAnnotationId(c.id);
                             setHighlightedPinId(c.id);
                             setTimeout(() => setHighlightedPinId(null), 3000);
                         }}
@@ -711,6 +910,12 @@ const PublicReviewPage = () => {
                     />
                 )}
             </div>
+
+            <ClientOnboardingModal
+                isOpen={!clientIdentity && data}
+                onSubmit={handleOnboardingSubmit}
+                data={data}
+            />
 
             <IdentityModal
                 isOpen={showIdentityModal}
