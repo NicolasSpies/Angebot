@@ -1,16 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import { Bell, Trash2, CheckCircle, X, Info, AlertTriangle, Clock } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
-import ListPageHeader from '../components/layout/ListPageHeader';
 import { formatDate } from '../utils/dateUtils';
 import { toast } from 'react-hot-toast';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 
 const NotificationsPage = () => {
-    const { t } = useI18n();
     const [notifications, setNotifications] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false);
@@ -75,22 +72,29 @@ const NotificationsPage = () => {
 
     return (
         <div className="page-container animate-in fade-in duration-500">
-            <ListPageHeader
-                title="Notifications"
-                description="View and manage your system alerts and activity."
-                icon={Bell}
-                actions={
-                    notifications.length > 0 && (
+            {/* Block 1: Standardized Top Bar */}
+            <div className="flex items-center justify-between gap-6 mb-8">
+                {/* LEFT: Branding/Title (Optional, but let's keep it empty or use a simple breadcrumb style if needed. Product rules say remove header elements.) */}
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[var(--primary-light)] text-[var(--primary)] flex items-center justify-center shadow-sm">
+                        <Bell size={20} />
+                    </div>
+                    <h2 className="text-[18px] font-black text-[var(--text-main)] tracking-tight">Notifications</h2>
+                </div>
+
+                {/* RIGHT: Actions */}
+                <div className="flex items-center gap-4">
+                    {notifications.length > 0 && (
                         <Button
                             variant="ghost"
-                            className="text-red-500 hover:bg-red-50 font-bold"
+                            className="text-red-500 hover:bg-red-50 font-bold h-9 rounded-lg px-4"
                             onClick={() => setIsClearAllDialogOpen(true)}
                         >
                             <Trash2 size={16} className="mr-2" /> Clear All
                         </Button>
-                    )
-                }
-            />
+                    ) || <div className="h-9" />}
+                </div>
+            </div>
 
             <div className="max-w-[800px] mt-8">
                 {isLoading ? (

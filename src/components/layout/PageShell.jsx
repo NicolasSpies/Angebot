@@ -9,7 +9,7 @@ const PageShell = () => {
         <div className="flex h-screen w-full bg-[var(--bg-app)] overflow-x-hidden">
             <CommandPalette />
             {/* Fixed Sidebar */}
-            <aside className="w-[280px] bg-[var(--bg-sidebar)] border-r border-[var(--border-subtle)] flex-shrink-0 z-[var(--z-sidebar)] flex flex-col h-full">
+            <aside className="w-[240px] bg-[var(--bg-sidebar)] border-r border-[rgba(0,0,0,0.06)] flex-shrink-0 z-[var(--z-sidebar)] flex flex-col h-full">
                 <Sidebar />
             </aside>
 

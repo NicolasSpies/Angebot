@@ -1,36 +1,27 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import { formatCurrency } from '../utils/pricingEngine';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-    Plus, FileText, Eye, Edit2, Send, Link as LinkIcon, Trash2, ExternalLink,
-    LayoutGrid, List
+    Search, Plus, FileText, Eye, Edit2, Send, Link as LinkIcon, Trash2, ExternalLink
 } from 'lucide-react';
 import Button from '../components/ui/Button';
-import Card from '../components/ui/Card';
 import Table from '../components/ui/Table';
 import Skeleton from '../components/ui/Skeleton';
 import DropdownMenu from '../components/ui/DropdownMenu';
-import Select from '../components/ui/Select';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
-import { formatDateDot } from '../utils/dateUtils';
-import ListPageHeader from '../components/layout/ListPageHeader';
-import ListPageToolbar from '../components/layout/ListPageToolbar';
 import StatusPill from '../components/ui/StatusPill';
 import DueStatusIndicator from '../components/ui/DueStatusIndicator';
 import EmptyState from '../components/ui/EmptyState';
-import { getStatusColor } from '../utils/statusColors';
 import { toast } from 'react-hot-toast';
+import { getStatusColor } from '../utils/statusColors';
 
 const OffersPage = () => {
-    const { t } = useI18n();
     const navigate = useNavigate();
     const [offers, setOffers] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
-    const [viewMode, setViewMode] = useState(() => localStorage.getItem('offersViewMode') || 'list');
     const [deleteId, setDeleteId] = useState(null);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
@@ -80,11 +71,6 @@ const OffersPage = () => {
         }
     };
 
-    const handleViewModeChange = (mode) => {
-        setViewMode(mode);
-        localStorage.setItem('offersViewMode', mode);
-    };
-
     const copyLink = (token) => {
         const url = `${window.location.origin}/offer/sign/${token}`;
         navigator.clipboard.writeText(url);
@@ -108,35 +94,43 @@ const OffersPage = () => {
 
     return (
         <div className="page-container fade-in">
-            {/* Block 1: Compact Toolbar */}
-            <ListPageToolbar
-                searchProps={{
-                    value: searchTerm,
-                    onChange: setSearchTerm,
-                    placeholder: "Search by name, customer or project..."
-                }}
-                filters={
-                    <div className="flex flex-wrap bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
-                        {STATUS_OPTIONS.map(opt => (
-                            <button
-                                key={opt.value}
-                                onClick={() => setStatusFilter(opt.value)}
-                                className={`
-                                    flex items-center gap-2 px-4 h-[32px] rounded-lg text-[12px] font-bold transition-all whitespace-nowrap
-                                    ${statusFilter === opt.value
-                                        ? 'text-white shadow-sm'
-                                        : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-white/50'}
-                                `}
-                                style={statusFilter === opt.value ? {
-                                    backgroundColor: opt.color,
-                                } : {}}
-                            >
-                                {opt.label}
-                            </button>
-                        ))}
+
+            {/* Block 1: Standardized Top Bar */}
+            <div className="flex items-center justify-between gap-6 mb-6">
+                {/* LEFT: Segmented filter pills */}
+                <div className="flex bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
+                    {STATUS_OPTIONS.map(opt => (
+                        <button
+                            key={opt.value}
+                            onClick={() => setStatusFilter(opt.value)}
+                            className={`
+                                flex items-center gap-2 px-4 h-8 rounded-lg text-[12px] font-bold transition-all whitespace-nowrap
+                                ${statusFilter === opt.value
+                                    ? 'text-white shadow-sm'
+                                    : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-white/50'}
+                            `}
+                            style={statusFilter === opt.value ? {
+                                backgroundColor: opt.value === 'all' ? 'var(--primary)' : getStatusColor(opt.value).dot,
+                            } : {}}
+                        >
+                            {opt.label}
+                        </button>
+                    ))}
+                </div>
+
+                {/* RIGHT: Search + New Offer */}
+                <div className="flex items-center gap-4 flex-1 justify-end max-w-2xl">
+                    <div className="relative flex-1 max-w-xs">
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Search offers..."
+                            className="w-full h-9 pl-9 pr-4 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-[13px] font-medium outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/10 transition-all"
+                        />
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                     </div>
-                }
-                actions={
+
                     <Button
                         size="sm"
                         onClick={() => navigate('/offer/new')}
@@ -144,10 +138,9 @@ const OffersPage = () => {
                     >
                         <Plus size={16} className="mr-1.5" /> New Offer
                     </Button>
-                }
-            />
+                </div>
+            </div>
 
-            <div className="h-px bg-[var(--border-subtle)] mb-8" />
 
             <Table headers={['Offer Name', 'Customer', 'Validity', 'Total Amount', 'Status', 'Actions']}>
                 {isLoading ? (
@@ -173,7 +166,7 @@ const OffersPage = () => {
                     </tr>
                 ) : (
                     filteredOffers.map(offer => (
-                        <tr key={offer.id} className="hover:bg-[var(--bg-app)] transition-colors group border-b border-[var(--border-subtle)] last:border-0 text-left align-middle h-14">
+                        <tr key={offer.id} className="hover:bg-[var(--bg-app)] transition-colors group border-b border-[var(--border-subtle)] last:border-0 text-left align-middle h-16 cursor-pointer" onClick={() => navigate(`/offer/preview/${offer.id}`)}>
                             <td className="py-3 px-6">
                                 <div className="flex flex-col">
                                     <Link to={`/offer/preview/${offer.id}`} className="font-bold text-[14px] text-[var(--text-main)] hover:text-[var(--primary)] transition-colors mb-0.5">
@@ -195,7 +188,7 @@ const OffersPage = () => {
                             <td className="py-3 px-6 text-[14px] font-bold text-[var(--text-main)]">
                                 {formatCurrency(offer.total || 0)}
                             </td>
-                            <td className="py-3 px-6">
+                            <td className="py-3 px-6" onClick={(e) => e.stopPropagation()}>
                                 <DropdownMenu
                                     trigger={<button className="hover:opacity-80 transition-opacity"><StatusPill status={offer.status} /></button>}
                                     actions={STATUS_OPTIONS.filter(s => s.value !== 'all').map(s => ({
@@ -205,7 +198,7 @@ const OffersPage = () => {
                                     }))}
                                 />
                             </td>
-                            <td className="py-3 px-6">
+                            <td className="py-3 px-6" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-end">
                                     <DropdownMenu
                                         actions={[
@@ -227,7 +220,14 @@ const OffersPage = () => {
                                                     title: ['signed', 'declined'].includes(offer.status) ? "Offer is already finalized" : "Open public signing page"
                                                 }
                                             ] : []),
-                                            { label: 'Delete Offer', onClick: () => handleDeleteClick(offer.id), isDestructive: true, icon: Trash2 }
+                                            {
+                                                label: offer.status === 'signed' ? 'Cannot Trash Signed' : 'Move to Trash',
+                                                onClick: () => handleDeleteClick(offer.id),
+                                                isDestructive: true,
+                                                icon: Trash2,
+                                                disabled: offer.status === 'signed',
+                                                title: offer.status === 'signed' ? 'Signed offers cannot be moved to trash' : 'Move to trash'
+                                            }
                                         ]}
                                     />
                                 </div>
@@ -241,9 +241,9 @@ const OffersPage = () => {
                 isOpen={isDeleteDialogOpen}
                 onClose={() => setIsDeleteDialogOpen(false)}
                 onConfirm={confirmDelete}
-                title={t('common.delete') + ' Offer'}
-                message="Are you sure you want to delete this offer? This action cannot be undone."
-                confirmText={t('common.delete')}
+                title="Move to Trash"
+                message="Are you sure you want to move this offer to the trash? You can recover it later from the Archive Recovery page."
+                confirmText="Move to Trash"
                 isDestructive={true}
             />
         </div>

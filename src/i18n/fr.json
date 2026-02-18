@@ -7,6 +7,8 @@
         "projects": "Projets",
         "settings": "Paramètres",
         "trash": "Corbeille",
+        "portals": "Portails",
+        "reviews": "Révisions",
         "activity": "Activité"
     },
     "common": {
@@ -15,12 +17,17 @@
         "delete": "Supprimer",
         "save": "Enregistrer",
         "cancel": "Annuler",
+        "confirm": "Confirmer",
+        "view": "Voir",
+        "send": "Envoyer",
+        "link": "Copier le lien",
         "back": "Retour",
         "print": "Imprimer",
         "next": "Suivant"
     },
     "offer": {
         "title": "Nouvelle Offre",
+        "proposal_title": "Proposition Commerciale",
         "customer": "Client",
         "services": "Services",
         "total": "Montant Total",
@@ -34,7 +41,27 @@
         "step_1": "Client & Détails",
         "step_2": "Services",
         "step_3": "Finalisation",
-        "language": "Langue"
+        "language": "Langue",
+        "valid_until": "Valable jusqu'au",
+        "prepared_for": "Préparé pour",
+        "item_name": "Service/Description",
+        "quantity": "Qté",
+        "unit": "Unité",
+        "amount": "Total",
+        "strategic_notes": "Notes Stratégiques",
+        "legal_notes": "Mentions Légales",
+        "signed_by": "Signé par",
+        "cycle": {
+            "one_time": "Frais uniques",
+            "yearly": "Frais annuels",
+            "monthly": "Frais mensuels"
+        },
+        "or_divider": "OU"
+    },
+    "customer": {
+        "company_name": "Nom de l'entreprise",
+        "vat_number": "Numéro de TVA",
+        "country": "Pays"
     },
     "settings": {
         "company_name": "Nom de l'entreprise",
@@ -44,5 +71,61 @@
         "email": "E-mail pour boîte aux lettres",
         "currency": "Devise par défaut",
         "payment_terms": "Conditions de paiement"
+    },
+    "public_offer": {
+        "loading": "Chargement de la proposition...",
+        "signed_on": "Offre signée le",
+        "declined_on": "Offre déclinée le",
+        "awaiting_response": "En attente de réponse",
+        "download_pdf": "Télécharger le PDF signé",
+        "decline_btn": "Décliner l'offre",
+        "sign_btn": "Signer l'offre",
+        "processing": "Traitement...",
+        "success_msg": "Offre signée avec succès ! Vous pouvez maintenant télécharger votre copie.",
+        "signing_failed": "Échec de la signature :",
+        "powered_by": "Propulsé par"
+    },
+    "portal": {
+        "dashboard": {
+            "welcome": "Bienvenue",
+            "projects": "Vos Projets",
+            "reviews": "Révisions en attente"
+        },
+        "projects": {
+            "title": "Projets",
+            "status": "Statut",
+            "deadline": "Échéance",
+            "linked_offer": "Offre associée"
+        },
+        "reviews": {
+            "title": "Révisions",
+            "approve": "Approuver",
+            "request_changes": "Demander des modifications",
+            "comments": "Commentaires",
+            "status": {
+                "approved": "Approuvé",
+                "changes_requested": "Modifications demandées",
+                "pending": "En attente"
+            }
+        }
+    },
+    "public_review": {
+        "welcome": "Bienvenue à la révision",
+        "intro": "Veuillez fournir vos coordonnées pour commencer la révision. Cela nous aide à suivre les commentaires et à communiquer les progrès.",
+        "start_btn": "Commencer la révision",
+        "final_confirmation": "Confirmation finale",
+        "confirm_instruction": "Je confirme que je suis autorisé à fournir des commentaires et {action}.",
+        "confirm_submit": "Confirmer & Envoyer",
+        "successfully_approved": "Approuvé avec succès",
+        "viewing_history": "Affichage de l'historique uniquement",
+        "resolve_comments_msg": "Veuillez résoudre tous les commentaires avant d'approuver.",
+        "placeholder": "Ajoutez votre feedback...",
+        "update": "Mettre à jour",
+        "add_comment": "Ajouter un commentaire",
+        "on": "le",
+        "no_comments": "Pas encore de commentaires",
+        "click_to_add": "Cliquez sur le document pour en ajouter un",
+        "anonymous": "Anonyme",
+        "auto_saving": "Enregistrement automatique des modifications..."
     }
 }

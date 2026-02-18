@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import { formatCurrency } from '../utils/pricingEngine';
 import {
@@ -33,7 +32,6 @@ import { toast } from 'react-hot-toast';
 const ProjectDetailPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { t } = useI18n();
 
     // Data State
     const [project, setProject] = useState(null);
@@ -44,6 +42,7 @@ const ProjectDetailPage = () => {
 
     // UI State
     const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isMismatchDialogOpen, setIsMismatchDialogOpen] = useState(false);
     const [pendingOffer, setPendingOffer] = useState(null);
@@ -63,9 +62,23 @@ const ProjectDetailPage = () => {
     const [newTaskTitle, setNewTaskTitle] = useState('');
 
     const loadProject = useCallback(async () => {
+        if (!id) {
+            setError('Missing Project ID');
+            setIsLoading(false);
+            return;
+        }
+
         setIsLoading(true);
+        setError(null);
+        logger.data('Loading project', { projectId: id });
+
         try {
             const projectData = await dataService.getProject(id);
+            if (!projectData) {
+                setError('Project not found');
+                return;
+            }
+
             setProject(projectData);
             setNotes(projectData.strategic_notes || projectData.internal_notes || '');
             setLastSaved(projectData.updated_at);
@@ -81,21 +94,24 @@ const ProjectDetailPage = () => {
             if (projectData.customer_id) {
                 setCustomer(customers.find(c => c.id === projectData.customer_id));
             }
+
             if (projectData.offer_id) {
                 try {
                     const offerData = await dataService.getOffer(projectData.offer_id);
                     setOffer(offerData);
                 } catch (offerErr) {
-                    console.warn('Failed to load linked offer', offerErr);
+                    logger.warn('WIZARD', 'Failed to load linked offer', { offerId: projectData.offer_id, error: offerErr });
                     setOffer(null);
                 }
             } else {
                 setOffer(null);
             }
         } catch (err) {
-            console.error('Failed to load project data', err);
+            logger.error('DATA', 'Failed to load project data', err);
+            setError('Failed to load project details');
+        } finally {
+            setIsLoading(false);
         }
-        setIsLoading(false);
     }, [id]);
 
     useEffect(() => { loadProject(); }, [loadProject]);
@@ -284,8 +300,39 @@ const ProjectDetailPage = () => {
         }
     };
 
-    if (isLoading) return <div className="page-container flex items-center justify-center min-h-[400px]">Loading project...</div>;
-    if (!project) return <div className="page-container text-[var(--danger)]">Project not found.</div>;
+    if (isLoading) {
+        return (
+            <div className="page-container animate-pulse" style={{ maxWidth: '1400px', margin: '0 auto' }}>
+                <div className="h-8 w-48 bg-slate-100 rounded mb-8" />
+                <div className="h-12 w-full bg-slate-100 rounded-xl mb-12" />
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8">
+                    <div className="space-y-8">
+                        <div className="h-64 bg-slate-50 rounded-2xl" />
+                        <div className="h-48 bg-slate-50 rounded-2xl" />
+                    </div>
+                    <div className="h-96 bg-slate-50 rounded-2xl" />
+                </div>
+            </div>
+        );
+    }
+
+    if (error || !project) {
+        return (
+            <div className="page-container flex flex-col items-center justify-center min-h-[500px] text-center">
+                <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-3xl flex items-center justify-center mb-6">
+                    <AlertTriangle size={40} />
+                </div>
+                <h1 className="text-2xl font-black text-[var(--text-main)] mb-2 uppercase tracking-tight">Project Not Found</h1>
+                <p className="text-[var(--text-secondary)] font-medium mb-8 max-w-md">
+                    {error || "We couldn't find the project you're looking for. It might have been deleted or the link is invalid."}
+                </p>
+                <div className="flex gap-4">
+                    <Button variant="outline" onClick={() => navigate('/projects')}>Back to Projects</Button>
+                    <Button onClick={() => window.location.reload()}>Retry</Button>
+                </div>
+            </div>
+        );
+    }
 
     const completedTasks = (project.tasks || []).filter(t => t.completed).length;
     const totalTasks = (project.tasks || []).length;
@@ -329,7 +376,10 @@ const ProjectDetailPage = () => {
                         {/* Metadata Row */}
                         <div className="flex items-center gap-4 text-[13px] font-medium text-[var(--text-secondary)]">
                             <div className="flex items-center gap-2">
-                                <span className={`w-2.5 h-2.5 rounded-full ${project.status === 'done' ? 'bg-[var(--success)]' : project.status === 'in_progress' ? 'bg-[var(--primary)]' : project.status === 'cancelled' ? 'bg-[var(--danger)]' : project.status === 'on_hold' ? 'bg-amber-500' : 'bg-slate-400'} shadow-[0_0_8px_currentColor]`} />
+                                <span
+                                    className="w-2.5 h-2.5 rounded-full shadow-[0_0_8px_currentColor]"
+                                    style={{ backgroundColor: project.status ? getStatusColor(project.status).dot : '#9CA3AF' }}
+                                />
                                 <span className="uppercase tracking-wider font-extrabold text-[11px] text-[var(--text-main)]">
                                     {project.status ? (STATUS_LABELS[project.status] || project.status.replace('_', ' ')) : 'Unknown'}
                                 </span>
@@ -558,11 +608,11 @@ const ProjectDetailPage = () => {
                                     value={project.status}
                                     onChange={(e) => handleUpdateProject({ status: e.target.value })}
                                     options={[
-                                        { value: 'todo', label: 'To Do', color: '#64748b' },
-                                        { value: 'in_progress', label: 'In Progress', color: '#3b82f6' },
-                                        { value: 'feedback', label: 'Feedback', color: '#f59e0b' },
-                                        { value: 'done', label: 'Done', color: '#10b981' },
-                                        { value: 'cancelled', label: 'Cancelled', color: '#ef4444' }
+                                        { value: 'todo', label: 'To Do', color: getStatusColor('todo').dot },
+                                        { value: 'in_progress', label: 'In Progress', color: getStatusColor('in_progress').dot },
+                                        { value: 'feedback', label: 'Feedback', color: getStatusColor('feedback').dot },
+                                        { value: 'done', label: 'Done', color: getStatusColor('done').dot },
+                                        { value: 'cancelled', label: 'Cancelled', color: getStatusColor('cancelled').dot }
                                     ]}
                                 />
                             </div>

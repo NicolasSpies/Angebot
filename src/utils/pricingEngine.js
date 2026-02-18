@@ -12,8 +12,33 @@ export const calculateTotals = (services, discountPercent, country) => {
         };
     }
 
-    const subtotal = services.reduce((acc, s) => acc + ((s.unit_price || s.price || 0) * (s.quantity || 0)), 0);
-    const totalCost = services.reduce((acc, s) => acc + ((s.cost_price || 0) * (s.quantity || 0)), 0);
+    const subtotal = services.reduce((acc, s) => {
+        // Skip items with 'UNSET' price mode (price to be confirmed)
+        if (s.price_mode === 'UNSET') return acc;
+
+        // In OR groups, only include the selected item
+        if (s.group_type === 'OR' && !s.is_selected) return acc;
+
+        if (s.type === 'print') {
+            const supplierPrice = s.supplier_price || 0;
+            const margin = s.margin || 0;
+            const unitPrice = supplierPrice > 0 ? supplierPrice * (1 + margin / 100) : 0;
+            return acc + (unitPrice * (s.quantity || 0));
+        }
+
+        return acc + ((s.unit_price || s.price || 0) * (s.quantity || 0));
+    }, 0);
+
+    const totalCost = services.reduce((acc, s) => {
+        // Consistent skip for OR groups unselected items
+        if (s.group_type === 'OR' && !s.is_selected) return acc;
+
+        if (s.type === 'print') {
+            return acc + (s.supplier_price || 0);
+        }
+
+        return acc + ((s.cost_price || 0) * (s.quantity || 0));
+    }, 0);
 
     const discountAmount = subtotal * ((discountPercent || 0) / 100);
     const discountedSubtotal = subtotal - discountAmount;

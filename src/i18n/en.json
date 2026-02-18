@@ -1,0 +1,131 @@
+{
+    "nav": {
+        "dashboard": "Dashboard",
+        "offers": "Offers",
+        "customers": "Customers",
+        "services": "Services",
+        "projects": "Projects",
+        "reviews": "Reviews",
+        "settings": "Settings",
+        "trash": "Trash",
+        "portals": "Portals",
+        "activity": "Activity"
+    },
+    "common": {
+        "add": "Add",
+        "edit": "Edit",
+        "delete": "Delete",
+        "save": "Save",
+        "cancel": "Cancel",
+        "confirm": "Confirm",
+        "view": "View",
+        "send": "Send",
+        "link": "Copy Link",
+        "back": "Back",
+        "print": "Print",
+        "next": "Next"
+    },
+    "offer": {
+        "title": "New Offer",
+        "proposal_title": "Business Proposal",
+        "customer": "Customer",
+        "services": "Services",
+        "total": "Total Amount",
+        "subtotal": "Subtotal",
+        "vat": "VAT",
+        "discount": "Discount",
+        "status": "Status",
+        "create": "Create Offer",
+        "duplicate": "Duplicate",
+        "send_to_billit": "Send to Billit",
+        "step_1": "Customer & Details",
+        "step_2": "Services",
+        "step_3": "Finalization",
+        "language": "Language",
+        "valid_until": "Valid Until",
+        "prepared_for": "Prepared for",
+        "item_name": "Service/Description",
+        "quantity": "Qty",
+        "unit": "Unit",
+        "amount": "Amount",
+        "strategic_notes": "Strategic Notes",
+        "legal_notes": "Legal Notes",
+        "signed_by": "Signed by",
+        "cycle": {
+            "one_time": "One-time Costs",
+            "yearly": "Yearly Costs",
+            "monthly": "Monthly Costs"
+        },
+        "or_divider": "OR"
+    },
+    "customer": {
+        "company_name": "Company Name",
+        "vat_number": "VAT Number",
+        "country": "Country"
+    },
+    "settings": {
+        "company_name": "Company Name",
+        "address": "Address",
+        "vat_number": "VAT Number",
+        "logo": "Logo",
+        "email": "Email for mailbox",
+        "currency": "Default Currency",
+        "payment_terms": "Payment Terms"
+    },
+    "public_offer": {
+        "loading": "Loading proposal...",
+        "signed_on": "Offer Signed on",
+        "declined_on": "Offer Declined on",
+        "awaiting_response": "Awaiting Response",
+        "download_pdf": "Download Signed Offer PDF",
+        "decline_btn": "Decline Offer",
+        "sign_btn": "Sign Offer",
+        "processing": "Processing...",
+        "success_msg": "Offer signed successfully! You can now download your copy.",
+        "signing_failed": "Signing failed:",
+        "powered_by": "Powered by"
+    },
+    "portal": {
+        "dashboard": {
+            "welcome": "Welcome",
+            "projects": "Your Projects",
+            "reviews": "Pending Reviews"
+        },
+        "projects": {
+            "title": "Projects",
+            "status": "Status",
+            "deadline": "Deadline",
+            "linked_offer": "Linked Offer"
+        },
+        "reviews": {
+            "title": "Reviews",
+            "approve": "Approve",
+            "request_changes": "Request Changes",
+            "comments": "Comments",
+            "status": {
+                "approved": "Approved",
+                "changes_requested": "Changes Requested",
+                "pending": "Pending"
+            }
+        }
+    },
+    "public_review": {
+        "welcome": "Welcome to the Review",
+        "intro": "Please provide your details to begin reviewing. This helps us track feedback and communicate progress.",
+        "start_btn": "Start Review",
+        "final_confirmation": "Final Confirmation",
+        "confirm_instruction": "I confirm that I am authorized to provide feedback and {action}.",
+        "confirm_submit": "Confirm & Submit",
+        "successfully_approved": "Successfully Approved",
+        "viewing_history": "Viewing History Only",
+        "resolve_comments_msg": "Please resolve all comments before approving.",
+        "placeholder": "Add your feedback...",
+        "update": "Update",
+        "add_comment": "Add Comment",
+        "on": "on",
+        "no_comments": "No comments yet",
+        "click_to_add": "Click on the document to add one",
+        "anonymous": "Anonymous",
+        "auto_saving": "Auto-saving changes..."
+    }
+}

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { dataService } from '../data/dataService';
-import { useI18n } from '../i18n/I18nContext';
 import { formatCurrency } from '../utils/pricingEngine';
 import {
     Briefcase, Clock, CheckCircle, FileText, AlertTriangle,
@@ -23,7 +22,6 @@ import { formatDate } from '../utils/dateUtils';
 const CustomerDetailPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { t } = useI18n();
     const [data, setData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -77,7 +75,11 @@ const CustomerDetailPage = () => {
                             <span className="flex items-center gap-2"><FileText size={16} className="text-[var(--text-muted)]" /> <span className="uppercase font-bold text-[12px]">{customer.vat_number || 'VAT Exempt'}</span></span>
                             <span className="flex items-center gap-2">
                                 <Globe size={16} className="text-[var(--text-muted)]" />
-                                <span className="uppercase font-bold text-[12px] tracking-wider">{customer.language === 'de' ? 'German (DE)' : 'French (FR)'}</span>
+                                <span className="uppercase font-bold text-[12px] tracking-wider">
+                                    {customer.language === 'de' ? 'German (DE)' :
+                                        customer.language === 'fr' ? 'French (FR)' :
+                                            'English (EN)'}
+                                </span>
                             </span>
                         </div>
                     </div>

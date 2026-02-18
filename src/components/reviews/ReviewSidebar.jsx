@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '../../i18n/I18nContext';
 import {
     MessageSquare,
     CheckCircle2,
@@ -11,7 +12,8 @@ import {
     Strikethrough
 } from 'lucide-react';
 
-const ReviewSidebar = ({ comments, activeVersion, onCommentClick, onResolveComment, highlightedCommentId }) => {
+const ReviewSidebar = ({ comments = [], activeVersion, onCommentClick, onResolveComment, highlightedCommentId }) => {
+    const { t } = useI18n();
     // Group comments by page
     const groupedComments = (comments || []).reduce((acc, comment) => {
         const page = comment.page_number || 1;
@@ -27,9 +29,9 @@ const ReviewSidebar = ({ comments, activeVersion, onCommentClick, onResolveComme
             <div className="p-4 border-b border-[var(--border-subtle)] bg-[var(--bg-app)]/30">
                 <h3 className="font-bold text-[var(--text-main)] flex items-center gap-2">
                     <MessageSquare size={18} className="text-[var(--primary)]" />
-                    Annotations
+                    {t('portal.reviews.comments')}
                     <span className="ml-auto bg-[var(--bg-app)] text-[var(--text-secondary)] text-[11px] px-2 py-0.5 rounded-full border border-[var(--border-subtle)] font-bold">
-                        {comments.length}
+                        {comments?.length || 0}
                     </span>
                 </h3>
             </div>
@@ -40,8 +42,8 @@ const ReviewSidebar = ({ comments, activeVersion, onCommentClick, onResolveComme
                         <div className="w-12 h-12 bg-[var(--bg-app)] rounded-full flex items-center justify-center text-[var(--text-muted)] mb-4">
                             <MessageSquare size={24} />
                         </div>
-                        <p className="text-[13px] text-[var(--text-secondary)] font-medium">No comments yet</p>
-                        <p className="text-[11px] text-[var(--text-muted)] mt-1">Click on the document to add one</p>
+                        <p className="text-[13px] text-[var(--text-secondary)] font-medium">{t('public_review.no_comments')}</p>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-1">{t('public_review.click_to_add')}</p>
                     </div>
                 ) : (
                     sortedPages.map(page => (
@@ -70,7 +72,7 @@ const ReviewSidebar = ({ comments, activeVersion, onCommentClick, onResolveComme
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center justify-between mb-0.5">
                                                     <span className="text-[13px] font-bold text-[var(--text-main)] truncate">
-                                                        {comment.author_name || 'Anonymous'}
+                                                        {comment.author_name || t('public_review.anonymous')}
                                                     </span>
                                                     <span className="text-[10px] text-[var(--text-muted)] font-medium">
                                                         {new Date(comment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -91,7 +93,7 @@ const ReviewSidebar = ({ comments, activeVersion, onCommentClick, onResolveComme
                                                 className="text-[11px] font-bold text-[var(--text-secondary)] hover:text-red-500 flex items-center gap-1.5 bg-[var(--bg-app)] px-2 py-1 rounded border border-[var(--border-subtle)]"
                                             >
                                                 <Trash2 size={12} />
-                                                Delete
+                                                {t('common.delete')}
                                             </button>
                                         </div>
                                     </div>
@@ -104,7 +106,7 @@ const ReviewSidebar = ({ comments, activeVersion, onCommentClick, onResolveComme
 
             <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-app)]/10 text-[11px] text-[var(--text-muted)] font-medium flex items-center justify-center gap-2">
                 <Clock size={12} />
-                Auto-saving changes...
+                {t('public_review.auto_saving')}
             </div>
         </div>
     );

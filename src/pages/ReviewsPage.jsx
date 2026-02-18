@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import {
     FileText, Search, Filter, ArrowRight, Clock, User, Briefcase,
@@ -8,12 +7,11 @@ import {
 import StatusPill from '../components/ui/StatusPill';
 import { Link, useNavigate } from 'react-router-dom';
 import { formatDate, formatTime } from '../utils/dateUtils';
-import ListPageToolbar from '../components/layout/ListPageToolbar';
 import Button from '../components/ui/Button';
 import { toast } from 'react-hot-toast';
+import { getStatusColor } from '../utils/statusColors';
 
 const ReviewsPage = () => {
-    const { t } = useI18n();
     const navigate = useNavigate();
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -68,37 +66,42 @@ const ReviewsPage = () => {
 
     return (
         <div className="page-container fade-in">
-            <ListPageToolbar
-                searchProps={{
-                    value: searchTerm,
-                    onChange: setSearchTerm,
-                    placeholder: "Search reviews..."
-                }}
-                filters={
-                    <div className="flex flex-wrap bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
-                        {REVIEW_STATUS_OPTIONS.map(opt => (
-                            <button
-                                key={opt.value}
-                                onClick={() => setFilterStatus(opt.value)}
-                                className={`
-                                    flex items-center gap-2 px-4 h-[32px] rounded-lg text-[12px] font-bold transition-all whitespace-nowrap
-                                    ${filterStatus === opt.value
-                                        ? 'text-white shadow-sm'
-                                        : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-white/50'}
-                                `}
-                                style={filterStatus === opt.value ? {
-                                    backgroundColor: opt.color,
-                                } : {}}
-                            >
-                                {opt.label}
-                            </button>
-                        ))}
-                    </div>
-                }
-                actions={null}
-            />
+            {/* Block 1: Standardized Top Bar */}
+            <div className="flex items-center justify-between gap-6 mb-6">
+                {/* LEFT: Segmented filter pills */}
+                <div className="flex bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
+                    {REVIEW_STATUS_OPTIONS.map(opt => (
+                        <button
+                            key={opt.value}
+                            onClick={() => setFilterStatus(opt.value)}
+                            className={`
+                                flex items-center gap-2 px-4 h-8 rounded-lg text-[12px] font-bold transition-all whitespace-nowrap
+                                ${filterStatus === opt.value
+                                    ? 'text-white shadow-sm'
+                                    : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-white/50'}
+                            `}
+                            style={filterStatus === opt.value ? {
+                                backgroundColor: getStatusColor(opt.value === 'all' ? 'pending' : (opt.value === 'feedback' ? 'changes_requested' : opt.value)).dot || 'var(--primary)',
+                            } : {}}
+                        >
+                            {opt.label}
+                        </button>
+                    ))}
+                </div>
 
-            <div className="h-px bg-[var(--border-subtle)] mb-8" />
+                {/* RIGHT: Search only */}
+                <div className="relative flex-1 max-w-xs">
+                    <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Search reviews..."
+                        className="w-full h-9 pl-9 pr-4 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-[13px] font-medium outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/10 transition-all"
+                    />
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                </div>
+            </div>
+
 
             <div className="card p-0 overflow-hidden shadow-sm border-[var(--border-subtle)] rounded-[var(--radius-lg)]">
                 {loading ? (
@@ -136,7 +139,7 @@ const ReviewsPage = () => {
                         </thead>
                         <tbody className="divide-y divide-[var(--border-subtle)]">
                             {filteredReviews.map((review) => (
-                                <tr key={review.id} className="hover:bg-[var(--bg-app)]/30 transition-colors group">
+                                <tr key={review.id} className="hover:bg-[var(--bg-app)] transition-colors group border-b border-[var(--border-subtle)] last:border-0 text-left align-middle h-16 cursor-pointer" onClick={() => navigate(`/reviews/${review.token}`)}>
                                     <td className="px-6 py-3.5">
                                         <div className="flex items-center gap-3">
                                             <div className="w-7 h-7 rounded-lg bg-[var(--primary-light)] flex items-center justify-center text-[var(--primary)] text-[11px] font-bold">

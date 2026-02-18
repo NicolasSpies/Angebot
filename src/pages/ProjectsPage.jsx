@@ -1,24 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import CreateProjectModal from '../components/CreateProjectModal';
 import Button from '../components/ui/Button';
 import Table from '../components/ui/Table';
-import ListPageHeader from '../components/layout/ListPageHeader';
-import ListPageToolbar from '../components/layout/ListPageToolbar';
 import StatusPill from '../components/ui/StatusPill';
 import DueStatusIndicator from '../components/ui/DueStatusIndicator';
 import EmptyState from '../components/ui/EmptyState';
 import ProjectKanban from '../components/projects/ProjectKanban';
 import DropdownMenu from '../components/ui/DropdownMenu';
 import { getStatusColor } from '../utils/statusColors';
-import { Plus, Briefcase, FileText, LayoutGrid, List, Calendar, Zap, Rocket } from 'lucide-react';
+import { Search, Plus, Briefcase, FileText, LayoutGrid, List, Calendar, Zap, Rocket } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Select from '../components/ui/Select';
 
 const ProjectsPage = () => {
-    const { t } = useI18n();
     const navigate = useNavigate();
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [filterText, setFilterText] = useState('');
@@ -36,12 +32,12 @@ const ProjectsPage = () => {
     const [sortDir, setSortDir] = useState('asc');
 
     const PROJECT_STATUS_OPTIONS = [
-        { value: 'all', label: 'All', color: 'var(--primary)' },
-        { value: 'todo', label: 'To Do', color: '#64748b' },
-        { value: 'in_progress', label: 'In Progress', color: '#3b82f6' },
-        { value: 'feedback', label: 'Feedback', color: '#f59e0b' },
-        { value: 'done', label: 'Done', color: '#10b981' },
-        { value: 'cancelled', label: 'Cancelled', color: '#ef4444' }
+        { value: 'all', label: 'All' },
+        { value: 'todo', label: 'To Do' },
+        { value: 'in_progress', label: 'In Progress' },
+        { value: 'feedback', label: 'Feedback' },
+        { value: 'done', label: 'Done' },
+        { value: 'cancelled', label: 'Cancelled' }
     ];
 
     const STATUS_OPTIONS = ['todo', 'in_progress', 'feedback', 'done', 'cancelled'];
@@ -130,37 +126,47 @@ const ProjectsPage = () => {
 
     return (
         <div className="page-container fade-in max-w-[1600px] mx-auto pb-24">
-            {/* Block 1: Compact Toolbar */}
-            <ListPageToolbar
-                searchProps={{
-                    value: filterText,
-                    onChange: setFilterText,
-                    placeholder: "Search projects..."
-                }}
-                filters={
-                    <div className="flex flex-wrap bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
-                        {PROJECT_STATUS_OPTIONS.map(opt => (
+            {/* Block 1: Standardized Top Bar */}
+            <div className="flex items-center justify-between gap-6 mb-6">
+                {/* LEFT: Segmented filter pills */}
+                <div className="flex bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
+                    {PROJECT_STATUS_OPTIONS.map(opt => {
+                        const color = opt.value === 'all' ? 'var(--primary)' : getStatusColor(opt.value).dot;
+                        return (
                             <button
                                 key={opt.value}
                                 onClick={() => setFilterStatus(opt.value)}
                                 className={`
-                                    flex items-center gap-2 px-4 h-[32px] rounded-lg text-[12px] font-bold transition-all whitespace-nowrap
+                                    flex items-center gap-2 px-4 h-8 rounded-lg text-[12px] font-bold transition-all whitespace-nowrap
                                     ${filterStatus === opt.value
                                         ? 'text-white shadow-sm'
                                         : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-white/50'}
                                 `}
                                 style={filterStatus === opt.value ? {
-                                    backgroundColor: opt.color,
+                                    backgroundColor: color,
                                 } : {}}
                             >
                                 {opt.label}
                             </button>
-                        ))}
+                        );
+                    })}
+                </div>
+
+                {/* RIGHT: Search + Actions */}
+                <div className="flex items-center gap-4 flex-1 justify-end max-w-2xl">
+                    <div className="relative flex-1 max-w-xs">
+                        <input
+                            type="text"
+                            value={filterText}
+                            onChange={(e) => setFilterText(e.target.value)}
+                            placeholder="Search projects..."
+                            className="w-full h-9 pl-9 pr-4 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-[13px] font-medium outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/10 transition-all"
+                        />
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                     </div>
-                }
-                actions={
+
                     <div className="flex items-center gap-3">
-                        <div className="flex flex-wrap bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
+                        <div className="flex bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
                             <button
                                 onClick={() => handleViewModeChange('list')}
                                 className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-[var(--primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
@@ -184,10 +190,9 @@ const ProjectsPage = () => {
                             <Plus size={16} className="mr-1.5" /> New Project
                         </Button>
                     </div>
-                }
-            />
+                </div>
+            </div>
 
-            <div className="h-px bg-[var(--border-subtle)] mb-8" />
 
             {/* Block 3: Content */}
             {viewMode === 'list' ? (
@@ -307,7 +312,7 @@ const ProjectsPage = () => {
                                         </div>
                                     </td>
                                     <td className="py-3 px-6 text-center" onClick={(e) => e.stopPropagation()}>
-                                        {project.offer_id ? (
+                                        {project.offer_id && Number(project.offer_id) > 0 ? (
                                             <Link
                                                 to={`/offer/preview/${project.offer_id}`}
                                                 className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] border border-[var(--border-subtle)] hover:border-[var(--primary)] hover:text-[var(--primary)] hover:bg-[var(--primary-light)] transition-all"

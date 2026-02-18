@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -12,7 +11,6 @@ import Badge from '../components/ui/Badge';
 import StatusPill from '../components/ui/StatusPill';
 
 const ActivityPage = () => {
-    const { t } = useI18n();
     const navigate = useNavigate();
     const [activities, setActivities] = useState([]);
     const [isLoading, setIsLoading] = useState(true);

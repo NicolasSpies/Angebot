@@ -16,7 +16,6 @@ const StatusPill = ({ status, label, hideWaitingOn = false }) => {
                     borderColor: config.bg
                 }}
             >
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: config.dot }} />
                 {displayText.toUpperCase()}
             </span>
             {(config.waitingOn && !hideWaitingOn) && (

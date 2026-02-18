@@ -1,17 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import { Trash2, RotateCcw, AlertCircle, FileText, Briefcase, Users, Zap, Box } from 'lucide-react';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
-import ListPageHeader from '../components/layout/ListPageHeader';
 import Table from '../components/ui/Table';
 import EmptyState from '../components/common/EmptyState';
 import { toast } from 'react-hot-toast';
 
 const TrashPage = () => {
-    const { t } = useI18n();
     const [trashItems, setTrashItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -80,30 +77,41 @@ const TrashPage = () => {
 
     const getTypeLabel = (type) => {
         switch (type) {
-            case 'offers': return t('nav.offers');
-            case 'projects': return t('nav.projects');
-            case 'customers': return t('nav.customers');
-            case 'services': return t('nav.services');
+            case 'offers': return 'Offers';
+            case 'projects': return 'Projects';
+            case 'customers': return 'Customers';
+            case 'services': return 'Services';
             case 'packages': return 'Bundle';
-            case 'reviews': return t('nav.reviews') || 'Review';
+            case 'reviews': return 'Review';
             default: return type;
         }
     };
 
     return (
-        <div className="max-w-[1200px] mx-auto py-16 px-10">
-            <ListPageHeader
-                title={t('nav.trash') || 'Archive Recovery'}
-                description="Strategically recover retired assets or permanently purge discarded intelligence from your workspace directory."
-                action={
-                    trashItems.length > 0 && (
-                        <Button variant="danger" size="lg" className="px-8 shadow-lg shadow-[var(--danger)]/20" onClick={() => setShowConfirmEmpty(true)}>
+        <div className="page-container fade-in">
+            {/* Block 1: Standardized Top Bar */}
+            <div className="flex items-center justify-between gap-6 mb-8">
+                {/* LEFT: Title Area */}
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shadow-sm border border-red-100">
+                        <Trash2 size={20} />
+                    </div>
+                    <div>
+                        <h2 className="text-[18px] font-black text-[var(--text-main)] tracking-tight leading-none">Archive Recovery</h2>
+                        <p className="text-[12px] text-[var(--text-muted)] font-medium mt-1">Permanently purge or recover retired artifacts.</p>
+                    </div>
+                </div>
+
+                {/* RIGHT: Actions */}
+                <div className="flex items-center gap-4">
+                    {trashItems.length > 0 && (
+                        <Button variant="danger" className="bg-red-600 text-white hover:bg-red-700 shadow-sm hover:shadow-md transition-all font-bold rounded-lg px-6 h-10" onClick={() => setShowConfirmEmpty(true)}>
                             <Trash2 size={18} className="mr-2" />
-                            Purge All Archive
+                            Purge All
                         </Button>
-                    )
-                }
-            />
+                    )}
+                </div>
+            </div>
 
             {loading ? (
                 <div className="flex items-center justify-center p-20">
@@ -133,8 +141,8 @@ const TrashPage = () => {
                     ]}
                 >
                     {trashItems.map((item) => (
-                        <tr key={`${item.type}-${item.id}`} className="hover:bg-[var(--bg-main)]/50 transition-colors group border-b border-[var(--border)] last:border-0">
-                            <td className="px-8 py-6">
+                        <tr key={`${item.type}-${item.id}`} className="hover:bg-[var(--bg-app)] transition-colors group border-b border-[var(--border-subtle)] last:border-0 text-left align-middle h-16">
+                            <td className="px-6 py-3">
                                 <div className="flex items-center gap-4">
                                     <div className="p-2.5 rounded-xl bg-white border border-[var(--border)] text-[var(--text-muted)] shadow-sm group-hover:text-[var(--primary)] transition-colors">
                                         {getItemIcon(item.type)}
@@ -144,13 +152,13 @@ const TrashPage = () => {
                                     </Badge>
                                 </div>
                             </td>
-                            <td className="px-8 py-6 font-extrabold text-[var(--text-main)] text-[15px]">
+                            <td className="px-6 py-3 font-bold text-[var(--text-main)] text-[14px]">
                                 {item.name}
                             </td>
-                            <td className="px-8 py-6 text-[var(--text-muted)] font-bold text-[13px] uppercase tracking-tight">
+                            <td className="px-6 py-3 text-[var(--text-muted)] font-medium text-[13px]">
                                 {new Date(item.deleted_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
                             </td>
-                            <td className="px-8 py-6 text-right">
+                            <td className="px-6 py-3 text-right">
                                 <div className="flex justify-end gap-2">
                                     <button
                                         onClick={() => handleRestore(item.type, item.id)}

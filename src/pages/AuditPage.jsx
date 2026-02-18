@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import { ShieldCheck, AlertTriangle, ArrowRight, RefreshCw, CheckCircle2, Info, ChevronRight } from 'lucide-react';
 import Card from '../components/ui/Card';
@@ -8,7 +7,6 @@ import Badge from '../components/ui/Badge';
 import { useNavigate } from 'react-router-dom';
 
 const AuditPage = () => {
-    const { t } = useI18n();
     const navigate = useNavigate();
     const [issues, setIssues] = useState([]);
     const [isLoading, setIsLoading] = useState(true);

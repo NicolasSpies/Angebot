@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import { useI18n } from '../../i18n/I18nContext';
 import ConfirmationDialog from '../ui/ConfirmationDialog';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 
 const CustomerForm = ({ customer, onSave, onDelete, onCancel }) => {
-    const { t } = useI18n();
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [formData, setFormData] = useState(customer || {
         company_name: '',
@@ -17,7 +15,7 @@ const CustomerForm = ({ customer, onSave, onDelete, onCancel }) => {
         address: '',
         city: '',
         postal_code: '',
-        language: 'de',
+        language: 'en',
         country: 'BE',
         vat_number: ''
     });
@@ -39,7 +37,7 @@ const CustomerForm = ({ customer, onSave, onDelete, onCancel }) => {
                 <h3 className="text-[12px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] border-b border-[var(--border)] pb-2">Institutional Identity</h3>
                 <div className="grid grid-2 gap-6">
                     <Input
-                        label={t('customer.company_name')}
+                        label="Company Name"
                         name="company_name"
                         value={formData.company_name}
                         onChange={handleChange}
@@ -47,7 +45,7 @@ const CustomerForm = ({ customer, onSave, onDelete, onCancel }) => {
                         placeholder="e.g. Acme Corp"
                     />
                     <Input
-                        label={t('customer.vat_number')}
+                        label="VAT Number"
                         name="vat_number"
                         value={formData.vat_number}
                         onChange={handleChange}
@@ -122,7 +120,7 @@ const CustomerForm = ({ customer, onSave, onDelete, onCancel }) => {
                     </div>
                     <div className="grid grid-2 gap-6">
                         <Select
-                            label={t('customer.country')}
+                            label="Country"
                             name="country"
                             value={formData.country}
                             onChange={handleChange}
@@ -130,15 +128,18 @@ const CustomerForm = ({ customer, onSave, onDelete, onCancel }) => {
                                 { value: 'BE', label: 'Belgium' },
                                 { value: 'DE', label: 'Germany' },
                                 { value: 'FR', label: 'France' },
-                                { value: 'LU', label: 'Luxembourg' }
+                                { value: 'LU', label: 'Luxembourg' },
+                                { value: 'US', label: 'United States' },
+                                { value: 'GB', label: 'United Kingdom' }
                             ]}
                         />
                         <Select
-                            label={t('offer.language')}
+                            label="Preferred Language"
                             name="language"
                             value={formData.language}
                             onChange={handleChange}
                             options={[
+                                { value: 'en', label: 'English (Default)' },
                                 { value: 'de', label: 'Deutsch' },
                                 { value: 'fr', label: 'Français' }
                             ]}
@@ -155,15 +156,15 @@ const CustomerForm = ({ customer, onSave, onDelete, onCancel }) => {
                         type="button"
                         className="px-6"
                     >
-                        {t('common.delete')}
+                        Delete Customer
                     </Button>
                 )}
                 <div className="flex gap-4 ml-auto">
                     <Button variant="ghost" onClick={onCancel} type="button" className="px-6 font-bold">
-                        {t('common.cancel')}
+                        Cancel
                     </Button>
                     <Button variant="primary" type="submit" className="px-10 shadow-lg">
-                        {t('common.save')}
+                        Save Identity
                     </Button>
                 </div>
             </div>
@@ -177,9 +178,9 @@ const CustomerForm = ({ customer, onSave, onDelete, onCancel }) => {
                         onCancel(); // Close the modal after delete
                     }
                 }}
-                title={t('common.delete') + ' Customer'}
+                title="Delete Customer"
                 message="Are you sure you want to delete this customer? All associated offers will also be deleted. This action cannot be undone."
-                confirmText={t('common.delete')}
+                confirmText="Delete"
                 isDestructive={true}
             />
         </form>

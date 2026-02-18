@@ -69,9 +69,6 @@ const StatusSelect = ({ value, onChange, options, className = '' }) => {
                             className={`w-full flex items-center justify-between px-3 py-2 rounded-[var(--radius-md)] transition-colors text-left ${value === opt.value ? 'bg-[var(--bg-active)]' : 'hover:bg-[var(--bg-app)]'}`}
                         >
                             <StatusPill status={opt.value} label={opt.label} />
-                            {value === opt.value && (
-                                <div className="w-1.5 h-1.5 rounded-full bg-[var(--text-main)] ml-2" />
-                            )}
                         </button>
                     ))}
                 </div>,

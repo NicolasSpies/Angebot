@@ -7,7 +7,7 @@ import { Search, Package, Check } from 'lucide-react';
 import Select from '../ui/Select';
 
 const BundleForm = ({ initialData, onSave, onCancel }) => {
-    const { t, locale } = useI18n();
+    const locale = 'en'; // Bundles in admin are managed in English
     const [formData, setFormData] = useState({
         name: '',
         description: '',
@@ -249,8 +249,8 @@ const BundleForm = ({ initialData, onSave, onCancel }) => {
             </div>
 
             <div className="flex justify-end gap-3 pt-6 border-t border-[var(--border-subtle)]">
-                <Button variant="ghost" onClick={onCancel}>{t('common.cancel')}</Button>
-                <Button type="submit" className="px-8">{t('common.save')}</Button>
+                <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+                <Button type="submit" className="px-8">Save Bundle</Button>
             </div>
         </form>
     );

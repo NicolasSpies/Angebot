@@ -7,7 +7,6 @@ import Button from '../ui/Button';
 import { Plus, X, Check } from 'lucide-react';
 
 const ServiceForm = ({ initialData, onSave, onCancel }) => {
-    const { t } = useI18n();
     const [settings, setSettings] = useState(null);
     const [formData, setFormData] = useState({
         category: '',
@@ -307,10 +306,10 @@ const ServiceForm = ({ initialData, onSave, onCancel }) => {
 
             <div className="flex justify-end gap-3 pt-6 border-t border-[var(--border-subtle)]">
                 <Button type="button" variant="ghost" onClick={onCancel}>
-                    {t('common.cancel')}
+                    Cancel
                 </Button>
                 <Button type="submit" className="px-8">
-                    {t('common.save')}
+                    Save Changes
                 </Button>
             </div>
         </form>

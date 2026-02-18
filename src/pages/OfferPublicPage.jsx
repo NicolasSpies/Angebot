@@ -16,7 +16,7 @@ const OfferPublicPage = () => {
     const { token } = useParams();
     // ... (omitting unchanged lines for brevity in thought, but tool needs exact target content)
 
-    const { t } = useI18n();
+    const { t, setLocale } = useI18n();
     const [offer, setOffer] = useState(null);
     const [settings, setSettings] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -41,6 +41,9 @@ const OfferPublicPage = () => {
             if (oData.error) throw new Error(oData.error);
             setOffer(oData);
             setSettings(sData);
+            if (oData.language) {
+                setLocale(oData.language);
+            }
         } catch (err) {
             console.error(err);
             toast.error('Failed to load offer');
@@ -74,7 +77,8 @@ const OfferPublicPage = () => {
 
             const response = await dataService.signOffer(token, {
                 ...signatureData,
-                pdfUrl: uploadRes.url // Storing signature image URL here
+                pdfUrl: uploadRes.url, // Storing signature image URL here
+                items: offer.items // Passing selected items to persist selections
             });
 
             // 4. Update State
@@ -109,7 +113,40 @@ const OfferPublicPage = () => {
         }
     };
 
-    if (isLoading) return <div className="flex items-center justify-center min-h-screen text-[var(--text-muted)] font-medium">Loading proposal...</div>;
+    const handleSelectItem = (itemId, groupId) => {
+        if (!offer || offer.status !== 'sent') return;
+
+        setOffer(prev => ({
+            ...prev,
+            items: prev.items.map(item => {
+                if (item.group_id === groupId) {
+                    return { ...item, is_selected: item.id === itemId ? 1 : 0 };
+                }
+                return item;
+            })
+        }));
+    };
+
+    const areAllVariantsSelected = () => {
+        if (!offer || !offer.items) return true;
+
+        const groups = {};
+        offer.items.forEach(item => {
+            if (item.group_id) {
+                if (!groups[item.group_id]) groups[item.group_id] = [];
+                groups[item.group_id].push(item);
+            }
+        });
+
+        return Object.values(groups).every(groupItems =>
+            groupItems.some(item => item.is_selected === 1 || item.is_selected === true)
+        );
+    };
+
+    const allSelected = areAllVariantsSelected();
+    const lang = offer?.language || 'de';
+
+    if (isLoading) return <div className="flex items-center justify-center min-h-screen text-[var(--text-muted)] font-medium">{t('public_offer.loading')}</div>;
     if (error) return <div className="flex items-center justify-center min-h-screen text-[var(--danger)] font-bold">{error}</div>;
     if (!offer) return null;
 
@@ -121,19 +158,19 @@ const OfferPublicPage = () => {
                     {offer.status === 'signed' && (
                         <div className="px-4 py-2 bg-[var(--success-bg)] text-[var(--success-text)] rounded-[var(--radius-md)] flex items-center gap-2 font-bold border border-[var(--success)]/20 shadow-sm animate-in fade-in slide-in-from-bottom-2">
                             <CheckCircle size={18} />
-                            Offer Signed on {formatDate(offer.signed_at || offer.updated_at)}
+                            {t('public_offer.signed_on')} {formatDate(offer.signed_at || offer.updated_at)}
                         </div>
                     )}
                     {offer.status === 'declined' && (
                         <div className="px-4 py-2 bg-red-100 text-red-700 rounded-[var(--radius-md)] flex items-center gap-2 font-bold border border-red-200 shadow-sm animate-in fade-in slide-in-from-bottom-2">
                             <XCircle size={18} />
-                            Offer Declined on {formatDate(offer.declined_at || offer.updated_at)}
+                            {t('public_offer.declined_on')} {formatDate(offer.declined_at || offer.updated_at)}
                         </div>
                     )}
                     {offer.status === 'sent' && (
                         <div className="px-4 py-2 bg-[var(--warning-bg)] text-[var(--warning-text)] rounded-[var(--radius-md)] flex items-center gap-2 font-bold border border-[var(--warning)]/20 shadow-sm">
                             <Clock size={18} />
-                            Awaiting Response
+                            {t('public_offer.awaiting_response')}
                         </div>
                     )}
                 </div>
@@ -148,7 +185,7 @@ const OfferPublicPage = () => {
                             window.location.href = `/api/offers/${offer.id}/signed-pdf`;
                         }}
                     >
-                        <Download size={18} className="mr-2" /> Download Signed Offer PDF
+                        <Download size={18} className="mr-2" /> {t('public_offer.download_pdf')}
                     </Button>
 
                     {(offer.status === 'sent' || offer.status === 'draft') && (
@@ -159,16 +196,16 @@ const OfferPublicPage = () => {
                                 onClick={() => setShowDeclineModal(true)}
                                 disabled={isGenerating || isDeclining}
                             >
-                                Decline Offer
+                                {t('public_offer.decline_btn')}
                             </Button>
                             <Button
                                 size="lg"
-                                className="shadow-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] px-8"
-                                onClick={() => setShowSignModal(true)}
-                                disabled={isGenerating || isDeclining}
+                                className={`shadow-lg px-8 transition-all duration-300 ${allSelected ? 'bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)]' : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'}`}
+                                onClick={() => allSelected && setShowSignModal(true)}
+                                disabled={isGenerating || isDeclining || !allSelected}
                             >
                                 {isGenerating ? <Loader2 size={18} className="mr-2 animate-spin" /> : <CheckCircle size={18} className="mr-2" />}
-                                {isGenerating ? 'Processing...' : 'Sign Offer'}
+                                {isGenerating ? t('public_offer.processing') : (allSelected ? t('public_offer.sign_btn') : (lang === 'de' ? 'Variante wählen' : 'Choisir une variante'))}
                             </Button>
                         </>
                     )}
@@ -192,13 +229,14 @@ const OfferPublicPage = () => {
                         settings={settings}
                         hideInternal={true}
                         tempSignature={tempSignature}
+                        onSelectItem={handleSelectItem}
                     />
                 </ErrorBoundary>
             </div>
 
             {/* Simple Footer */}
             <div className="max-w-[1000px] mx-auto mt-12 text-center text-[var(--text-muted)] text-sm no-print pb-8 font-medium">
-                Powered by {settings?.company_name || 'Business Catalyst'}
+                {t('public_offer.powered_by')} {settings?.company_name || 'Business Catalyst'}
             </div>
 
             {/* Signing Modal */}
@@ -223,7 +261,7 @@ const OfferPublicPage = () => {
             {offer.status === 'signed' && !showSignModal && (
                 <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-[var(--success)] text-white px-6 py-3 rounded-full shadow-floating z-50 animate-in fade-in slide-in-from-bottom-4 flex items-center gap-2 no-print">
                     <CheckCircle size={20} />
-                    <span className="font-bold">Offer signed successfully! You can now download your copy.</span>
+                    <span className="font-bold">{t('public_offer.success_msg')}</span>
                 </div>
             )}
 
@@ -231,7 +269,7 @@ const OfferPublicPage = () => {
             {apiError && (
                 <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-[var(--danger)] text-white px-6 py-3 rounded-full shadow-floating z-50 animate-in fade-in slide-in-from-bottom-4 flex items-center gap-2 no-print">
                     <XCircle size={20} />
-                    <span className="font-bold">Signing failed: {apiError.message || 'Unknown error'}</span>
+                    <span className="font-bold">{t('public_offer.signing_failed')} {apiError.message || 'Unknown error'}</span>
                     <button onClick={() => setApiError(null)} className="ml-2 hover:bg-white/20 rounded-full p-1"><XCircle size={14} /></button>
                 </div>
             )}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useI18n } from '../../i18n/I18nContext';
-import { Globe, Bell, X, ShieldCheck, AlertTriangle, ChevronRight, Info, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Bell, X, ShieldCheck, AlertTriangle, ChevronRight, Info, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { dataService } from '../../data/dataService';
 import { useNavigate, Link } from 'react-router-dom';
 import Select from '../ui/Select';
@@ -177,21 +177,6 @@ const TopBar = () => {
 
             {/* Right Actions */}
             <div className="flex items-center gap-4">
-                {/* Locale Selector */}
-                <div className="flex items-center gap-2">
-                    <Globe size={16} className="text-[var(--text-secondary)]" />
-                    <Select
-                        className="w-28"
-                        containerStyle={{ gap: 0 }}
-                        value={locale}
-                        onChange={(e) => setLocale(e.target.value)}
-                        options={[
-                            { value: 'de', label: 'Deutsch' },
-                            { value: 'fr', label: 'Français' }
-                        ]}
-                    />
-                </div>
-
                 {/* Notifications */}
                 <div ref={triggerRef}>
                     <button

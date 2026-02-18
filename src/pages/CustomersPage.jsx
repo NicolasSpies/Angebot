@@ -1,31 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import Modal from '../components/ui/Modal';
 import CustomerForm from '../components/customers/CustomerForm';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Table from '../components/ui/Table';
-import { Plus, User, MoreHorizontal, Trash2, Edit2, ExternalLink } from 'lucide-react';
-import ListPageHeader from '../components/layout/ListPageHeader';
-import ListPageToolbar from '../components/layout/ListPageToolbar';
+import { Plus, User, MoreHorizontal, Trash2, Edit2, ExternalLink, Search } from 'lucide-react';
 import EmptyState from '../components/ui/EmptyState';
+import StatusPill from '../components/ui/StatusPill';
+import { getStatusColor } from '../utils/statusColors';
 import DropdownMenu from '../components/ui/DropdownMenu';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 
 const CustomersPage = () => {
-    const { t } = useI18n();
     const [customers, setCustomers] = useState([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [filterStatus, setFilterStatus] = useState('all');
     const [isTrashDialogOpen, setIsTrashDialogOpen] = useState(false);
     const [customerToTrash, setCustomerToTrash] = useState(null);
     const navigate = useNavigate();
+
+    const CUSTOMER_STATUS_OPTIONS = [
+        { value: 'all', label: 'All' },
+        { value: 'active', label: 'Active' },
+        { value: 'inactive', label: 'Inactive' }
+    ];
 
     useEffect(() => {
         loadCustomers();
@@ -64,45 +69,74 @@ const CustomersPage = () => {
         }
     };
 
-    const filteredCustomers = customers.filter(c =>
-        c.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.country && c.country.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (c.vat_number && c.vat_number.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    const filteredCustomers = customers.filter(c => {
+        const matchesSearch = c.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (c.country && c.country.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (c.vat_number && c.vat_number.toLowerCase().includes(searchTerm.toLowerCase()));
+
+        const health = c.health === 'stable' ? 'active' : c.health;
+        const matchesStatus = filterStatus === 'all' || health === filterStatus;
+
+        return matchesSearch && matchesStatus;
+    });
 
     return (
         <div className="page-container fade-in">
-            <ListPageHeader
-                title={t('nav.customers')}
-                description="Manage your customer database and billing profiles."
-            />
+            {/* Block 1: Standardized Top Bar */}
+            <div className="flex items-center justify-between gap-6 mb-6">
+                {/* LEFT: Segmented filter pills */}
+                <div className="flex bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
+                    {CUSTOMER_STATUS_OPTIONS.map(opt => (
+                        <button
+                            key={opt.value}
+                            onClick={() => setFilterStatus(opt.value)}
+                            className={`
+                                flex items-center gap-2 px-4 h-8 rounded-lg text-[12px] font-bold transition-all whitespace-nowrap
+                                ${filterStatus === opt.value
+                                    ? 'text-white shadow-sm'
+                                    : 'text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-white/50'}
+                            `}
+                            style={filterStatus === opt.value ? {
+                                backgroundColor: getStatusColor(opt.value === 'all' ? 'active' : opt.value).dot,
+                            } : {}}
+                        >
+                            {opt.label}
+                        </button>
+                    ))}
+                </div>
 
-            <ListPageToolbar
-                searchProps={{
-                    value: searchTerm,
-                    onChange: setSearchTerm,
-                    placeholder: "Search by company, country or VAT ID..."
-                }}
-                actions={
+                {/* RIGHT: Search + New Client */}
+                <div className="flex items-center gap-4 flex-1 justify-end max-w-2xl">
+                    <div className="relative flex-1 max-w-xs">
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Search by company, country or VAT ID..."
+                            className="w-full h-9 pl-9 pr-4 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-[13px] font-medium outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/10 transition-all"
+                        />
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                    </div>
+
                     <Button
                         onClick={() => {
                             setEditingCustomer(null);
                             setIsModalOpen(true);
                         }}
-                        className="btn-primary"
+                        className="bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] shadow-sm hover:shadow-md transition-all whitespace-nowrap font-bold rounded-lg px-4 h-9"
                         size="sm"
                     >
-                        <Plus size={16} /> New Client
+                        <Plus size={16} className="mr-1.5" /> New Client
                     </Button>
-                }
-            />
+                </div>
+            </div>
 
             <Table headers={['Customer Name', 'Location', 'VAT ID', 'Health', 'Actions']}>
                 {isLoading ? (
                     <tr><td colSpan="5" className="py-20 text-center text-[var(--text-muted)]">Loading customers...</td></tr>
                 ) : filteredCustomers.length > 0 ? (
                     filteredCustomers.map(customer => (
-                        <tr key={customer.id} className="hover:bg-[var(--bg-app)] transition-colors group border-b border-[var(--border-subtle)] last:border-0 text-left align-middle h-14">
+                        <tr key={customer.id} className="hover:bg-[var(--bg-app)] transition-colors group border-b border-[var(--border-subtle)] last:border-0 text-left align-middle h-16 cursor-pointer" onClick={() => navigate(`/customers/${customer.id}`)}>
                             <td className="py-3 px-6 font-bold">
                                 <Link to={`/customers/${customer.id}`} className="flex items-center gap-4 text-[var(--text-main)] hover:text-[var(--primary)] transition-colors">
                                     <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--bg-app)] text-[var(--primary)] flex items-center justify-center shadow-sm border border-[var(--border-subtle)]">
@@ -126,30 +160,7 @@ const CustomersPage = () => {
                                 </span>
                             </td>
                             <td className="py-3 px-6">
-                                {customer.health === 'stable' && (
-                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-50 text-green-700 border border-green-100 uppercase tracking-tight">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                                        Stable
-                                    </span>
-                                )}
-                                {customer.health === 'overdue' && (
-                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-700 border border-red-100 uppercase tracking-tight">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                                        Overdue
-                                    </span>
-                                )}
-                                {customer.health === 'risk' && (
-                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-100 uppercase tracking-tight">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                                        Risk
-                                    </span>
-                                )}
-                                {customer.health === 'inactive' && (
-                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-gray-50 text-gray-500 border border-gray-100 uppercase tracking-tight">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
-                                        Inactive
-                                    </span>
-                                )}
+                                <StatusPill status={customer.health === 'stable' ? 'active' : customer.health} />
                             </td>
                             <td className="py-3 px-6" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-end pr-2">

@@ -40,6 +40,15 @@ app.get('/api/status', (req, res) => {
     res.json({ status: 'ok', version: '1.0.1-phase3', time: new Date().toISOString() });
 });
 
+app.get('/api/health', (req, res) => {
+    try {
+        db.prepare('SELECT 1').get();
+        res.json({ status: 'ok', database: 'connected', time: new Date().toISOString() });
+    } catch (err) {
+        res.status(500).json({ status: 'error', database: 'disconnected', error: err.message });
+    }
+});
+
 // --- REMINDERS BACKGROUND JOB ---
 function checkReminders() {
     console.log('[Background] Checking for reminders...');
@@ -284,8 +293,13 @@ app.get('/api/notifications/check-expiring', (req, res) => {
             );
         }
 
-        res.json({ checked: expiringOffers.length + urgentProjects.length });
+        res.json({
+            checked: expiringOffers.length + urgentProjects.length,
+            expiring: expiringOffers.length,
+            urgent: urgentProjects.length
+        });
     } catch (err) {
+        console.error('[API] /api/notifications/check-expiring failed:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -508,21 +522,28 @@ app.get('/api/customers', (req, res) => {
 });
 
 app.post('/api/customers', (req, res) => {
-    const { company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number } = req.body;
+    const { company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number, portal_enabled } = req.body;
     const result = db.prepare(`
-        INSERT INTO customers (company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number, created_by, updated_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number, 'System', 'System');
+        INSERT INTO customers (company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number, portal_enabled, created_by, updated_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number, portal_enabled ? 1 : 0, 'System', 'System');
     logActivity('customer', result.lastInsertRowid, 'created', { name: company_name || `${first_name} ${last_name}` });
     res.json({ id: result.lastInsertRowid });
 });
 
 app.put('/api/customers/:id', (req, res) => {
-    const { company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number } = req.body;
+    const { company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number, portal_enabled } = req.body;
     db.prepare(`
-        UPDATE customers SET company_name = ?, first_name = ?, last_name = ?, email = ?, phone = ?, address = ?, city = ?, postal_code = ?, language = ?, country = ?, vat_number = ?, updated_by = ?
+        UPDATE customers SET 
+            company_name = ?, first_name = ?, last_name = ?, email = ?, phone = ?, 
+            address = ?, city = ?, postal_code = ?, language = ?, country = ?, 
+            vat_number = ?, portal_enabled = ?, updated_by = ?
         WHERE id = ?
-    `).run(company_name, first_name, last_name, email, phone, address, city, postal_code, language, country, vat_number, 'System', req.params.id);
+    `).run(
+        company_name, first_name, last_name, email, phone,
+        address, city, postal_code, language, country,
+        vat_number, portal_enabled ? 1 : 0, 'System', req.params.id
+    );
     res.json({ success: true });
 });
 
@@ -536,6 +557,158 @@ app.delete('/api/customers/:id', (req, res) => {
         })();
         res.json({ success: true });
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/portal/notifications/:customerId', (req, res) => {
+    try {
+        const { customerId } = req.params;
+        const notifications = db.prepare('SELECT * FROM notifications WHERE customer_id = ? ORDER BY created_at DESC LIMIT 50').all(customerId);
+        const unreadResult = db.prepare('SELECT COUNT(*) as count FROM notifications WHERE customer_id = ? AND is_read = 0').get(customerId);
+        const unreadCount = unreadResult ? unreadResult.count : 0;
+        res.json({ notifications, unreadCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/portal/notifications/:customerId/read-all', (req, res) => {
+    try {
+        const { customerId } = req.params;
+        db.prepare('UPDATE notifications SET is_read = 1 WHERE customer_id = ?').run(customerId);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/portal/notifications/:customerId/clear-all', (req, res) => {
+    try {
+        const { customerId } = req.params;
+        db.prepare('DELETE FROM notifications WHERE customer_id = ?').run(customerId);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- CUSTOMER PORTAL ENDPOINTS ---
+
+app.get('/api/portal/data/:customerId', (req, res) => {
+    console.log(`[Portal API] GET data for customer ${req.params.customerId}`);
+    try {
+        const { customerId } = req.params;
+        const customer = db.prepare('SELECT id, company_name, email, portal_enabled FROM customers WHERE id = ? AND deleted_at IS NULL').get(customerId);
+
+        if (!customer) {
+            console.warn(`[Portal API] Customer ${customerId} not found`);
+            return res.status(404).json({ error: 'Customer not found' });
+        }
+
+        console.log(`[Portal API] Found customer: ${customer.company_name}, portal_enabled: ${customer.portal_enabled}`);
+
+        const profile = db.prepare('SELECT * FROM portal_user_profiles WHERE customer_id = ?').get(customerId);
+
+        const projects = db.prepare(`
+            SELECT p.*, o.offer_name, o.total as offer_total, o.status as offer_status, o.id as offer_id
+            FROM projects p
+            LEFT JOIN offers o ON p.offer_id = o.id
+            WHERE p.customer_id = ? AND p.deleted_at IS NULL
+            ORDER BY p.created_at DESC
+        `).all(customerId);
+
+        const projectIds = projects.map(p => p.id);
+        let reviews = [];
+        if (projectIds.length > 0) {
+            const placeholders = projectIds.map(() => '?').join(',');
+            reviews = db.prepare(`
+                SELECT r.*, p.name as project_name, rv.version_number as latest_version
+                FROM reviews r
+                JOIN projects p ON r.project_id = p.id
+                LEFT JOIN review_versions rv ON r.current_version_id = rv.id
+                WHERE r.project_id IN (${placeholders}) AND r.deleted_at IS NULL
+                ORDER BY r.created_at DESC
+            `).all(...projectIds);
+        }
+
+        const notifications = db.prepare(`
+            SELECT * FROM notifications 
+            WHERE customer_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 50
+        `).all(customerId);
+
+        const agreements = db.prepare(`
+            SELECT id, offer_name, total, signed_at, created_at, status
+            FROM offers 
+            WHERE customer_id = ? AND status = 'signed' AND archived_at IS NULL AND deleted_at IS NULL
+            ORDER BY signed_at DESC
+        `).all(customerId);
+
+        res.json({
+            customer,
+            profile: profile || null,
+            projects,
+            reviews,
+            notifications,
+            agreements
+        });
+    } catch (err) {
+        console.error('[Portal API] GET /api/portal/data failed:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/portal/profile/:customerId', (req, res) => {
+    console.log(`[Portal API] POST profile for customer ${req.params.customerId}`, req.body);
+    try {
+        const { customerId } = req.params;
+        const { first_name, last_name, email, company } = req.body;
+
+        const existing = db.prepare('SELECT id FROM portal_user_profiles WHERE customer_id = ?').get(customerId);
+
+        if (existing) {
+            db.prepare(`
+                UPDATE portal_user_profiles 
+                SET first_name = ?, last_name = ?, email = ?, company = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE customer_id = ?
+            `).run(first_name, last_name, email, company, customerId);
+        } else {
+            db.prepare(`
+                INSERT INTO portal_user_profiles (customer_id, first_name, last_name, email, company)
+                VALUES (?, ?, ?, ?, ?)
+            `).run(customerId, first_name, last_name, email, company);
+        }
+
+        const updated = db.prepare('SELECT * FROM portal_user_profiles WHERE customer_id = ?').get(customerId);
+        res.json({ success: true, profile: updated });
+    } catch (err) {
+        console.error('[Portal API] POST /api/portal/profile failed:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/audit/repair', (req, res) => {
+    try {
+        const orphaned = db.prepare(`
+            SELECT id, customer_id, offer_name, internal_notes 
+            FROM offers 
+            WHERE status = 'signed' 
+            AND id NOT IN (SELECT offer_id FROM projects WHERE offer_id IS NOT NULL AND deleted_at IS NULL)
+        `).all();
+
+        for (const off of orphaned) {
+            db.prepare(`
+                INSERT INTO projects (offer_id, customer_id, name, status, review_limit)
+                VALUES (?, ?, ?, 'todo', 3)
+            `).run(off.id, off.customer_id, off.offer_name);
+            logActivity('project', off.id, 'auto_created_via_repair', { offer_id: off.id });
+        }
+
+        res.json({ success: true, repaired: orphaned.length });
+    } catch (err) {
+        console.error('[API] /api/audit/repair failed:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -625,11 +798,17 @@ app.get('/api/offers/:id', (req, res) => {
     if (!offer) return res.status(404).json({ error: 'Offer not found' });
 
     const items = db.prepare(`
-        SELECT oi.*, s.name_de, s.name_fr, s.description_de, s.description_fr, oi.billing_cycle 
+        SELECT oi.*, s.name_de, s.name_fr, s.description_de, s.description_fr, oi.billing_cycle,
+               ps.selections_json, ps.note as print_note, ps.option_set_id
         FROM offer_items oi 
-        JOIN services s ON oi.service_id = s.id 
+        LEFT JOIN services s ON oi.service_id = s.id 
+        LEFT JOIN offer_line_print_selections ps ON oi.id = ps.offer_line_id
         WHERE oi.offer_id = ?
-    `).all(req.params.id);
+    `).all(req.params.id).map(item => ({
+        ...item,
+        print_selections: item.selections_json ? JSON.parse(item.selections_json) : (item.specs ? (typeof item.specs === 'string' ? JSON.parse(item.specs) : item.specs) : null),
+        specs: item.specs ? (typeof item.specs === 'string' ? JSON.parse(item.specs) : item.specs) : null
+    }));
 
     res.json({ ...offer, items });
 });
@@ -655,105 +834,117 @@ app.get('/api/offers/public/:token', (req, res) => {
     if (!offer) return res.status(404).json({ error: 'Offer not found' });
 
     const items = db.prepare(`
-        SELECT oi.*, s.name_de, s.name_fr, s.description_de, s.description_fr, oi.billing_cycle 
+        SELECT oi.*, s.name_de, s.name_fr, s.description_de, s.description_fr, oi.billing_cycle,
+               ps.selections_json, ps.note as print_note, ps.option_set_id
         FROM offer_items oi 
-        JOIN services s ON oi.service_id = s.id 
+        LEFT JOIN services s ON oi.service_id = s.id 
+        LEFT JOIN offer_line_print_selections ps ON oi.id = ps.offer_line_id
         WHERE oi.offer_id = ?
-    `).all(offer.id);
+    `).all(offer.id).map(item => ({
+        ...item,
+        print_selections: item.selections_json ? JSON.parse(item.selections_json) : (item.specs ? (typeof item.specs === 'string' ? JSON.parse(item.specs) : item.specs) : null),
+        specs: item.specs ? (typeof item.specs === 'string' ? JSON.parse(item.specs) : item.specs) : null
+    }));
 
     res.json({ ...offer, items });
 });
 
 const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNotes, customerId, internalNotes) => {
     console.log(`[Sync] Starting sync for Offer ${offerId} (Status: ${status})`);
-    const finalStrategicNotes = strategicNotes || internalNotes;
 
     // 1. Determine Target Project Status
     let targetStatus = null;
-    if (status === 'signed') targetStatus = 'todo';
+    if (status === 'signed') targetStatus = 'in_progress';
     else if (status === 'declined') targetStatus = 'cancelled';
 
-    // 2. Check if Project exists (Search by current offerId OR any version sharing the same parent)
-    const offer = db.prepare('SELECT parent_id FROM offers WHERE id = ?').get(offerId);
-    const rootOfferId = (offer && offer.parent_id) || offerId;
+    // We only create projects when signed
+    if (status !== 'signed' && status !== 'declined' && status !== 'sent') {
+        console.log(`[Sync] Skipping sync for non-final status: ${status}`);
+        return null;
+    }
 
-    const existingProject = db.prepare(`
-        SELECT id, status, internal_notes, offer_id FROM projects 
-        WHERE offer_id = ? 
-           OR offer_id IN (SELECT id FROM offers WHERE parent_id = ? OR id = ?)
-    `).get(offerId, rootOfferId, rootOfferId);
+    // Fetch offer details if missing (highly robust against argument gaps)
+    const offer = db.prepare('SELECT offer_name, customer_id, strategic_notes, internal_notes, parent_id, project_id FROM offers WHERE id = ?').get(offerId);
+    if (!offer) return null;
+
+    const finalOfferName = offerName || offer.offer_name;
+    const finalCustomerId = customerId || offer.customer_id;
+    const finalStrategicNotes = strategicNotes || offer.strategic_notes || null;
+    const finalInternalNotes = internalNotes || offer.internal_notes || null;
+
+    const rootOfferId = offer.parent_id || offerId;
+
+    // 2. Check if Project exists
+    let existingProject = null;
+    if (offer.project_id) {
+        existingProject = db.prepare('SELECT id, status, strategic_notes, offer_id FROM projects WHERE id = ?').get(offer.project_id);
+    }
+
+    if (!existingProject) {
+        existingProject = db.prepare(`
+            SELECT id, status, strategic_notes, offer_id FROM projects 
+            WHERE offer_id = ? 
+               OR offer_id IN (SELECT id FROM offers WHERE parent_id = ? OR id = ?)
+        `).get(offerId, rootOfferId, rootOfferId);
+    }
 
     if (existingProject) {
+        console.log(`[Sync] Found existing project ${existingProject.id}`);
         let updateFields = [];
         let params = [];
 
-        // Update link to newest version if it changed
         if (existingProject.offer_id !== offerId) {
             updateFields.push('offer_id = ?');
             params.push(offerId);
         }
 
-        // Only update status if the offer is signed or declined (final states)
-        // OR if the project is currently 'pending' and the offer is 'sent' (initial state)
-        if (targetStatus) {
+        if (targetStatus && existingProject.status !== targetStatus) {
             updateFields.push('status = ?');
             params.push(targetStatus);
-        } else if (status === 'sent' && existingProject.status === 'pending') {
-            // Keep it pending
         }
 
-        if (offerName) {
+        if (finalOfferName) {
             updateFields.push('name = ?');
-            params.push(offerName);
+            params.push(finalOfferName);
         }
-        // Project deadline is independent from offer validity
-        // if (dueDate) {
-        //     updateFields.push('deadline = ?');
-        //     params.push(dueDate);
-        // }
-        // Sync strategic notes to dedicated column
+
         if (finalStrategicNotes) {
             updateFields.push('strategic_notes = ?');
             params.push(finalStrategicNotes);
         }
 
+        if (finalInternalNotes) {
+            updateFields.push('internal_notes = ?');
+            params.push(finalInternalNotes);
+        }
+
         if (updateFields.length > 0) {
-            // Standard update
             const setClause = updateFields.join(', ');
             params.push(existingProject.id);
-            console.log(`[Sync] SQL: UPDATE projects SET ${setClause} WHERE id = ?`);
-            console.log(`[Sync] PARAMS: ${JSON.stringify(params)}`);
-            try {
-                db.prepare(`UPDATE projects SET ${setClause} WHERE id = ?`).run(...params);
-            } catch (err) {
-                // Fallback for strategic_notes column potentially missing
-                if (err.message.includes('no such column: strategic_notes')) {
-                    const fallbackFields = updateFields.map(f => f.replace('strategic_notes', 'internal_notes'));
-                    const fallbackClause = fallbackFields.join(', ');
-                    db.prepare(`UPDATE projects SET ${fallbackClause} WHERE id = ?`).run(...params);
-                } else {
-                    throw err;
-                }
-            }
+            db.prepare(`UPDATE projects SET ${setClause} WHERE id = ?`).run(...params);
         }
-    } else if ((status === 'sent' || status === 'signed' || status === 'pending') && customerId) {
-        console.log(`[Sync] No project found, creating new project for Offer ${offerId}`);
-        // Auto-Create Project if missing
-        const initialStatus = targetStatus || 'pending';
-        // Note: project deadline is independent from offer validity, so it defaults to null here
-        try {
-            const result = db.prepare(`
-                INSERT INTO projects (offer_id, customer_id, name, status, deadline, strategic_notes, review_limit)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            `).run(offerId, customerId, offerName || 'Untitled Project', initialStatus, null, finalStrategicNotes || null, 3);
-            console.log(`[Sync] Project created successfully. New Project ID: ${result.lastInsertRowid}`);
-        } catch (err) {
-            console.error('[Sync] Failed to create project:', err);
-            // Silent failure for sync to prevent offer route from crashing, but logged
-        }
-    } else {
-        console.log(`[Sync] No sync action required for Offer ${offerId} (Status: ${status}, Customer: ${customerId})`);
+
+        // Repair Offer -> Project link if missing
+        db.prepare('UPDATE offers SET project_id = ? WHERE id = ?').run(existingProject.id, offerId);
+
+        return existingProject.id;
+    } else if (status === 'signed' && finalCustomerId) {
+        console.log(`[Sync] Creating new project for signed Offer ${offerId}`);
+
+        const result = db.prepare(`
+            INSERT INTO projects (offer_id, customer_id, name, status, strategic_notes, internal_notes, review_limit)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(offerId, finalCustomerId, finalOfferName || 'Untitled Project', targetStatus || 'in_progress', finalStrategicNotes || null, finalInternalNotes || null, 3);
+
+        const newProjectId = result.lastInsertRowid;
+
+        // Link Offer -> Project
+        db.prepare('UPDATE offers SET project_id = ? WHERE id = ?').run(newProjectId, offerId);
+
+        return newProjectId;
     }
+
+    return null;
 };
 
 // --- PDF GENERATION HELPER ---
@@ -774,9 +965,14 @@ async function generateOfferPDF(offerId) {
     if (!offer) throw new Error('Offer not found');
 
     const items = db.prepare(`
-        SELECT oi.*, s.name_de, s.name_fr, s.description_de, s.description_fr 
+        SELECT oi.*, 
+               s.name_de, s.name_fr, s.description_de, s.description_fr,
+               oi.group_id, oi.group_type, oi.price_mode, oi.is_selected, oi.specs,
+               olps.selections_json as print_selections_json,
+               olps.print_note
         FROM offer_items oi 
-        JOIN services s ON oi.service_id = s.id 
+        LEFT JOIN services s ON oi.service_id = s.id AND oi.type = 'service'
+        LEFT JOIN offer_line_print_selections olps ON oi.id = olps.offer_line_id
         WHERE oi.offer_id = ?
     `).all(offerId);
 
@@ -813,10 +1009,15 @@ async function generateOfferPDF(offerId) {
 
     // Calculate totals helper
     const calculateTotals = (items) => {
-        const subtotal = items.reduce((acc, i) => acc + ((i.unit_price || 0) * (i.quantity || 0)), 0);
+        const subtotal = items
+            .filter(i => i.price_mode !== 'UNSET' && !(i.group_type === 'OR' && !i.is_selected))
+            .reduce((acc, i) => acc + ((i.unit_price || 0) * (i.quantity || 0)), 0);
+
+        const discountAmount = subtotal * ((offer.discount_percent || 0) / 100);
+        const discountedSubtotal = subtotal - discountAmount;
         const vatRate = offer.customer_country === 'BE' ? 0.21 : 0.0;
-        const vat = subtotal * vatRate;
-        return { subtotal, vat, total: subtotal + vat };
+        const vat = discountedSubtotal * vatRate;
+        return { subtotal, vat, total: discountedSubtotal + vat };
     };
 
     // Construct HTML
@@ -921,17 +1122,133 @@ async function generateOfferPDF(offerId) {
                             </tr>
                         </thead>
                         <tbody>
-                            ${groupItems.map(item => `
-                                <tr>
-                                    <td>
-                                        <div class="item-name">${item.item_name || (lang === 'de' ? item.name_de : item.name_fr)}</div>
-                                        <div class="item-desc">${item.item_description || (lang === 'de' ? item.description_de : item.description_fr)}</div>
-                                    </td>
-                                    <td style="text-align: center;">${item.quantity}</td>
-                                    <td style="text-align: right;">${formatCurrency(item.unit_price)}</td>
-                                    <td style="text-align: right; font-weight: 700;">${formatCurrency(item.quantity * item.unit_price)}</td>
-                                </tr>
-                            `).join('')}
+                            ${(() => {
+                const processed = [];
+                const groupMap = {};
+                groupItems.forEach(item => {
+                    if (item.group_id) {
+                        if (!groupMap[item.group_id]) {
+                            groupMap[item.group_id] = { isGroup: true, id: item.group_id, type: item.group_type, items: [] };
+                            processed.push(groupMap[item.group_id]);
+                        }
+                        groupMap[item.group_id].items.push(item);
+                    } else {
+                        processed.push({ ...item, isGroup: false });
+                    }
+                });
+
+                return processed.map(entry => {
+                    if (entry.isGroup) {
+                        return `
+                                            <tr style="background: rgba(248, 249, 250, 0.5);">
+                                                <td colspan="4" style="padding: 20px; border-bottom: 1px solid var(--border);">
+                                                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                                                        <span style="font-size: 8px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; padding: 2px 6px; border-radius: 4px; background: ${entry.type === 'OR' ? '#fff7ed' : '#eff6ff'}; color: ${entry.type === 'OR' ? '#c2410c' : '#1d4ed8'}; border: 1px solid ${entry.type === 'OR' ? '#ffedd5' : '#dbeafe'};">
+                                                            ${entry.type} Group
+                                                        </span>
+                                                        <div style="flex: 1; height: 1px; background: var(--border); opacity: 0.5;"></div>
+                                                    </div>
+                                                    <div style="display: flex; flex-direction: column; gap: 20px;">
+                                                        ${entry.items.map((item, iIdx) => {
+                            const isPrint = item.type === 'print';
+                            const specsJson = item.specs ? (typeof item.specs === 'string' ? JSON.parse(item.specs) : item.specs) : (item.print_selections_json ? JSON.parse(item.print_selections_json) : null);
+                            const specs = specsJson ? Object.entries(specsJson).filter(([_, v]) => v !== undefined && v !== null) : [];
+
+                            return `
+                                                                    <div style="display: flex; gap: 20px; position: relative; padding: 15px; border-radius: 12px; border: 1px solid transparent; margin-bottom: 10px;">
+                                                                            ${entry.type === 'OR' && iIdx > 0 ? `
+                                                                                <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); font-size: 8px; font-weight: 800; color: #64748b; background: white; padding: 2px 10px; border: 1px solid #ffedd5; border-radius: 10px; z-index: 10; text-transform: uppercase; letter-spacing: 1px;">OR</div>
+                                                                            ` : ''}
+                                                                            <div style="flex: 1;">
+                                                                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                                                                    <div class="item-name" style="margin-bottom: 0;">${item.item_name || (lang === 'de' ? item.name_de : item.name_fr)}</div>
+                                                                                    ${item.price_mode === 'UNSET' ? `<span style="font-size: 7px; font-weight: 900; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; padding: 1px 4px; border-radius: 10px; text-transform: uppercase;">Pending</span>` : ''}
+                                                                                </div>
+                                                                                <div class="item-desc">${item.item_description || (lang === 'de' ? item.description_de : item.description_fr) || 'Strategic service deliverable'}</div>
+                                                                                ${specs.length > 0 ? `
+                                                                                    <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px;">
+                                                                                        ${specs.map(([k, v]) => `
+                                                                                            <div style="font-size: 9px; background: #f8fafc; border: 1px solid #f1f5f9; padding: 2px 6px; border-radius: 4px; display: flex; align-items: center; gap: 4px;">
+                                                                                                <span style="text-transform: uppercase; font-weight: 900; font-size: 7px; color: #94a3b8; border-right: 1px solid #e2e8f0; padding-right: 4px; height: 8px; line-height: 8px;">${k.replace(/_/g, ' ')}</span>
+                                                                                                <span style="font-weight: 700; color: #475569;">${v || (lang === 'de' ? 'Keines' : lang === 'fr' ? 'Aucun' : 'None')}</span>
+                                                                                            </div>
+                                                                                        `).join('')}
+                                                                                    </div>
+                                                                                ` : ''}
+                                                                                ${isPrint && item.print_note ? `
+                                                                                    <div style="margin-top: 10px; font-size: 10px; font-style: italic; color: #64748b; border-left: 2px solid #e2e8f0; padding-left: 10px;">
+                                                                                        ${item.print_note}
+                                                                                    </div>
+                                                                                ` : ''}
+                                                                            </div>
+                                                                            <div style="width: 60px; text-align: center;">
+                                                                                <div style="font-size: 13px; font-weight: 800; color: var(--text-main);">${item.quantity}</div>
+                                                                                <div style="font-size: 8px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Units</div>
+                                                                            </div>
+                                                                            <div style="width: 100px; text-align: right; font-weight: 700; color: var(--text-secondary); font-size: 12px;">
+                                                                                ${item.price_mode === 'UNSET' ? '—' : formatCurrency(item.unit_price)}
+                                                                            </div>
+                                                                            <div style="width: 100px; text-align: right;">
+                                                                                ${entry.type === 'OR' && !item.is_selected ?
+                                    `<span style="font-size: 9px; color: #94a3b8; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; background: #f8fafc; padding: 2px 6px; border-radius: 4px;">Option</span>` :
+                                    (item.price_mode === 'UNSET' ? `<span style="font-size: 9px; color: #d97706; font-weight: 900; text-transform: uppercase; font-style: italic;">TBD</span>` : `<div style="font-size: 13px; font-weight: 800;">${formatCurrency(item.quantity * item.unit_price)}</div>`)
+                                }
+                                                                            </div>
+                                                                        </div>
+                                                                    `;
+                        }).join('')}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        `;
+                    } else {
+                        const item = entry;
+                        const isPrint = item.type === 'print';
+                        const specsJson = item.specs ? (typeof item.specs === 'string' ? JSON.parse(item.specs) : item.specs) : (item.print_selections_json ? JSON.parse(item.print_selections_json) : null);
+                        const specs = specsJson ? Object.entries(specsJson).filter(([_, v]) => v !== undefined && v !== null) : [];
+
+                        return `
+                                            <tr style="page-break-inside: avoid;">
+                                                <td style="padding: 20px 0;">
+                                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                                        <div class="item-name" style="margin-bottom: 0;">${item.item_name || (lang === 'de' ? item.name_de : item.name_fr)}</div>
+                                                        ${isPrint && item.option_set_name ? `<span style="font-size: 8px; color: #3b82f6; text-transform: uppercase; font-weight: 900; background: #eff6ff; padding: 1px 5px; border-radius: 4px;">${item.option_set_name}</span>` : ''}
+                                                        ${item.price_mode === 'UNSET' ? `<span style="font-size: 7px; font-weight: 900; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; padding: 1px 4px; border-radius: 10px; text-transform: uppercase;">Pending</span>` : ''}
+                                                    </div>
+                                                    <div class="item-desc">${item.item_description || (lang === 'de' ? item.description_de : item.description_fr) || 'Strategic service deliverable'}</div>
+                                                    
+                                                    ${specs.length > 0 ? `
+                                                        <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px;">
+                                                            ${specs.map(([k, v]) => `
+                                                                <div style="font-size: 9px; background: #f8fafc; border: 1px solid #f1f5f9; padding: 2px 6px; border-radius: 4px; display: flex; align-items: center; gap: 4px;">
+                                                                    <span style="text-transform: uppercase; font-weight: 900; font-size: 7px; color: #94a3b8; border-right: 1px solid #e2e8f0; padding-right: 4px; height: 8px; line-height: 8px;">${k.replace(/_/g, ' ')}</span>
+                                                                    <span style="font-weight: 700; color: #475569;">${v || (lang === 'de' ? 'Keines' : lang === 'fr' ? 'Aucun' : 'None')}</span>
+                                                                </div>
+                                                            `).join('')}
+                                                        </div>
+                                                    ` : ''}
+                                                    
+                                                    ${isPrint && item.print_note ? `
+                                                        <div style="margin-top: 10px; font-size: 10px; font-style: italic; color: #64748b; border-left: 2px solid #e2e8f0; padding-left: 10px;">
+                                                            ${item.print_note}
+                                                        </div>
+                                                    ` : ''}
+                                                </td>
+                                                <td style="text-align: center; vertical-align: middle; padding: 20px 0;">
+                                                    <div style="font-size: 13px; font-weight: 800; color: var(--text-main);">${item.quantity}</div>
+                                                    <div style="font-size: 8px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Units</div>
+                                                </td>
+                                                <td style="text-align: right; vertical-align: middle; padding: 20px 0; font-weight: 700; color: var(--text-secondary); font-size: 12px;">
+                                                    ${item.price_mode === 'UNSET' ? '—' : formatCurrency(item.unit_price)}
+                                                </td>
+                                                <td style="text-align: right; vertical-align: middle; padding: 20px 0;">
+                                                    ${item.price_mode === 'UNSET' ? `<span style="color: #d97706; font-weight: 900; text-transform: uppercase; font-size: 9px; font-style: italic;">TBD</span>` : `<div style="font-size: 13px; font-weight: 800;">${formatCurrency(item.quantity * item.unit_price)}</div>`}
+                                                </td>
+                                            </tr>
+                                        `;
+                    }
+                }).join('')
+            })()}
                         </tbody>
                     </table>
                     <div class="totals-container">
@@ -1000,6 +1317,39 @@ app.get('/api/offers/:id/signed-pdf', async (req, res) => {
     }
 });
 
+app.post('/api/offers/repair-links', (req, res) => {
+    try {
+        const signedOffers = db.prepare(`
+            SELECT id, offer_name, customer_id, strategic_notes, internal_notes, project_id 
+            FROM offers 
+            WHERE status = 'signed' AND (project_id IS NULL OR project_id NOT IN (SELECT id FROM projects))
+        `).all();
+
+        const repairs = [];
+        db.transaction(() => {
+            for (const offer of signedOffers) {
+                const projectId = syncProjectWithOffer(
+                    offer.id,
+                    'signed',
+                    offer.offer_name,
+                    null,
+                    offer.strategic_notes,
+                    offer.customer_id,
+                    offer.internal_notes
+                );
+                if (projectId) {
+                    repairs.push({ offerId: offer.id, projectId });
+                }
+            }
+        })();
+
+        res.json({ success: true, repairs });
+    } catch (err) {
+        console.error('[Repair] Failed:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.post('/api/offers/public/:token/decline', (req, res) => {
     const { token } = req.params;
     const { comment } = req.body;
@@ -1028,34 +1378,33 @@ const signRateLimit = new Map();
 
 app.post('/api/offers/public/:token/sign', (req, res) => {
     const { token } = req.params;
-    const { name, email, signatureData, pdfUrl } = req.body;
+    const { name, email, signatureData, pdfUrl, items } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
-    // Rate Limit Check
+    // ... rate limit logic stays the same ...
     const now = Date.now();
-    const limitWindow = 60 * 60 * 1000; // 1 hour
+    const limitWindow = 60 * 60 * 1000;
     const limitCount = 5;
-
     let rateData = signRateLimit.get(ip) || { count: 0, firstAttempt: now };
-    if (now - rateData.firstAttempt > limitWindow) {
-        rateData = { count: 0, firstAttempt: now };
-    }
-
-    if (rateData.count >= limitCount) {
-        return res.status(429).json({ error: 'Too many signing attempts. Please try again later.' });
-    }
-
+    if (now - rateData.firstAttempt > limitWindow) rateData = { count: 0, firstAttempt: now };
+    if (rateData.count >= limitCount) return res.status(429).json({ error: 'Too many attempts' });
     rateData.count++;
     signRateLimit.set(ip, rateData);
 
     const offer = db.prepare('SELECT * FROM offers WHERE token = ?').get(token);
     if (!offer) return res.status(404).json({ error: 'Offer not found' });
-    if (['signed', 'declined'].includes(offer.status)) {
-        return res.status(400).json({ error: 'Offer is already finalized.' });
-    }
+    if (['signed', 'declined'].includes(offer.status)) return res.status(400).json({ error: 'Offer finalized' });
 
     try {
         db.transaction(() => {
+            // Update items selection
+            if (items && Array.isArray(items)) {
+                const updateItem = db.prepare('UPDATE offer_items SET is_selected = ? WHERE id = ? AND offer_id = ?');
+                for (const item of items) {
+                    updateItem.run(item.is_selected ? 1 : 0, item.id, offer.id);
+                }
+            }
+
             db.prepare(`
                 UPDATE offers SET 
                     status = 'signed', 
@@ -1070,17 +1419,13 @@ app.post('/api/offers/public/:token/sign', (req, res) => {
             `).run(name, email, signatureData, ip, pdfUrl || null, offer.id);
 
             db.prepare("INSERT INTO offer_events (offer_id, event_type, ip_address) VALUES (?, 'signed', ?)").run(offer.id, ip);
-
-            // Smart Sync
             syncProjectWithOffer(offer.id, 'signed');
-
-            // Notification (with dedup)
             createNotification('offer', 'Offer Signed! ✍️', `Offer "${offer.offer_name}" signed by ${name}`, `/offers/${offer.id}`, `offer_signed_${offer.id}`);
-
             logActivity('offer', offer.id, 'signed', { signedBy: name });
         })();
 
-        res.json({ success: true });
+        const updatedOffer = db.prepare('SELECT * FROM offers WHERE id = ?').get(offer.id);
+        res.json({ success: true, offer: updatedOffer });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -1099,13 +1444,18 @@ app.post('/api/offers', (req, res) => {
         const offerId = offerResult.lastInsertRowid;
 
         const insertItem = db.prepare(`
-            INSERT INTO offer_items (offer_id, service_id, quantity, unit_price, total_price, billing_cycle, item_name, item_description)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO offer_items (
+                offer_id, service_id, quantity, unit_price, total_price, 
+                billing_cycle, item_name, item_description, type, print_snapshot,
+                group_id, group_type, specs, price_mode, is_selected,
+                supplier_price, margin
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         if (items && Array.isArray(items)) {
             for (const item of items) {
-                insertItem.run(
+                const itemRes = insertItem.run(
                     offerId,
                     item.service_id,
                     item.quantity,
@@ -1113,8 +1463,32 @@ app.post('/api/offers', (req, res) => {
                     item.total_price,
                     item.billing_cycle || 'one_time',
                     item.item_name || null,
-                    item.item_description || null
+                    item.item_description || null,
+                    item.type || 'service',
+                    item.print_snapshot || null,
+                    item.group_id || null,
+                    item.group_type || null,
+                    item.specs ? JSON.stringify(item.specs) : null,
+                    item.price_mode || 'CALCULATED',
+                    item.is_selected === undefined ? 1 : (item.is_selected ? 1 : 0),
+                    item.supplier_price || 0,
+                    item.margin || 0
                 );
+
+                const offerLineId = itemRes.lastInsertRowid;
+
+                if (item.type === 'print' && item.print_selections) {
+                    db.prepare(`
+                        INSERT INTO offer_line_print_selections (offer_line_id, print_product_id, option_set_id, selections_json, note)
+                        VALUES (?, ?, ?, ?, ?)
+                    `).run(
+                        offerLineId,
+                        item.service_id, // For print items, service_id = print_product_id in this logic
+                        item.option_set_id || null,
+                        JSON.stringify(item.print_selections),
+                        item.print_note || null
+                    );
+                }
             }
         }
 
@@ -1143,7 +1517,7 @@ app.post('/api/offers', (req, res) => {
 // ... (duplicate endpoint remains similar, skipping for brevity but it creates 'draft' so less critical for sync) ...
 
 app.put('/api/offers/:id', (req, res) => {
-    const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date, internal_notes, strategic_notes } = req.body;
+    const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date, internal_notes, strategic_notes, discount_percent } = req.body;
     let offerId = req.params.id;
 
     // Versioning logic: if offer is already 'sent' or 'signed', creating a new update should forge a new version record
@@ -1160,9 +1534,9 @@ app.put('/api/offers/:id', (req, res) => {
                     INSERT INTO offers (
                         customer_id, offer_name, language, status, 
                         subtotal, vat, total, due_date, internal_notes, strategic_notes,
-                        parent_id, version_number, token, created_by, updated_by
-                    ) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `).run(customer_id, offer_name, language, subtotal, vat, total, due_date, internal_notes || null, strategic_notes || null, parentId, newVersionNumber, newToken, 'System', 'System');
+                        parent_id, version_number, token, created_by, updated_by, discount_percent
+                    ) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).run(customer_id, offer_name, language, subtotal, vat, total, due_date, internal_notes || null, strategic_notes || null, parentId, newVersionNumber, newToken, 'System', 'System', discount_percent || 0);
 
             offerId = result.lastInsertRowid;
 
@@ -1172,44 +1546,81 @@ app.put('/api/offers/:id', (req, res) => {
                 name: offer_name
             });
         } else {
-            // Normal update
-            db.prepare(`
-                UPDATE offers SET 
-                    customer_id = ?, offer_name = ?, language = ?, status = ?, 
-                    subtotal = ?, vat = ?, total = ?, due_date = ?, internal_notes = ?, strategic_notes = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
-                WHERE id = ?
-            `).run(customer_id, offer_name, language, status, subtotal, vat, total, due_date, internal_notes || null, strategic_notes || null, 'System', offerId);
+            // Normal update - Dynamically build update to support partial updates (e.g. from sync)
+            const fields = [];
+            const params = [];
+
+            const updatableFields = [
+                'customer_id', 'offer_name', 'language', 'status',
+                'subtotal', 'vat', 'total', 'due_date',
+                'internal_notes', 'strategic_notes', 'discount_percent'
+            ];
+
+            updatableFields.forEach(field => {
+                if (req.body[field] !== undefined) {
+                    fields.push(`${field} = ?`);
+                    params.push(req.body[field]);
+                }
+            });
+
+            if (fields.length > 0) {
+                fields.push('updated_at = CURRENT_TIMESTAMP');
+                fields.push('updated_by = ?');
+                params.push('System');
+                params.push(offerId);
+
+                db.prepare(`
+                    UPDATE offers SET ${fields.join(', ')}
+                    WHERE id = ?
+                `).run(...params);
+            }
 
             logActivity('offer', offerId, 'updated', {
-                status,
-                total,
+                status: status || currentOffer.status,
+                total: total || (currentOffer ? JSON.parse(currentOffer.metadata || '{}').total : null), // metadata fallback if available, simple for now
                 linkedProject: strategic_notes ? 'synced' : 'none'
             });
         }
 
-        // Replace items for the (potentially new) offerId
-        db.prepare('DELETE FROM offer_items WHERE offer_id = ?').run(offerId);
+        // Replace items for the (potentially new) offerId - ONLY if items are provided
+        if (items && Array.isArray(items)) {
+            db.prepare('DELETE FROM offer_items WHERE offer_id = ?').run(offerId);
 
-        const insertItem = db.prepare(`
-            INSERT INTO offer_items(offer_id, service_id, quantity, unit_price, total_price, billing_cycle, item_name, item_description)
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-                `);
+            const insertItem = db.prepare(`
+            INSERT INTO offer_items (
+                offer_id, service_id, quantity, unit_price, total_price, 
+                billing_cycle, item_name, item_description, type, print_snapshot,
+                group_id, group_type, specs, price_mode, is_selected,
+                supplier_price, margin
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
 
-        for (const item of items) {
-            insertItem.run(
-                offerId,
-                item.service_id,
-                item.quantity,
-                item.unit_price,
-                item.total_price,
-                item.billing_cycle || 'one_time',
-                item.item_name || null,
-                item.item_description || null
-            );
+            for (const item of items) {
+                insertItem.run(
+                    offerId,
+                    item.service_id,
+                    item.quantity,
+                    item.unit_price,
+                    item.total_price,
+                    item.billing_cycle || 'one_time',
+                    item.item_name || null,
+                    item.item_description || null,
+                    item.type || 'service',
+                    item.print_snapshot || null,
+                    item.group_id || null,
+                    item.group_type || null,
+                    item.specs ? JSON.stringify(item.specs) : null,
+                    item.price_mode || 'CALCULATED',
+                    item.is_selected === undefined ? 1 : (item.is_selected ? 1 : 0),
+                    item.supplier_price || 0,
+                    item.margin || 0
+                );
+            }
         }
 
         // Smart Sync
-        syncProjectWithOffer(offerId, status, offer_name, null, strategic_notes, customer_id, internal_notes); // Pass internal_notes too
+        syncProjectWithOffer(offerId, status, offer_name, null, strategic_notes, customer_id, internal_notes);
     });
 
     try {
@@ -1249,7 +1660,20 @@ app.post('/api/offers/:id/send', (req, res) => {
 // Manual status update endpoint
 app.delete('/api/offers/:id', (req, res) => {
     try {
+        const offer = db.prepare('SELECT status FROM offers WHERE id = ?').get(req.params.id);
+        if (offer && offer.status === 'signed') {
+            return res.status(400).json({ error: 'Signed offers cannot be moved to trash.' });
+        }
         db.prepare('UPDATE offers SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/offers/:id/restore', (req, res) => {
+    try {
+        db.prepare('UPDATE offers SET deleted_at = NULL WHERE id = ?').run(req.params.id);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -2317,31 +2741,40 @@ app.put('/api/projects/:id/tasks/reorder', (req, res) => {
 // --- DASHBOARD ---
 app.get('/api/dashboard/stats', (req, res) => {
     try {
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const startOfYear = new Date(now.getFullYear(), 0, 1).toISOString();
+
+        // Debug Logging Helper
+        const logDebug = (msg, data) => {
+            console.log(`[Dashboard Stats Debug] ${msg}:`, JSON.stringify(data, null, 2));
+        };
+
         // Basic stats
         const draftCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'draft' AND archived_at IS NULL AND deleted_at IS NULL").get().count;
         const pendingCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'sent' AND archived_at IS NULL AND deleted_at IS NULL").get().count;
         const signedCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'signed' AND archived_at IS NULL AND deleted_at IS NULL").get().count;
 
         // Financials
-        const totalOpenValue = db.prepare("SELECT SUM(total) as sum FROM offers WHERE status IN ('draft', 'sent')").get().sum || 0;
-        const forecastPending = db.prepare("SELECT SUM(total) as sum FROM offers WHERE status = 'sent'").get().sum || 0;
+        const totalOpenValue = db.prepare("SELECT SUM(total) as sum FROM offers WHERE status IN ('draft', 'sent') AND archived_at IS NULL AND deleted_at IS NULL").get().sum || 0;
+        const forecastPending = db.prepare("SELECT SUM(total) as sum FROM offers WHERE status = 'sent' AND archived_at IS NULL AND deleted_at IS NULL").get().sum || 0;
 
         // Profit estimates
         const signedCost = db.prepare(`
-            SELECT SUM(oi.quantity * s.cost_price) as cost
+            SELECT SUM(oi.quantity * COALESCE(s.cost_price, 0)) as cost
             FROM offer_items oi
             JOIN offers o ON oi.offer_id = o.id
-            JOIN services s ON oi.service_id = s.id
-            WHERE o.status = 'signed'
+            LEFT JOIN services s ON oi.service_id = s.id
+            WHERE o.status = 'signed' AND o.archived_at IS NULL AND o.deleted_at IS NULL
     `).get().cost || 0;
-        const signedRevenue = db.prepare("SELECT SUM(subtotal) as sum FROM offers WHERE status = 'signed'").get().sum || 0;
+        const signedRevenue = db.prepare("SELECT SUM(subtotal) as sum FROM offers WHERE status = 'signed' AND archived_at IS NULL AND deleted_at IS NULL").get().sum || 0;
         const profitEstimate = signedRevenue - signedCost;
 
         // Monthly data for chart (last 6 months)
         const monthlyPerformance = db.prepare(`
-            SELECT strftime('%Y-%m', created_at) as month, SUM(total) as total, COUNT(*) as count
+            SELECT strftime('%Y-%m', COALESCE(signed_at, created_at)) as month, SUM(total) as total, COUNT(*) as count
             FROM offers
-            WHERE status = 'signed'
+            WHERE status = 'signed' AND archived_at IS NULL AND deleted_at IS NULL
             GROUP BY month
             ORDER BY month DESC
             LIMIT 6
@@ -2351,21 +2784,20 @@ app.get('/api/dashboard/stats', (req, res) => {
         })).reverse();
 
         // Month specific metrics
-        const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-        const signedThisMonthCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'signed' AND signed_at >= ? AND archived_at IS NULL").get(startOfMonth).count;
-        const revenueThisMonth = db.prepare("SELECT SUM(total) as sum FROM offers WHERE status = 'signed' AND signed_at >= ? AND archived_at IS NULL").get(startOfMonth).sum || 0;
-        const projectsInProgress = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status = 'in_progress' AND archived_at IS NULL").get().count;
-        const overdueProjects = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status != 'done' AND deadline < date('now') AND archived_at IS NULL").get().count;
-        const avgOfferValueMonth = db.prepare("SELECT AVG(total) as avg FROM offers WHERE created_at >= ? AND archived_at IS NULL").get(startOfMonth).avg || 0;
+        const signedThisMonthCount = db.prepare("SELECT COUNT(*) as count FROM offers WHERE status = 'signed' AND COALESCE(signed_at, created_at) >= ? AND archived_at IS NULL AND deleted_at IS NULL").get(startOfMonth).count;
+        const revenueThisMonth = db.prepare("SELECT SUM(total) as sum FROM offers WHERE status = 'signed' AND COALESCE(signed_at, created_at) >= ? AND archived_at IS NULL AND deleted_at IS NULL").get(startOfMonth).sum || 0;
+
+        const projectsInProgress = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status = 'in_progress' AND archived_at IS NULL AND deleted_at IS NULL").get().count;
+        const overdueProjects = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status != 'done' AND deadline < date('now') AND archived_at IS NULL AND deleted_at IS NULL").get().count;
+        const avgOfferValueMonth = db.prepare("SELECT AVG(total) as avg FROM offers WHERE created_at >= ? AND archived_at IS NULL AND deleted_at IS NULL").get(startOfMonth).avg || 0;
 
         // Avg Monthly Income
-        // Calculate months since first signed offer or use 1 if none/recent
-        const firstSignedDate = db.prepare("SELECT MIN(signed_at) as date FROM offers WHERE status = 'signed'").get().date;
+        const firstSignedDate = db.prepare("SELECT MIN(COALESCE(signed_at, created_at)) as date FROM offers WHERE status = 'signed' AND archived_at IS NULL AND deleted_at IS NULL").get().date;
         let monthsActive = 1;
         if (firstSignedDate) {
             const start = new Date(firstSignedDate);
-            const now = new Date();
-            monthsActive = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth()) + 1;
+            const today = new Date();
+            monthsActive = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth()) + 1;
             if (monthsActive < 1) monthsActive = 1;
         }
         const avgMonthlyIncome = signedRevenue / monthsActive;
@@ -2377,6 +2809,7 @@ app.get('/api/dashboard/stats', (req, res) => {
             WHERE o.status = 'sent' 
             AND o.due_date IS NOT NULL
             AND o.due_date <= date('now', '+7 days')
+            AND o.archived_at IS NULL AND o.deleted_at IS NULL
             ORDER BY o.due_date ASC
             LIMIT 5
     `).all();
@@ -2386,36 +2819,35 @@ app.get('/api/dashboard/stats', (req, res) => {
         const topCategories = db.prepare(`
             SELECT COALESCE(s.category, 'Other') as category, SUM(oi.total_price) as revenue
             FROM offer_items oi
-            JOIN services s ON oi.service_id = s.id
             JOIN offers o ON oi.offer_id = o.id
-            WHERE o.status = 'signed'
-            GROUP BY s.category
+            LEFT JOIN services s ON oi.service_id = s.id
+            WHERE o.status = 'signed' AND o.archived_at IS NULL AND o.deleted_at IS NULL
+            GROUP BY COALESCE(s.category, 'Other')
             ORDER BY revenue DESC
             LIMIT 5
     `).all();
 
         // Lead time
         const avgLeadTimeRaw = db.prepare(`
-            SELECT AVG(julianday(signed_at) - julianday(created_at)) as avg_days
+            SELECT AVG(julianday(COALESCE(signed_at, updated_at)) - julianday(created_at)) as avg_days
             FROM offers
-            WHERE status = 'signed' AND signed_at IS NOT NULL
+            WHERE status = 'signed' AND archived_at IS NULL AND deleted_at IS NULL
     `).get().avg_days;
         const avgLeadTime = avgLeadTimeRaw || 0;
 
         // Old drafts
         const oldDraftsCount = db.prepare(`
             SELECT COUNT(*) as count FROM offers
-            WHERE status = 'draft' AND created_at <= date('now', '-3 days')
+            WHERE status = 'draft' AND created_at <= date('now', '-3 days') AND archived_at IS NULL AND deleted_at IS NULL
     `).get().count;
 
         // Top clients
-        const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
         const topClients = db.prepare(`
             SELECT c.company_name, SUM(o.total) as revenue
             FROM offers o
             JOIN customers c ON o.customer_id = c.id
-            WHERE o.status = 'signed' AND o.signed_at >= ?
-    GROUP BY c.id
+            WHERE o.status = 'signed' AND COALESCE(o.signed_at, o.created_at) >= ? AND o.archived_at IS NULL AND o.deleted_at IS NULL
+            GROUP BY c.id
             ORDER BY revenue DESC
             LIMIT 5
     `).all(startOfYear);
@@ -2426,21 +2858,18 @@ app.get('/api/dashboard/stats', (req, res) => {
         }));
 
         // Project stats
-        const activeProjectCount = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status IN ('todo', 'in_progress', 'feedback')").get().count;
-        const overdueProjectCount = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status IN ('todo', 'in_progress', 'feedback') AND deadline IS NOT NULL AND deadline < date('now')").get().count;
-        const projectsByStatus = db.prepare("SELECT status, COUNT(*) as count FROM projects GROUP BY status").all();
+        const activeProjectCount = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status IN ('todo', 'in_progress', 'feedback') AND archived_at IS NULL AND deleted_at IS NULL").get().count;
+        const overdueProjectCount = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status IN ('todo', 'in_progress', 'feedback') AND deadline IS NOT NULL AND deadline < date('now') AND archived_at IS NULL AND deleted_at IS NULL").get().count;
+        const projectsByStatus = db.prepare("SELECT status, COUNT(*) as count FROM projects WHERE archived_at IS NULL AND deleted_at IS NULL GROUP BY status").all();
 
         const reminderStats = checkReminders();
 
-        // --- Smart KPIs ---
-
         // 1. Month-over-Month Revenue Growth
-        const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-        const lastMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString();
-        const lastMonthEnd = currentMonthStart; // approximate
+        const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+        const lastMonthEnd = startOfMonth;
 
-        const currentMonthRevenue = db.prepare("SELECT SUM(total) as total FROM offers WHERE status = 'signed' AND signed_at >= ?").get(currentMonthStart).total || 0;
-        const lastMonthRevenue = db.prepare("SELECT SUM(total) as total FROM offers WHERE status = 'signed' AND signed_at >= ? AND signed_at < ?").get(lastMonthStart, lastMonthEnd).total || 0;
+        const currentMonthRevenue = db.prepare("SELECT SUM(total) as total FROM offers WHERE status = 'signed' AND COALESCE(signed_at, created_at) >= ? AND archived_at IS NULL AND deleted_at IS NULL").get(startOfMonth).total || 0;
+        const lastMonthRevenue = db.prepare("SELECT SUM(total) as total FROM offers WHERE status = 'signed' AND COALESCE(signed_at, created_at) >= ? AND COALESCE(signed_at, created_at) < ? AND archived_at IS NULL AND deleted_at IS NULL").get(lastMonthStart, lastMonthEnd).total || 0;
 
         let momGrowth = 0;
         if (lastMonthRevenue > 0) {
@@ -2453,29 +2882,84 @@ app.get('/api/dashboard/stats', (req, res) => {
         const ninetyDaysAgo = new Date();
         ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
         const winRateStats = db.prepare(`
-SELECT
-COUNT(*) as total,
-    SUM(CASE WHEN status = 'signed' THEN 1 ELSE 0 END) as signed
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'signed' THEN 1 ELSE 0 END) as signed
             FROM offers 
-            WHERE status IN('signed', 'declined')
-AND(signed_at >= ? OR date(updated_at) >= ?)
-    `).get(ninetyDaysAgo.toISOString(), ninetyDaysAgo.toISOString());
+            WHERE status IN ('signed', 'declined')
+            AND (COALESCE(signed_at, updated_at) >= ?)
+            AND archived_at IS NULL AND deleted_at IS NULL
+    `).get(ninetyDaysAgo.toISOString());
 
         const winRate = winRateStats.total > 0 ? Math.round((winRateStats.signed / winRateStats.total) * 100) : 0;
 
-        // 3. Average Deal Size (All time for stability, or last 12 months)
-        const avgDealSize = db.prepare("SELECT AVG(total) as avg FROM offers WHERE status = 'signed'").get().avg || 0;
+        // 3. Average Deal Size
+        const avgDealSize = db.prepare("SELECT AVG(total) as avg FROM offers WHERE status = 'signed' AND archived_at IS NULL AND deleted_at IS NULL").get().avg || 0;
+
+        // --- REFINED ANALYTICS ---
+
+        // Top Services by Revenue
+        // Rule: Group by service_id AND item_name as fallback
+        const topServicesByRevenue = db.prepare(`
+            SELECT 
+                COALESCE(s.name_de, oi.item_name, 'Unknown Service') as name, 
+                SUM(oi.total_price) as revenue
+            FROM offer_items oi
+            JOIN offers o ON oi.offer_id = o.id
+            LEFT JOIN services s ON oi.service_id = s.id
+            WHERE o.status = 'signed' AND o.archived_at IS NULL AND o.deleted_at IS NULL
+            GROUP BY name
+            ORDER BY revenue DESC
+            LIMIT 5
+        `).all();
+
+        // Top Services by Count
+        // Rule: Use SUM(quantity) as requested
+        const topServicesByCount = db.prepare(`
+            SELECT 
+                COALESCE(s.name_de, oi.item_name, 'Unknown Service') as name, 
+                SUM(oi.quantity) as count
+            FROM offer_items oi
+            JOIN offers o ON oi.offer_id = o.id
+            LEFT JOIN services s ON oi.service_id = s.id
+            WHERE o.status = 'signed' AND o.archived_at IS NULL AND o.deleted_at IS NULL
+            GROUP BY name
+            ORDER BY count DESC
+            LIMIT 5
+        `).all();
+
+        // Total Signed Services Count (for KPI)
+        // Rule: Count of all service line items in signed offers
+        const totalSignedServicesCount = db.prepare(`
+            SELECT COUNT(*) as count
+            FROM offer_items oi
+            JOIN offers o ON oi.offer_id = o.id
+            WHERE o.status = 'signed' AND o.archived_at IS NULL AND o.deleted_at IS NULL
+        `).get().count;
+
+        // Debug Logging for Validation
+        if (signedCount > 0) {
+            logDebug('Signed Offers Found', { signedCount });
+            logDebug('Top Services by Revenue', topServicesByRevenue);
+            logDebug('Top Services by Count', topServicesByCount);
+
+            if (topServicesByRevenue.length === 0) {
+                console.warn('[Dashboard Warning] Signed offers exist but no service items were found for analytics.');
+            }
+        } else {
+            logDebug('No Signed Offers Found', {});
+        }
 
         res.json({
-            summary: { draftCount, pendingCount, signedCount, winRate, avgDealSize },
+            summary: { draftCount, pendingCount, signedCount, winRate, avgDealSize, totalSignedServicesCount },
             financials: { totalOpenValue, forecastPending, profitEstimate, signedRevenue, momGrowth },
-            performance: { monthlyPerformance, avgOfferValueMonth, signedThisMonthCount, avgMonthlyIncome },
+            performance: { monthlyPerformance, avgOfferValueMonth, signedThisMonthCount, avgMonthlyIncome, revenueThisMonth },
             alerts: { expiringSoonCount, oldDraftsCount, expiringOffers },
-            analytics: { topCategories, topClients, recentActivity },
+            analytics: { topCategories, topClients, recentActivity, topServicesByRevenue, topServicesByCount },
             projects: { activeProjectCount, overdueProjectCount, projectsByStatus }
         });
     } catch (err) {
-        console.error('Dashboard Stats Error:', err);
+        console.error('[API] Dashboard Stats Error:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -2524,6 +3008,223 @@ app.get('/api/packages', (req, res) => {
         });
 
         res.json(packagesWithItems);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- PRINT PARAMETERS ---
+app.get('/api/print-parameters', (req, res) => {
+    try {
+        const { key } = req.query;
+        let query = 'SELECT * FROM print_parameters WHERE active = 1';
+        const params = [];
+        if (key) {
+            query += ' AND spec_key = ?';
+            params.push(key);
+        }
+        query += ' ORDER BY sort_order ASC, value ASC';
+        const paramsList = db.prepare(query).all(...params);
+        res.json(paramsList);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/print-parameters', (req, res) => {
+    const { spec_key, value, sort_order } = req.body;
+    try {
+        const result = db.prepare(`
+            INSERT INTO print_parameters (spec_key, value, sort_order)
+            VALUES (?, ?, ?)
+        `).run(spec_key, value, sort_order || 0);
+        res.json({ id: result.lastInsertRowid, success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/print-parameters/:id', (req, res) => {
+    const { id } = req.params;
+    const { spec_key, value, sort_order, active } = req.body;
+    try {
+        db.prepare(`
+            UPDATE print_parameters 
+            SET spec_key = ?, value = ?, sort_order = ?, active = ?
+            WHERE id = ?
+        `).run(spec_key, value, sort_order, active !== undefined ? active : 1, id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/print-parameters/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+        db.prepare('DELETE FROM print_parameters WHERE id = ?').run(id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- PRINT PRODUCTS ---
+app.get('/api/print-products', (req, res) => {
+    try {
+        const { search, status, show_deleted } = req.query;
+        let query = 'SELECT * FROM print_products WHERE 1=1';
+        const params = [];
+
+        if (show_deleted !== 'true') {
+            query += ' AND deleted_at IS NULL';
+        }
+
+        if (status === 'active') {
+            query += ' AND active = 1';
+        } else if (status === 'inactive') {
+            query += ' AND active = 0';
+        }
+
+        if (search) {
+            query += ' AND (name LIKE ? OR category LIKE ?)';
+            params.push(`%${search}%`, `%${search}%`);
+        }
+
+        const products = db.prepare(query).all(...params);
+
+        const fullProducts = products.map(p => {
+            // Parse JSON fields
+            const allowed_specs = p.allowed_specs_json ? JSON.parse(p.allowed_specs_json) : {};
+            const default_specs = p.default_specs_json ? JSON.parse(p.default_specs_json) : {};
+
+            // Legacy support (still return optionSets if they exist)
+            const optionSets = db.prepare('SELECT * FROM print_product_option_sets WHERE print_product_id = ? AND active = 1').all(p.id)
+                .map(os => {
+                    const values = db.prepare('SELECT * FROM print_product_option_values WHERE option_set_id = ?').all(os.id);
+                    return { ...os, values };
+                });
+
+            if (optionSets.length === 0) {
+                // Return a template if no option sets exist
+                optionSets.push({
+                    id: -1,
+                    print_product_id: p.id,
+                    name: 'Standard',
+                    is_default: 1,
+                    active: 1,
+                    values: Object.entries(default_specs).map(([k, v]) => ({ option_key: k, value: v }))
+                });
+            }
+
+            return { ...p, default_specs, optionSets };
+        });
+
+        res.json(fullProducts);
+    } catch (err) {
+        console.error('Get print products error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/print-products/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const product = db.prepare('SELECT * FROM print_products WHERE id = ?').get(id);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+
+        const allowed_specs = product.allowed_specs_json ? JSON.parse(product.allowed_specs_json) : {};
+        const default_specs = product.default_specs_json ? JSON.parse(product.default_specs_json) : {};
+
+        const optionSets = db.prepare('SELECT * FROM print_product_option_sets WHERE print_product_id = ?').all(id)
+            .map(os => {
+                const values = db.prepare('SELECT * FROM print_product_option_values WHERE option_set_id = ?').all(os.id);
+                return { ...os, values };
+            });
+
+        if (optionSets.length === 0) {
+            optionSets.push({
+                id: -1,
+                print_product_id: parseInt(id),
+                name: 'Standard',
+                is_default: 1,
+                active: 1,
+                values: Object.entries(default_specs).map(([k, v]) => ({ option_key: k, value: v }))
+            });
+        }
+
+        res.json({ ...product, allowed_specs, default_specs, optionSets });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/print-products', (req, res) => {
+    const { name, category, description, unit_label, active, default_specs, allowed_specs } = req.body;
+
+    try {
+        const productRes = db.prepare(`
+            INSERT INTO print_products (name, category, description, unit_label, active, default_specs_json, allowed_specs_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            name,
+            category || null,
+            description || null,
+            unit_label || 'pcs',
+            active !== undefined ? active : 1,
+            default_specs ? JSON.stringify(default_specs) : null,
+            allowed_specs ? JSON.stringify(allowed_specs) : null
+        );
+
+        res.json({ id: productRes.lastInsertRowid, success: true });
+    } catch (err) {
+        console.error('Create print product error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/print-products/:id', (req, res) => {
+    const { id } = req.params;
+    const { name, category, description, unit_label, active, default_specs, allowed_specs } = req.body;
+
+    try {
+        db.prepare(`
+            UPDATE print_products 
+            SET name = ?, category = ?, description = ?, unit_label = ?, active = ?, default_specs_json = ?, allowed_specs_json = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `).run(
+            name,
+            category || null,
+            description || null,
+            unit_label || 'pcs',
+            active !== undefined ? active : 1,
+            default_specs ? JSON.stringify(default_specs) : null,
+            allowed_specs ? JSON.stringify(allowed_specs) : null,
+            id
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Update print product error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/print-products/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+        db.prepare('UPDATE print_products SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.patch('/api/print-products/:id/restore', (req, res) => {
+    const { id } = req.params;
+    try {
+        db.prepare('UPDATE print_products SET deleted_at = NULL WHERE id = ?').run(id);
+        res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

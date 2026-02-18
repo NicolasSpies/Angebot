@@ -8,6 +8,7 @@
     "reviews": "Reviews",
     "settings": "Einstellungen",
     "trash": "Papierkorb",
+    "portals": "Portale",
     "activity": "Aktivität"
   },
   "common": {
@@ -26,10 +27,11 @@
   },
   "offer": {
     "title": "Neues Angebot",
+    "proposal_title": "Geschäftliches Angebot",
     "customer": "Kunde",
     "services": "Leistungen",
     "total": "Gesamtbetrag",
-    "subtotal": "Zwischensumme",
+    "subtotal": "Netto",
     "vat": "MwSt.",
     "discount": "Rabatt",
     "status": "Status",
@@ -39,7 +41,27 @@
     "step_1": "Kunde & Details",
     "step_2": "Leistungen",
     "step_3": "Abschluss",
-    "language": "Sprache"
+    "language": "Sprache",
+    "valid_until": "Gültig bis",
+    "prepared_for": "Vorbereitet für",
+    "item_name": "Service/Beschreibung",
+    "quantity": "Menge",
+    "unit": "Einheit",
+    "amount": "Betrag",
+    "strategic_notes": "Strategische Hinweise",
+    "legal_notes": "Rechtliche Hinweise",
+    "signed_by": "Unterzeichnet von",
+    "cycle": {
+      "one_time": "Einmalige Kosten",
+      "yearly": "Jährliche Kosten",
+      "monthly": "Monatliche Kosten"
+    },
+    "or_divider": "ODER"
+  },
+  "customer": {
+    "company_name": "Unternehmensname",
+    "vat_number": "MwSt.-Nummer",
+    "country": "Land"
   },
   "settings": {
     "company_name": "Unternehmensname",
@@ -49,5 +71,61 @@
     "email": "E-Mail für Postfach",
     "currency": "Standardwährung",
     "payment_terms": "Zahlungsbedingungen"
+  },
+  "public_offer": {
+    "loading": "Angebot wird geladen...",
+    "signed_on": "Angebot unterzeichnet am",
+    "declined_on": "Angebot abgelehnt am",
+    "awaiting_response": "Warten auf Antwort",
+    "download_pdf": "Unterzeichnetes PDF herunterladen",
+    "decline_btn": "Ablehnen",
+    "sign_btn": "Unterzeichnen",
+    "processing": "Verarbeitung...",
+    "success_msg": "Erfolgreich unterzeichnet! Sie können nun Ihre Kopie herunterladen.",
+    "signing_failed": "Unterzeichnung fehlgeschlagen:",
+    "powered_by": "Powered by"
+  },
+  "portal": {
+    "dashboard": {
+      "welcome": "Willkommen",
+      "projects": "Ihre Projekte",
+      "reviews": "Anstehende Reviews"
+    },
+    "projects": {
+      "title": "Projekte",
+      "status": "Status",
+      "deadline": "Deadline",
+      "linked_offer": "Angebot"
+    },
+    "reviews": {
+      "title": "Reviews",
+      "approve": "Genehmigen",
+      "request_changes": "Änderungen anfordern",
+      "comments": "Kommentare",
+      "status": {
+        "approved": "Genehmigt",
+        "changes_requested": "Änderungen angefordert",
+        "pending": "Ausstehend"
+      }
+    }
+  },
+  "public_review": {
+    "welcome": "Willkommen zum Review",
+    "intro": "Bitte geben Sie Ihre Daten ein, um mit dem Review zu beginnen. Dies hilft uns, das Feedback zu verfolgen und den Fortschritt zu kommunizieren.",
+    "start_btn": "Review starten",
+    "final_confirmation": "Abschließende Bestätigung",
+    "confirm_instruction": "Ich bestätige, dass ich autorisiert bin, Feedback zu geben und {action}.",
+    "confirm_submit": "Bestätigen & Senden",
+    "successfully_approved": "Erfolgreich genehmigt",
+    "viewing_history": "Nur Verlaufsansicht",
+    "resolve_comments_msg": "Bitte lösen Sie alle Kommentare auf, bevor Sie genehmigen.",
+    "placeholder": "Feedback hinzufügen...",
+    "update": "Aktualisieren",
+    "add_comment": "Kommentar hinzufügen",
+    "on": "am",
+    "no_comments": "Noch keine Kommentare",
+    "click_to_add": "Klicken Sie auf das Dokument, um einen hinzufügen",
+    "anonymous": "Anonym",
+    "auto_saving": "Änderungen werden automatisch gespeichert..."
   }
 }

@@ -1,16 +1,90 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>angebot</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
+    <title>Angebot | Workspace</title>
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --text: #0f172a;
+        --primary: #2563eb;
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background-color: var(--bg);
+        color: var(--text);
+      }
+      #root:empty::before {
+        content: "Initializing Application...";
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 1.1rem;
+        color: #64748b;
+        background: var(--bg);
+        z-index: 9999;
+      }
+      #crash-fallback {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 10000;
+        background: #fff;
+        padding: 2rem;
+        box-sizing: border-box;
+      }
+      #crash-fallback.visible {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="crash-fallback">
+      <h1 style="color: #e11d48; margin-bottom: 1rem;">System Launch Error</h1>
+      <p style="color: #475569; max-width: 400px; line-height: 1.5;">
+        The application failed to initialize properly. This may be due to a script loading error or a browser compatibility issue.
+      </p>
+      <button onclick="location.reload()" style="margin-top: 2rem; padding: 0.75rem 1.5rem; background: #2563eb; color: white; border: none; border-radius: 0.5rem; cursor: pointer; font-weight: bold;">
+        Retry Launch
+      </button>
+    </div>
+    <script>
+      // Global monitoring for boot stability
+      window.onload = function() {
+        setTimeout(() => {
+          const root = document.getElementById('root');
+          if (root && root.innerHTML === '') {
+            console.error('[Launch] App failed to mount within 5s');
+            // document.getElementById('crash-fallback').classList.add('visible');
+          }
+        }, 5000);
+      };
+      
+      window.onerror = function(msg, url, line) {
+        console.error('[Global Error]', { msg, url, line });
+        // Optional: show fallback if error occurs before React boots
+        if (!window.React) {
+           document.getElementById('crash-fallback').classList.add('visible');
+        }
+      };
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

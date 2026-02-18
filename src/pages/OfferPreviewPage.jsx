@@ -11,7 +11,7 @@ import AttachmentSection from '../components/common/AttachmentSection';
 const OfferPreviewPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { t } = useI18n();
+    const { t, setLocale } = useI18n();
     const [offer, setOffer] = useState(null);
     const [settings, setSettings] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -23,6 +23,9 @@ const OfferPreviewPage = () => {
         ]);
         setOffer(oData);
         setSettings(sData);
+        if (oData.language) {
+            setLocale(oData.language);
+        }
         setIsLoading(false);
     }, [id]);
 

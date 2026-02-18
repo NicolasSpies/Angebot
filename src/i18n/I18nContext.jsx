@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import enStrings from './en.json';
 import deStrings from './de.json';
 import frStrings from './fr.json';
 
 const translations = {
+  en: enStrings,
   de: deStrings,
   fr: frStrings
 };
@@ -10,17 +12,28 @@ const translations = {
 const I18nContext = createContext();
 
 export const I18nProvider = ({ children }) => {
-  const [locale, setLocale] = useState(localStorage.getItem('locale') || 'de');
+  // Default to English for Admin, can be overridden by client-facing pages
+  const [locale, setLocale] = useState(localStorage.getItem('portal_locale') || 'en');
 
   useEffect(() => {
-    localStorage.setItem('locale', locale);
+    localStorage.setItem('portal_locale', locale);
   }, [locale]);
 
   const t = (path) => {
+    if (!path) return '';
     const keys = path.split('.');
-    let result = translations[locale];
+    let result = translations[locale] || translations['en'];
+
     for (const key of keys) {
-      if (result[key] === undefined) return path;
+      if (result[key] === undefined) {
+        // Fallback to English if key missing in current locale
+        let fallbackResult = translations['en'];
+        for (const fallbackKey of keys) {
+          if (fallbackResult[fallbackKey] === undefined) return path;
+          fallbackResult = fallbackResult[fallbackKey];
+        }
+        return fallbackResult;
+      }
       result = result[key];
     }
     return result;

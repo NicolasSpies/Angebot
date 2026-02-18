@@ -15,4 +15,6 @@ const Card = ({ children, className = '', padding = 'var(--space-6)', noBorder =
     );
 };
 
+
+export { Card };
 export default Card;

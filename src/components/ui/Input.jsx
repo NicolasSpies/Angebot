@@ -17,4 +17,5 @@ const Input = ({ label, error, className = '', containerStyle = {}, ...props }) 
     );
 };
 
+export { Input };
 export default Input;

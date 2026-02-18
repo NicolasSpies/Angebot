@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import { formatCurrency } from '../utils/pricingEngine';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -11,7 +10,6 @@ import Badge from '../components/ui/Badge';
 import StatusPill from '../components/ui/StatusPill';
 
 const DashboardPage = () => {
-    const { t } = useI18n();
     const navigate = useNavigate();
     const [stats, setStats] = useState({
         summary: { draftCount: 0, pendingCount: 0, signedCount: 0, winRate: 0, avgDealSize: 0 },
@@ -26,6 +24,9 @@ const DashboardPage = () => {
     useEffect(() => {
         const loadDashboard = async () => {
             try {
+                // Auto-repair orphaned signed offers
+                await dataService.repairLinks();
+
                 const data = await dataService.getDashboardStats();
 
                 if (data && !data.error) {
@@ -52,105 +53,112 @@ const DashboardPage = () => {
 
     const { summary, financials, performance, alerts, analytics, projects } = stats;
 
-    return (
-        <div className="page-container pb-24 max-w-[1600px] mx-auto">
-            {/* Header Area */}
-            <div className="flex justify-between items-end mb-10">
-                <div>
-                    <h1 className="text-3xl font-extrabold text-[var(--text-main)] tracking-tight mb-2">Dashboard</h1>
-                    <p className="text-[14px] text-[var(--text-secondary)] font-medium">Overview of your business performance.</p>
-                </div>
-                <div className="flex gap-3">
-                    <Button variant="ghost" onClick={() => window.location.reload()}>
-                        <Zap size={16} className="mr-2 text-[var(--primary)]" /> Refresh
-                    </Button>
-                </div>
-            </div>
+    const totalSignedRevenue = analytics.topServicesByRevenue?.reduce((acc, s) => acc + s.revenue, 0) || 0;
+    const totalSignedCount = analytics.topServicesByCount?.reduce((acc, s) => acc + s.count, 0) || 0;
 
-            {/* Quick Actions Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
-                <button onClick={() => navigate('/offer/new')} className="flex items-center gap-4 p-4 bg-white border border-[var(--border-subtle)] rounded-xl hover:border-[var(--primary)] hover:shadow-md transition-all group text-left">
-                    <div className="w-10 h-10 rounded-full bg-[var(--primary-light)] text-[var(--primary)] flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <Plus size={20} />
+    const ProgressBar = ({ percentage }) => (
+        <div className="w-full h-1 rounded-full bg-[var(--bg-subtle)] overflow-hidden mt-2">
+            <div
+                className="h-full bg-[var(--primary)] rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }}
+            />
+        </div>
+    );
+
+    return (
+        <div className="page-container pb-24 max-w-[1600px] mx-auto pt-6">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
+                <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm">
+                    <div className="p-2 rounded-lg bg-[var(--bg-subtle)] text-[var(--text-muted)] w-fit mb-4">
+                        <TrendingUp size={20} />
                     </div>
-                    <div>
-                        <p className="text-[13px] font-bold text-[var(--text-main)]">New Offer</p>
-                        <p className="text-[11px] text-[var(--text-muted)]">Create proposal</p>
+                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums leading-none mb-2">
+                        {formatCurrency(performance.revenueThisMonth || 0)}
+                    </p>
+                    <p className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Revenue This Month</p>
+                </Card>
+
+                <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm">
+                    <div className="p-2 rounded-lg bg-[var(--warning-bg)]/30 text-[var(--warning)] w-fit mb-4">
+                        <Clock size={20} />
                     </div>
-                </button>
-                <button onClick={() => navigate('/projects')} className="flex items-center gap-4 p-4 bg-white border border-[var(--border-subtle)] rounded-xl hover:border-[var(--primary)] hover:shadow-md transition-all group text-left">
-                    <div className="w-10 h-10 rounded-full bg-[var(--bg-subtle)] text-[var(--text-main)] flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums leading-none mb-2">{summary.pendingCount}</p>
+                    <p className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Sent</p>
+                </Card>
+
+                <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm">
+                    <div className="p-2 rounded-lg bg-[var(--primary-light)]/30 text-[var(--primary)] w-fit mb-4">
                         <Briefcase size={20} />
                     </div>
-                    <div>
-                        <p className="text-[13px] font-bold text-[var(--text-main)]">New Project</p>
-                        <p className="text-[11px] text-[var(--text-muted)]">Start engagement</p>
-                    </div>
-                </button>
-                <button onClick={() => navigate('/customers')} className="flex items-center gap-4 p-4 bg-white border border-[var(--border-subtle)] rounded-xl hover:border-[var(--primary)] hover:shadow-md transition-all group text-left">
-                    <div className="w-10 h-10 rounded-full bg-[var(--bg-subtle)] text-[var(--text-main)] flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <Users size={20} />
-                    </div>
-                    <div>
-                        <p className="text-[13px] font-bold text-[var(--text-main)]">Add Client</p>
-                        <p className="text-[11px] text-[var(--text-muted)]">Register entity</p>
-                    </div>
-                </button>
-            </div>
-
-            {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-                <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm hover:shadow-md transition-all">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-2 rounded-lg bg-[var(--bg-subtle)] text-[var(--text-muted)]">
-                            <TrendingUp size={20} />
-                        </div>
-                        <Badge variant="primary" className="text-[9px]">MTD</Badge>
-                    </div>
-                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums">{formatCurrency(performance.revenueThisMonth || 0)}</p>
-                    <p className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-1">Revenue This Month</p>
+                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums leading-none mb-2">{projects.activeProjectCount}</p>
+                    <p className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Projects in Progress</p>
                 </Card>
 
-                <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm hover:shadow-md transition-all">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-2 rounded-lg bg-[var(--warning-bg)] text-[var(--warning)]">
-                            <Clock size={20} />
-                        </div>
-                        <StatusPill status="pending" />
+                <Card padding="1.5rem" className={`border border-[var(--border-subtle)] shadow-sm ${projects?.overdueProjectCount > 0 ? 'bg-red-50/50 border-red-100' : ''}`}>
+                    <div className={`p-2 rounded-lg w-fit mb-4 ${projects?.overdueProjectCount > 0 ? 'bg-red-100 text-red-600' : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'}`}>
+                        <AlertTriangle size={20} />
                     </div>
-                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums">{summary.pendingCount}</p>
-                    <p className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-1">Pending Approval</p>
-                </Card>
-
-                <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm hover:shadow-md transition-all">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-2 rounded-lg bg-[var(--primary-light)] text-[var(--primary)]">
-                            <Briefcase size={20} />
-                        </div>
-                        <Badge variant="neutral" className="text-[9px]">ACTIVE</Badge>
-                    </div>
-                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums">{projects.activeProjectCount}</p>
-                    <p className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-1">Projects in Progress</p>
-                </Card>
-
-                <Card padding="1.5rem" className={`border border-[var(--border-subtle)] shadow-sm hover:shadow-md transition-all ${projects?.overdueProjectCount > 0 ? 'bg-red-50 border-red-200' : ''}`}>
-                    <div className="flex justify-between items-start mb-4">
-                        <div className={`p-2 rounded-lg ${projects?.overdueProjectCount > 0 ? 'bg-red-100 text-red-600' : 'bg-[var(--primary-light)] text-[var(--primary)]'}`}>
-                            <AlertTriangle size={20} />
-                        </div>
-                        {projects?.overdueProjectCount > 0 && (
-                            <Badge variant="danger" className="animate-pulse">CRITICAL</Badge>
-                        )}
-                    </div>
-                    <p className={`text-[28px] font-black tabular-nums ${projects?.overdueProjectCount > 0 ? 'text-red-600' : 'text-[var(--text-main)]'}`}>
+                    <p className={`text-[28px] font-black tabular-nums leading-none mb-2 ${projects?.overdueProjectCount > 0 ? 'text-red-600' : 'text-[var(--text-main)]'}`}>
                         {projects?.overdueProjectCount || 0}
                     </p>
-                    <p className="text-[12px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-1">Overdue Projects</p>
+                    <p className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Overdue Projects</p>
+                </Card>
+
+                <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm">
+                    <div className="p-2 rounded-lg bg-[var(--success-bg)]/30 text-[var(--success)] w-fit mb-4">
+                        <CheckCircle size={20} />
+                    </div>
+                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums leading-none mb-2">
+                        {summary.totalSignedServicesCount || 0}
+                    </p>
+                    <p className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Signed Services Total</p>
+                </Card>
+            </div>
+
+            {/* Top Signed Services Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm">
+                    <h3 className="text-[14px] font-bold text-[var(--text-main)] mb-6">Top 5 Signed Services by Revenue</h3>
+                    <div className="space-y-5">
+                        {analytics.topServicesByRevenue?.length > 0 ? (
+                            analytics.topServicesByRevenue.map((service, i) => (
+                                <div key={i} className="group">
+                                    <div className="flex justify-between items-end mb-1">
+                                        <span className="text-[13px] font-medium text-[var(--text-main)]">{service.name}</span>
+                                        <span className="text-[13px] font-bold text-[var(--text-main)] tabular-nums">{formatCurrency(service.revenue)}</span>
+                                    </div>
+                                    <ProgressBar percentage={(service.revenue / financials.signedRevenue) * 100} />
+                                </div>
+                            ))
+                        ) : (
+                            <div className="py-8 text-center text-[var(--text-muted)] text-[13px]">No signed services yet</div>
+                        )}
+                    </div>
+                </Card>
+
+                <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm">
+                    <h3 className="text-[14px] font-bold text-[var(--text-main)] mb-6">Top 5 Signed Services by Count</h3>
+                    <div className="space-y-5">
+                        {analytics.topServicesByCount?.length > 0 ? (
+                            analytics.topServicesByCount.map((service, i) => (
+                                <div key={i} className="group">
+                                    <div className="flex justify-between items-end mb-1">
+                                        <span className="text-[13px] font-medium text-[var(--text-main)]">{service.name}</span>
+                                        <span className="text-[13px] font-bold text-[var(--text-main)] tabular-nums">{service.count}</span>
+                                    </div>
+                                    <ProgressBar percentage={(service.count / summary.totalSignedServicesCount) * 100} />
+                                </div>
+                            ))
+                        ) : (
+                            <div className="py-8 text-center text-[var(--text-muted)] text-[13px]">No signed services yet</div>
+                        )}
+                    </div>
                 </Card>
             </div>
 
             {/* Charts & Financials */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                 <Card padding="2rem" className="lg:col-span-2 border border-[var(--border-subtle)] shadow-sm">
                     <div className="flex justify-between items-center mb-8">
                         <div>
@@ -165,7 +173,6 @@ const DashboardPage = () => {
                             </div>
                             <p className="text-[12px] text-[var(--text-secondary)] font-medium">Monthly recognized revenue</p>
                         </div>
-                        <Badge variant="neutral">Last 6 Months</Badge>
                     </div>
                     <div style={{ height: '300px', width: '100%', marginLeft: '-20px' }}>
                         <ResponsiveContainer width="100%" height="100%">
@@ -198,7 +205,7 @@ const DashboardPage = () => {
                     <Card padding="1.5rem" className="border border-[var(--border-subtle)] shadow-sm flex-1 flex flex-col justify-center bg-[var(--primary-light)]/10">
                         <div className="flex items-center gap-3 mb-2 text-[var(--primary)]">
                             <Zap size={18} />
-                            <span className="text-[12px] font-bold uppercase tracking-wider">Forecast Pending</span>
+                            <span className="text-[12px] font-bold uppercase tracking-wider">Forecast Open</span>
                         </div>
                         <p className="text-[32px] font-black text-[var(--primary)] tracking-tight tabular-nums">
                             {formatCurrency(financials.forecastPending)}
@@ -217,7 +224,7 @@ const DashboardPage = () => {
                 </div>
             </div>
 
-            <Card padding="0" className="border border-[var(--border-subtle)] shadow-sm overflow-hidden h-full">
+            <Card padding="0" className="border border-[var(--border-subtle)] shadow-sm overflow-hidden mb-8">
                 <div className="p-6 border-b border-[var(--border-subtle)] flex justify-between items-center bg-[var(--bg-surface)]">
                     <div className="flex items-center gap-3">
                         <Activity size={20} className="text-[var(--text-muted)]" />

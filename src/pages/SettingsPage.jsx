@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useI18n } from '../i18n/I18nContext';
 import { dataService } from '../data/dataService';
 import { Building2, MapPin, FileText, Tags, Database, Save, Download, Upload, Box, Plus, X, Trash2, Edit2, Globe, Phone, Mail } from 'lucide-react';
 import Button from '../components/ui/Button';
@@ -10,7 +9,6 @@ import Textarea from '../components/ui/Textarea';
 import Badge from '../components/ui/Badge';
 
 const SettingsPage = () => {
-    const { t } = useI18n();
     const [activeTab, setActiveTab] = useState('general');
     const [settings, setSettings] = useState({
         company_name: '', address: '', vat_number: '', logo_url: '',
@@ -77,7 +75,7 @@ const SettingsPage = () => {
     return (
         <div className="page-container" style={{ maxWidth: '1000px' }}>
             <div style={{ marginBottom: '1.5rem' }}>
-                <h1 className="text-2xl font-bold">{t('nav.settings')}</h1>
+                <h1 className="text-2xl font-bold">Settings</h1>
                 <p className="text-sm text-muted mt-1">Manage your company profile, preferences, and system configurations.</p>
             </div>
 

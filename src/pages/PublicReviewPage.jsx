@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useOutletContext } from 'react-router-dom';
+import { useI18n } from '../i18n/I18nContext';
 import * as pdfjsLib from 'pdfjs-dist';
 import {
     CheckCircle2, ShieldAlert, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight,
@@ -16,6 +17,7 @@ import { toast } from 'react-hot-toast';
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText, isDestructive }) => {
+    const { t } = useI18n();
     if (!isOpen) return null;
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
@@ -23,12 +25,12 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
                 <h3 className="text-lg font-bold text-[var(--text-main)] mb-2">{title}</h3>
                 <p className="text-sm text-[var(--text-secondary)] mb-6 leading-relaxed">{message}</p>
                 <div className="flex gap-3">
-                    <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-bold text-[var(--text-secondary)] hover:bg-gray-50 transition-colors">Cancel</button>
+                    <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-bold text-[var(--text-secondary)] hover:bg-gray-50 transition-colors">{t('common.cancel')}</button>
                     <button
                         onClick={onConfirm}
                         className={`flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all active:scale-95 ${isDestructive ? 'bg-red-500 hover:bg-red-600 shadow-red-200' : 'bg-[var(--primary)] hover:brightness-110 shadow-[var(--primary)]/20'} shadow-lg`}
                     >
-                        {confirmText || 'Confirm'}
+                        {confirmText || t('common.confirm')}
                     </button>
                 </div>
             </div>
@@ -37,6 +39,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
 };
 
 const ClientOnboardingModal = ({ isOpen, onSubmit, data }) => {
+    const { t } = useI18n();
     const [formData, setFormData] = useState({ firstName: '', lastName: '', email: '', company: '' });
     const [isValidEmail, setIsValidEmail] = useState(true);
 
@@ -62,16 +65,16 @@ const ClientOnboardingModal = ({ isOpen, onSubmit, data }) => {
                 </div>
 
                 <div className="text-center mb-10">
-                    <h2 className="text-2xl font-black text-[var(--text-main)] mb-3">Welcome to the Review</h2>
+                    <h2 className="text-2xl font-black text-[var(--text-main)] mb-3">{t('public_review.welcome')}</h2>
                     <p className="text-[var(--text-secondary)] text-sm leading-relaxed px-4">
-                        Please provide your details to begin reviewing <strong>{data?.title || 'this document'}</strong>. This helps us track feedback and communicate progress.
+                        {t('public_review.intro')} <strong>{data?.title || t('portal.reviews.title')}</strong>.
                     </p>
                 </div>
 
                 <div className="space-y-6">
                     <div className="grid grid-cols-2 gap-5">
                         <div className="space-y-2">
-                            <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em] ml-1">First Name</label>
+                            <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em] ml-1">{t('common.first_name') || 'First Name'}</label>
                             <input
                                 type="text"
                                 autoFocus
@@ -82,7 +85,7 @@ const ClientOnboardingModal = ({ isOpen, onSubmit, data }) => {
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em] ml-1">Last Name</label>
+                            <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em] ml-1">{t('common.last_name') || 'Last Name'}</label>
                             <input
                                 type="text"
                                 value={formData.lastName}
@@ -94,7 +97,7 @@ const ClientOnboardingModal = ({ isOpen, onSubmit, data }) => {
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em] ml-1">Email Address</label>
+                        <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em] ml-1">{t('common.email') || 'Email Address'}</label>
                         <input
                             type="email"
                             value={formData.email}
@@ -102,11 +105,10 @@ const ClientOnboardingModal = ({ isOpen, onSubmit, data }) => {
                             className={`w-full p-4 bg-gray-50 border ${!isValidEmail && formData.email ? 'border-red-300 focus:border-red-500 ring-red-100' : 'border-gray-100 focus:border-[var(--primary)] focus:ring-[var(--primary)]/20'} rounded-2xl outline-none transition-all text-[15px] font-medium`}
                             placeholder="sabrina@example.com"
                         />
-                        {!isValidEmail && formData.email && <p className="text-[10px] text-red-500 font-bold ml-1">Please enter a valid email address.</p>}
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em] ml-1">Company (Optional)</label>
+                        <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em] ml-1">{t('common.company') || 'Company (Optional)'}</label>
                         <input
                             type="text"
                             value={formData.company}
@@ -123,7 +125,7 @@ const ClientOnboardingModal = ({ isOpen, onSubmit, data }) => {
                         onClick={() => onSubmit(formData)}
                         className="w-full btn-primary py-5 rounded-[1.5rem] text-[15px] font-black uppercase tracking-widest shadow-xl shadow-[var(--primary)]/20 disabled:opacity-30 disabled:grayscale transition-all hover:translate-y-[-2px] active:translate-y-[0px]"
                     >
-                        Start Review
+                        {t('public_review.start_btn')}
                     </button>
                 </div>
             </div>
@@ -132,6 +134,7 @@ const ClientOnboardingModal = ({ isOpen, onSubmit, data }) => {
 };
 
 const IdentityModal = ({ isOpen, onClose, onSubmit, action }) => {
+    const { t } = useI18n();
     const [formData, setFormData] = useState({ firstName: '', lastName: '', email: '', confirm: false });
 
     if (!isOpen) return null;
@@ -142,9 +145,9 @@ const IdentityModal = ({ isOpen, onClose, onSubmit, action }) => {
                 <div className="w-12 h-12 bg-[var(--primary-light)] text-[var(--primary)] rounded-xl flex items-center justify-center mb-6">
                     <User size={24} />
                 </div>
-                <h2 className="text-xl font-bold text-[var(--text-main)] mb-2">Final Confirmation</h2>
+                <h2 className="text-xl font-bold text-[var(--text-main)] mb-2">{t('public_review.final_confirmation')}</h2>
                 <p className="text-[var(--text-secondary)] text-sm mb-6">
-                    You are about to complete the <strong>{action === 'approve' ? 'Approval' : 'Change Request'}</strong>.
+                    {action === 'approve' ? t('portal.reviews.approve') : t('portal.reviews.request_changes')}
                 </p>
 
                 <div className="space-y-4">
@@ -156,19 +159,19 @@ const IdentityModal = ({ isOpen, onClose, onSubmit, action }) => {
                             className="mt-1"
                         />
                         <span className="text-sm text-[var(--text-secondary)] leading-tight">
-                            I confirm that I am authorized to provide feedback and {action === 'approve' ? 'approve this document' : 'request these changes'}.
+                            {t('public_review.confirm_instruction', { action: action === 'approve' ? t('portal.reviews.approve') : t('portal.reviews.request_changes') })}
                         </span>
                     </label>
                 </div>
 
                 <div className="flex gap-3 mt-8">
-                    <button onClick={onClose} className="flex-1 btn-secondary py-3">Cancel</button>
+                    <button onClick={onClose} className="flex-1 btn-secondary py-3">{t('common.cancel')}</button>
                     <button
                         disabled={!formData.confirm}
                         onClick={() => onSubmit(formData)}
                         className="flex-1 btn-primary py-3 disabled:opacity-50"
                     >
-                        Confirm & Submit
+                        {t('public_review.confirm_submit')}
                     </button>
                 </div>
             </div>
@@ -178,6 +181,9 @@ const IdentityModal = ({ isOpen, onClose, onSubmit, action }) => {
 
 const PublicReviewPage = () => {
     const { token } = useParams();
+    const { t, setLocale } = useI18n();
+    const outletContext = useOutletContext();
+    const portalData = outletContext?.portalData;
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -231,8 +237,14 @@ const PublicReviewPage = () => {
             setSettings(settingsData);
             setAllVersions(res.allVersions || []);
 
+            if (res.language) {
+                setLocale(res.language);
+            } else if (res.project_language) {
+                setLocale(res.project_language);
+            }
+
             // Load annotations for this version
-            const commentData = await dataService.getReviewComments(res.versionId);
+            const commentData = await dataService.getReviewComments(res.id);
             setAnnotations(Array.isArray(commentData) ? commentData.map(c => ({
                 id: c.id,
                 page: c.page_number,
@@ -259,6 +271,19 @@ const PublicReviewPage = () => {
     }, [token]);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    useEffect(() => {
+        if (portalData?.profile && !clientIdentity) {
+            const identity = {
+                firstName: portalData.profile.first_name,
+                lastName: portalData.profile.last_name,
+                email: portalData.profile.email,
+                company: portalData.profile.company
+            };
+            setClientIdentity(identity);
+            sessionStorage.setItem(`client_identity_${token}`, JSON.stringify(identity));
+        }
+    }, [portalData, token, clientIdentity]);
 
     const renderPage = useCallback(async () => {
         if (!pdf || !canvasRef.current || !overlayRef.current) return;
@@ -656,160 +681,196 @@ const PublicReviewPage = () => {
         }
     };
 
-    if (loading) return <div className="flex items-center justify-center min-h-screen bg-[var(--bg-app)] italic text-[var(--text-muted)]">Loading Review...</div>;
+    if (loading) return <div className="flex items-center justify-center min-h-screen bg-[var(--bg-app)] italic text-[var(--text-muted)]">{t('public_offer.loading')}</div>;
 
     if (error) return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--bg-app)] p-6 text-center">
             <ShieldAlert size={48} className="text-red-500 mb-4" />
-            <h3 className="text-lg font-bold">Review Unavailable</h3>
+            <h3 className="text-lg font-bold">{t('public_review.viewing_history')}</h3>
             <p className="text-[var(--text-secondary)]">{error}</p>
         </div>
     );
+
+    const isPortalMode = !!portalData;
 
     const isReadOnly = !data.isCurrent || data.status === 'approved';
     const hasComments = annotations.filter(a => !a.is_resolved).length > 0;
 
     return (
-        <div className="flex flex-col h-screen bg-[#F8F9FA] overflow-hidden font-sans">
-            <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.02)] z-10">
-                <div className="flex items-center gap-8">
-                    {settings?.logo_url ? (
-                        <img src={settings.logo_url} alt="Logo" className="h-10 w-auto object-contain" />
-                    ) : (
+        <div className={`flex flex-col h-screen overflow-hidden font-sans ${isPortalMode ? 'bg-transparent' : 'bg-[#F8F9FA]'}`}>
+            {!isPortalMode && (
+                <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.02)] z-10">
+                    <div className="flex items-center gap-8">
+                        {settings?.logo_url ? (
+                            <img src={settings.logo_url} alt="Logo" className="h-10 w-auto object-contain" />
+                        ) : (
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-black text-[var(--primary)] uppercase tracking-[0.2em] mb-0.5">Brand</span>
+                                <h1 className="text-lg font-black text-[var(--text-main)] leading-none italic">LOGO</h1>
+                            </div>
+                        )}
+
+                        <div className="h-10 w-px bg-gray-100" />
+
                         <div className="flex flex-col">
-                            <span className="text-[10px] font-black text-[var(--primary)] uppercase tracking-[0.2em] mb-0.5">Brand</span>
-                            <h1 className="text-lg font-black text-[var(--text-main)] leading-none italic">LOGO</h1>
-                        </div>
-                    )}
-
-                    <div className="h-10 w-px bg-gray-100" />
-
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">{data.project_name}</span>
-                        <div className="flex items-center gap-3">
-                            <h1 className="text-[15px] font-bold text-[var(--text-main)] leading-none">
-                                {data.title || data.file_url?.split('/').pop()?.replace(/^comp-/, '') || 'Review PDF'}
-                            </h1>
-                            <div className="flex items-center gap-2 px-3 py-1 bg-[#F1F3F5] rounded-xl border border-gray-100 shadow-sm">
-                                <History size={14} className="text-[var(--text-muted)]" />
-                                <Select
-                                    value={data.versionId}
-                                    onChange={(e) => loadData(e.target.value)}
-                                    options={allVersions.map(v => ({
-                                        value: v.id,
-                                        label: `v${v.version_number}`
-                                    }))}
-                                    className="min-w-[50px]"
-                                    triggerStyle={{
-                                        height: '24px',
-                                        paddingLeft: '0',
-                                        paddingRight: '0',
-                                        backgroundColor: 'transparent',
-                                        border: 'none',
-                                        fontSize: '11px',
-                                        fontWeight: '900',
-                                        color: 'var(--text-secondary)'
-                                    }}
-                                />
+                            <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">{data.project_name}</span>
+                            <div className="flex items-center gap-3">
+                                <h1 className="text-[15px] font-bold text-[var(--text-main)] leading-none">
+                                    {data.title || data.file_url?.split('/').pop()?.replace(/^comp-/, '') || 'Review PDF'}
+                                </h1>
+                                <div className="flex items-center gap-2 px-3 py-1 bg-[#F1F3F5] rounded-xl border border-gray-100 shadow-sm">
+                                    <History size={14} className="text-[var(--text-muted)]" />
+                                    <Select
+                                        value={data.versionId}
+                                        onChange={(e) => loadData(e.target.value)}
+                                        options={allVersions.map(v => ({
+                                            value: v.id,
+                                            label: `v${v.version_number}`
+                                        }))}
+                                        className="min-w-[50px]"
+                                        triggerStyle={{
+                                            height: '24px',
+                                            paddingLeft: '0',
+                                            paddingRight: '0',
+                                            backgroundColor: 'transparent',
+                                            border: 'none',
+                                            fontSize: '11px',
+                                            fontWeight: '900',
+                                            color: 'var(--text-secondary)'
+                                        }}
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div className="flex items-center gap-4">
-                    <div className={`px-4 py-2 rounded-full border text-[11px] font-black uppercase tracking-widest shadow-sm flex items-center gap-3 ${data.revisions_used >= (data.review_limit || 3) ? 'bg-red-50 border-red-200 text-red-600' :
-                        data.revisions_used >= (data.review_limit || 3) * 0.6 ? 'bg-amber-50 border-amber-200 text-amber-600' :
-                            'bg-emerald-50 border-emerald-200 text-emerald-600'
-                        }`}>
-                        <span className="opacity-60 text-[10px]">Revisions</span>
-                        <div className="flex items-center gap-1.5 min-w-[32px] justify-center">
-                            <span className="text-[14px]">{data.revisions_used || 0}</span>
-                            <span className="opacity-40 text-[10px]">/</span>
-                            <span className="text-[14px]">{data.review_limit || 3}</span>
+                    <div className="flex items-center gap-4">
+                        <div className={`px-4 py-2 rounded-full border text-[11px] font-black uppercase tracking-widest shadow-sm flex items-center gap-3 ${data.revisions_used >= (data.review_limit || 3) ? 'bg-red-50 border-red-200 text-red-600' :
+                            data.revisions_used >= (data.review_limit || 3) * 0.6 ? 'bg-amber-50 border-amber-200 text-amber-600' :
+                                'bg-emerald-50 border-emerald-200 text-emerald-600'
+                            }`}>
+                            <span className="opacity-60 text-[10px]">Revisions</span>
+                            <div className="flex items-center gap-1.5 min-w-[32px] justify-center">
+                                <span className="text-[14px]">{data.revisions_used || 0}</span>
+                                <span className="opacity-40 text-[10px]">/</span>
+                                <span className="text-[14px]">{data.review_limit || 3}</span>
+                            </div>
                         </div>
-                    </div>
 
-                    <div className="w-px h-10 bg-gray-100 mx-2" />
+                        <div className="w-px h-10 bg-gray-100 mx-2" />
 
-                    <div className={`flex items-center gap-1.5 bg-[#F1F3F5] p-1.5 rounded-2xl border border-gray-200 ${!clientIdentity ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
-                        <button
-                            disabled={!clientIdentity}
-                            onClick={() => setActiveTool('pin')}
-                            className={`p-2 rounded-xl transition-all ${activeTool === 'pin' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`}
-                            title="Comment Pin"
-                        >
-                            <MessageSquare size={18} />
-                        </button>
-                        <button
-                            disabled={!clientIdentity}
-                            onClick={() => setActiveTool('highlight')}
-                            className={`p-2 rounded-xl transition-all ${activeTool === 'highlight' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`}
-                            title="Highlight"
-                        >
-                            <Highlighter size={18} />
-                        </button>
-                        <button
-                            disabled={!clientIdentity}
-                            onClick={() => setActiveTool('strike')}
-                            className={`p-2 rounded-xl transition-all ${activeTool === 'strike' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`}
-                            title="Strike-through"
-                        >
-                            <Strikethrough size={18} />
-                        </button>
-                    </div>
-
-                    <div className="w-px h-10 bg-gray-100 mx-2" />
-
-                    {!isReadOnly ? (
-                        <>
+                        <div className={`flex items-center gap-1.5 bg-[#F1F3F5] p-1.5 rounded-2xl border border-gray-200 ${!clientIdentity ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
                             <button
                                 disabled={!clientIdentity}
-                                onClick={() => { setPendingAction('request-changes'); setShowIdentityModal(true); }}
-                                className={`h-11 px-6 rounded-2xl bg-white border-2 border-orange-500 text-orange-500 text-sm font-black hover:bg-orange-50 transition-all active:scale-95 shadow-sm ${!clientIdentity ? 'opacity-30' : ''}`}
+                                onClick={() => setActiveTool('pin')}
+                                className={`p-2 rounded-xl transition-all ${activeTool === 'pin' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`}
+                                title="Comment Pin"
                             >
-                                REQUEST CHANGES
+                                <MessageSquare size={18} />
                             </button>
-                            <div className="relative group">
-                                <button
-                                    disabled={hasComments || !clientIdentity}
-                                    onClick={() => { setPendingAction('approve'); setShowIdentityModal(true); }}
-                                    className={`h-11 px-8 rounded-2xl bg-emerald-500 text-white text-sm font-black transition-all active:scale-95 shadow-lg shadow-emerald-200 ${hasComments || !clientIdentity ? 'opacity-40 cursor-not-allowed grayscale' : 'hover:brightness-110'}`}
-                                >
-                                    APPROVE
-                                </button>
-                                {hasComments && clientIdentity && (
-                                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-gray-900 text-white text-[10px] p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none text-center font-bold">
-                                        Please resolve all comments before approving.
-                                    </div>
-                                )}
-                            </div>
-                        </>
-                    ) : (
-                        <div className="flex items-center gap-3 px-6 py-2.5 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-100 text-[12px] font-black uppercase tracking-wider">
-                            <CheckCircle2 size={18} />
-                            {data.status === 'approved' ? 'Successfully Approved' : 'Viewing History Only'}
+                            <button
+                                disabled={!clientIdentity}
+                                onClick={() => setActiveTool('highlight')}
+                                className={`p-2 rounded-xl transition-all ${activeTool === 'highlight' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`}
+                                title="Highlight"
+                            >
+                                <Highlighter size={18} />
+                            </button>
+                            <button
+                                disabled={!clientIdentity}
+                                onClick={() => setActiveTool('strike')}
+                                className={`p-2 rounded-xl transition-all ${activeTool === 'strike' ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-white/50'}`}
+                                title="Strike-through"
+                            >
+                                <Strikethrough size={18} />
+                            </button>
                         </div>
-                    )}
 
-                    <div className="w-px h-10 bg-gray-100 mx-2" />
+                        <div className="w-px h-10 bg-gray-100 mx-2" />
 
-                    <a
-                        href={`${data.file_url}?download=1`}
-                        download
-                        className="p-3 bg-white border border-gray-200 rounded-2xl text-[var(--text-secondary)] hover:text-[var(--primary)] hover:border-[var(--primary)] transition-all shadow-sm"
-                        title="Download PDF"
-                    >
-                        <Download size={20} />
-                    </a>
+                        {!isReadOnly ? (
+                            <>
+                                <button
+                                    disabled={!clientIdentity}
+                                    onClick={() => { setPendingAction('request-changes'); setShowIdentityModal(true); }}
+                                    className={`h-11 px-6 rounded-2xl bg-white border-2 border-orange-500 text-orange-500 text-sm font-black hover:bg-orange-50 transition-all active:scale-95 shadow-sm ${!clientIdentity ? 'opacity-30' : ''}`}
+                                >
+                                    {t('reviews.request_changes').toUpperCase()}
+                                </button>
+                                <div className="relative group">
+                                    <button
+                                        disabled={hasComments || !clientIdentity}
+                                        onClick={() => { setPendingAction('approve'); setShowIdentityModal(true); }}
+                                        className={`h-11 px-8 rounded-2xl bg-emerald-500 text-white text-sm font-black transition-all active:scale-95 shadow-lg shadow-emerald-200 ${hasComments || !clientIdentity ? 'opacity-40 cursor-not-allowed grayscale' : 'hover:brightness-110'}`}
+                                    >
+                                        {t('reviews.approve')}
+                                    </button>
+                                    {hasComments && clientIdentity && (
+                                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-gray-900 text-white text-[10px] p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none text-center font-bold">
+                                            Please resolve all comments before approving.
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="flex items-center gap-3 px-6 py-2.5 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-100 text-[12px] font-black uppercase tracking-wider">
+                                <CheckCircle2 size={18} />
+                                {data?.status === 'approved' ? t('public_review.successfully_approved') : t('public_review.viewing_history')}
+                            </div>
+                        )}
 
-                    <button
-                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                        className={`p-3 rounded-2xl transition-all ${isSidebarOpen ? 'bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary)]/20' : 'bg-white border border-gray-200 text-[var(--text-secondary)] hover:bg-gray-50 shadow-sm'}`}
-                    >
-                        <MessageSquare size={20} />
-                    </button>
+                        <div className="w-px h-10 bg-gray-100 mx-2" />
+
+                        <a
+                            href={`${data?.file_url || ''}?download=1`}
+                            download
+                            className="p-3 bg-white border border-gray-200 rounded-2xl text-[var(--text-secondary)] hover:text-[var(--primary)] hover:border-[var(--primary)] transition-all shadow-sm"
+                            title={t('common.download') || 'Download PDF'}
+                        >
+                            <Download size={20} />
+                        </a>
+
+                        <button
+                            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                            className={`p-3 rounded-2xl transition-all ${isSidebarOpen ? 'bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary)]/20' : 'bg-white border border-gray-200 text-[var(--text-secondary)] hover:bg-gray-50 shadow-sm'}`}
+                        >
+                            <MessageSquare size={20} />
+                        </button>
+                    </div>
+                </header>
+            )}
+
+            {isPortalMode && (
+                <div className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-8 shrink-0 shadow-sm z-10 transition-all duration-300">
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => navigate(-1)}
+                            className="p-2 hover:bg-gray-100 rounded-full text-[var(--text-secondary)] transition-colors"
+                        >
+                            <ChevronLeft size={20} />
+                        </button>
+                        <div>
+                            <h2 className="text-sm font-bold text-[var(--text-main)]">{data.title || t('portal.reviews.title')}</h2>
+                            <p className="text-[10px] text-[var(--text-muted)] uppercase font-bold tracking-wider">{t('portal.projects.title')}: {data.project_name}</p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                        <div className={`px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${data.revisions_used >= (data.review_limit || 3) ? 'bg-red-50 border-red-200 text-red-600' : 'bg-emerald-50 border-emerald-200 text-emerald-600'}`}>
+                            Revisions: {data.revisions_used || 0}/{data.review_limit || 3}
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-[var(--danger)] gap-2 hover:bg-red-50"
+                            onClick={() => navigate(-1)}
+                        >
+                            <X size={16} />
+                            {t('common.back')} to {t('portal.dashboard.welcome')}
+                        </Button>
+                    </div>
                 </div>
-            </header>
+            )}
 
             <div className="flex-1 flex overflow-hidden">
                 <main className="flex-1 overflow-auto bg-[#F8F9FA] flex flex-col items-center p-12 custom-scrollbar relative">
@@ -832,7 +893,7 @@ const PublicReviewPage = () => {
                             >
                                 <textarea
                                     autoFocus
-                                    placeholder="Add your feedback..."
+                                    placeholder={t('public_review.placeholder')}
                                     value={newCommentText}
                                     onChange={e => setNewCommentText(e.target.value)}
                                     className="w-full h-24 p-2 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/20 resize-none font-medium"
@@ -852,7 +913,7 @@ const PublicReviewPage = () => {
                                         onClick={handleCommentSubmit}
                                         className="flex-1 px-3 py-2 rounded-xl bg-[var(--primary)] text-white text-xs font-black shadow-lg shadow-[var(--primary)]/20 transition-all active:scale-95"
                                     >
-                                        {editingAnnotationId ? 'Update' : 'Add Comment'}
+                                        {editingAnnotationId ? t('public_review.update') : t('public_review.add_comment')}
                                     </button>
                                 </div>
                             </div>
