@@ -1,4 +1,4 @@
-export const calculateTotals = (services, discountPercent, country) => {
+export const calculateTotals = (services, discountPercent, country, supportPackage = null) => {
     if (!Array.isArray(services)) {
         return {
             subtotal: 0,
@@ -12,7 +12,7 @@ export const calculateTotals = (services, discountPercent, country) => {
         };
     }
 
-    const subtotal = services.reduce((acc, s) => {
+    let subtotal = services.reduce((acc, s) => {
         // Skip items with 'UNSET' price mode (price to be confirmed)
         if (s.price_mode === 'UNSET') return acc;
 
@@ -28,6 +28,11 @@ export const calculateTotals = (services, discountPercent, country) => {
 
         return acc + ((s.unit_price || s.price || 0) * (s.quantity || 0));
     }, 0);
+
+    // Add Support Package price if fixed
+    if (supportPackage && !supportPackage.is_pay_as_you_go) {
+        subtotal += (supportPackage.price || 0);
+    }
 
     const totalCost = services.reduce((acc, s) => {
         // Consistent skip for OR groups unselected items

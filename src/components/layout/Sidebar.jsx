@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, FileText, Briefcase, Users, Zap, Settings, Command, Trash2, Activity, ShieldCheck, FileCheck } from 'lucide-react';
+import { LayoutDashboard, FileText, Briefcase, Users, Zap, Settings, Command, Trash2, Activity, ShieldCheck, FileCheck, Clock } from 'lucide-react';
 
 const Sidebar = () => {
     const workspaceItems = [
@@ -10,6 +10,7 @@ const Sidebar = () => {
         { to: "/reviews", icon: FileCheck, label: 'Reviews' },
         { to: "/customers", icon: Users, label: 'Customers' },
         { to: "/portals", icon: ShieldCheck, label: 'Portals' },
+        { to: "/support", icon: Clock, label: 'Support' },
     ];
 
     const systemItems = [

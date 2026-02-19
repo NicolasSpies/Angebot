@@ -1,4 +1,14 @@
 import express from 'express';
+
+// --- STABILITY LAYER: PROCESS HANDLERS ---
+process.on('uncaughtException', (err) => {
+    console.error('🔥 CRITICAL: Uncaught Exception!', err);
+    // Log trace to file or external service here if needed
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('🔥 CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+});
 import cors from 'cors';
 import db from './db.js';
 import multer from 'multer';
@@ -42,9 +52,25 @@ app.get('/api/status', (req, res) => {
 
 app.get('/api/health', (req, res) => {
     try {
-        db.prepare('SELECT 1').get();
-        res.json({ status: 'ok', database: 'connected', time: new Date().toISOString() });
+        const servicesCount = db.prepare('SELECT COUNT(*) as count FROM services WHERE deleted_at IS NULL').get().count;
+        const offersCount = db.prepare('SELECT COUNT(*) as count FROM offers WHERE deleted_at IS NULL').get().count;
+        const projectsCount = db.prepare('SELECT COUNT(*) as count FROM projects WHERE deleted_at IS NULL').get().count;
+        const printParamsCount = db.prepare('SELECT COUNT(*) as count FROM print_parameters').get().count;
+
+        res.json({
+            status: 'ok',
+            database: 'connected',
+            environment: process.env.NODE_ENV || 'development',
+            stats: {
+                services: servicesCount,
+                offers: offersCount,
+                projects: projectsCount,
+                print_parameters: printParamsCount
+            },
+            time: new Date().toISOString()
+        });
     } catch (err) {
+        console.error('[Health Check Failure]', err);
         res.status(500).json({ status: 'error', database: 'disconnected', error: err.message });
     }
 });
@@ -156,6 +182,385 @@ function saveBase64Image(base64Data, subDir = 'screenshots') {
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// --- SUPPORT ACCOUNTS & TRACKING ---
+
+app.get('/api/support/accounts', (req, res) => {
+    try {
+        const accounts = db.prepare(`
+            SELECT 
+                s.*, 
+                c.company_name, 
+                p.name as package_name, 
+                p.included_hours,
+                p.is_pay_as_you_go
+            FROM customer_support_status s
+            JOIN customers c ON s.customer_id = c.id
+            JOIN support_packages p ON s.package_id = p.id
+            WHERE s.status = 'active'
+            ORDER BY c.company_name ASC
+        `).all();
+
+        const settings = db.prepare('SELECT default_hourly_rate FROM settings WHERE id = 1').get();
+        const hourlyRate = settings?.default_hourly_rate || 0;
+
+        const accountsWithStats = accounts.map(acc => {
+            const unbilled = db.prepare(`
+                SELECT SUM(duration_seconds) as total_seconds
+                FROM support_time_entries
+                WHERE customer_id = ? AND billing_status = 'unbilled'
+            `).get(acc.customer_id);
+
+            const seconds = unbilled.total_seconds || 0;
+            const value = (seconds / 3600) * hourlyRate;
+
+            return {
+                ...acc,
+                unbilled_seconds: seconds,
+                unbilled_value: value,
+                unbilled_hours: seconds / 3600,
+                hourly_rate: hourlyRate
+            };
+        });
+
+        res.json(accountsWithStats);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/support/accounts/:id/time-entries', (req, res) => {
+    try {
+        const entries = db.prepare(`
+            SELECT * FROM support_time_entries 
+            WHERE customer_id = (SELECT customer_id FROM customer_support_status WHERE id = ?)
+            ORDER BY date DESC, created_at DESC
+        `).all(req.params.id);
+        res.json(entries);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/support/time-entries/:id', (req, res) => {
+    const { hours, description, date } = req.body;
+    try {
+        db.transaction(() => {
+            const oldEntry = db.prepare('SELECT * FROM support_time_entries WHERE id = ?').get(req.params.id);
+            if (!oldEntry) throw new Error('Entry not found');
+
+            // Find associated support account
+            const support = db.prepare(`
+                SELECT s.id, s.balance_hours, p.is_pay_as_you_go
+                FROM customer_support_status s
+                JOIN support_packages p ON s.package_id = p.id
+                WHERE s.customer_id = ? AND s.status = 'active'
+            `).get(oldEntry.customer_id);
+
+            // Update entry
+            db.prepare(`
+                UPDATE support_time_entries 
+                SET hours = ?, description = ?, date = ?
+                WHERE id = ?
+            `).run(hours, description || '', date || oldEntry.date, req.params.id);
+
+            // Adjust balance if prepaid
+            if (support && !support.is_pay_as_you_go) {
+                const diff = hours - oldEntry.hours;
+                const newBalance = support.balance_hours - diff;
+                db.prepare('UPDATE customer_support_status SET balance_hours = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                    .run(newBalance, support.id);
+            }
+        })();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/support/time-entries/:id', (req, res) => {
+    try {
+        db.transaction(() => {
+            const entry = db.prepare('SELECT * FROM support_time_entries WHERE id = ?').get(req.params.id);
+            if (!entry) throw new Error('Entry not found');
+
+            // Find associated support account
+            const support = db.prepare(`
+                SELECT s.id, s.balance_hours, p.is_pay_as_you_go
+                FROM customer_support_status s
+                JOIN support_packages p ON s.package_id = p.id
+                WHERE s.customer_id = ? AND s.status = 'active'
+            `).get(entry.customer_id);
+
+            // Delete entry
+            db.prepare('DELETE FROM support_time_entries WHERE id = ?').run(req.params.id);
+
+            // Restore balance if prepaid
+            if (support && !support.is_pay_as_you_go) {
+                const newBalance = (support.balance_hours || 0) + entry.hours;
+                db.prepare('UPDATE customer_support_status SET balance_hours = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                    .run(newBalance, support.id);
+            }
+        })();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+app.get('/api/support/packages', (req, res) => {
+    try {
+        const pkgs = db.prepare('SELECT id, name, COALESCE(included_hours, 0) as included_hours, price, is_pay_as_you_go, description, category, variant_name, active FROM support_packages WHERE deleted_at IS NULL ORDER BY price ASC').all();
+        res.json(pkgs);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/support/packages', (req, res) => {
+    const { name, included_hours, price, is_pay_as_you_go, description, category, variant_name } = req.body;
+    try {
+        const result = db.prepare(`
+            INSERT INTO support_packages (name, included_hours, price, is_pay_as_you_go, description, category, variant_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(name, included_hours, price, is_pay_as_you_go ? 1 : 0, description, category || 'Standard', variant_name || 'Standard');
+        res.json({ id: result.lastInsertRowid });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/support/packages/:id', (req, res) => {
+    const { name, included_hours, price, is_pay_as_you_go, description, category, variant_name, active } = req.body;
+    try {
+        db.prepare(`
+            UPDATE support_packages SET 
+                name = ?, included_hours = ?, price = ?, is_pay_as_you_go = ?, 
+                description = ?, category = ?, variant_name = ?, active = ?
+            WHERE id = ?
+        `).run(name, included_hours, price, is_pay_as_you_go ? 1 : 0, description, category, variant_name, active ? 1 : 0, req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/support/packages/:id', (req, res) => {
+    try {
+        db.prepare('UPDATE support_packages SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/support/billing', (req, res) => {
+    try {
+        const billing = db.prepare(`
+            SELECT 
+                c.id as customer_id, 
+                c.company_name, 
+                p.name as package_name, 
+                p.is_pay_as_you_go,
+                SUM(t.hours) as total_unbilled_hours
+            FROM support_time_entries t
+            JOIN customers c ON t.customer_id = c.id
+            LEFT JOIN customer_support_status s ON c.id = s.customer_id AND s.status = 'active'
+            LEFT JOIN support_packages p ON s.package_id = p.id
+            WHERE t.billing_status = 'unbilled'
+            GROUP BY c.id
+        `).all();
+        res.json(billing);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/support/accounts', (req, res) => {
+    const { customer_id, package_id } = req.body;
+    try {
+        const pkg = db.prepare('SELECT * FROM support_packages WHERE id = ?').get(package_id);
+        if (!pkg) return res.status(404).json({ error: 'Package not found' });
+
+        const result = db.prepare(`
+            INSERT INTO customer_support_status (customer_id, package_id, balance_hours, status)
+            VALUES (?, ?, ?, 'active')
+        `).run(customer_id, package_id, pkg.is_pay_as_you_go ? 0 : (pkg.included_hours || 0));
+
+        res.json({ id: result.lastInsertRowid });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/support/timer/active', (req, res) => {
+    try {
+        const timer = db.prepare(`
+            SELECT t.*, c.company_name, p.name as package_name
+            FROM active_timers t
+            JOIN customers c ON t.customer_id = c.id
+            JOIN customer_support_status s ON t.support_status_id = s.id
+            JOIN support_packages p ON s.package_id = p.id
+            LIMIT 1
+        `).get();
+        res.json(timer || null);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/support/timer/start', (req, res) => {
+    const { customer_id, support_status_id, project_id } = req.body;
+    try {
+        if (!customer_id || !support_status_id) {
+            return res.status(400).json({ error: 'Customer ID and Support Status ID are required' });
+        }
+
+        const active = db.prepare('SELECT id FROM active_timers').get();
+        if (active) return res.status(400).json({ error: 'There is already an active timer' });
+
+        // Verify IDs exist
+        const customer = db.prepare('SELECT id FROM customers WHERE id = ?').get(customer_id);
+        if (!customer) return res.status(404).json({ error: 'Customer not found' });
+
+        const support = db.prepare('SELECT id FROM customer_support_status WHERE id = ?').get(support_status_id);
+        if (!support) return res.status(404).json({ error: 'Support status record not found' });
+
+        db.prepare(`
+            INSERT INTO active_timers (customer_id, support_status_id, project_id)
+            VALUES (?, ?, ?)
+        `).run(customer_id, support_status_id, project_id || null);
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[API] /api/support/timer/start error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/support/timer/stop', (req, res) => {
+    try {
+        const timer = db.prepare('SELECT * FROM active_timers LIMIT 1').get();
+        if (!timer) return res.status(404).json({ error: 'No active timer found' });
+
+        const startTime = new Date(timer.start_time.includes('Z') || timer.start_time.includes('+')
+            ? timer.start_time
+            : timer.start_time.replace(' ', 'T') + 'Z');
+        const endTime = new Date();
+        const durationSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
+
+        // Strict 1-minute rounding upward
+        const roundingMinutes = 1;
+        const roundingSeconds = 60;
+
+        // Apply rounding upwards
+        const roundedSeconds = Math.ceil(durationSeconds / roundingSeconds) * roundingSeconds;
+        const hours = roundedSeconds / 3600;
+
+        db.transaction(() => {
+            // Create entry
+            db.prepare(`
+                INSERT INTO support_time_entries (customer_id, hours, duration_seconds, description, project_id, billing_status)
+                VALUES (?, ?, ?, ?, ?, 'unbilled')
+            `).run(timer.customer_id, hours, durationSeconds, timer.description || '', timer.project_id);
+
+            // Update balance if prepaid
+            const support = db.prepare(`
+                SELECT s.id, s.balance_hours, p.is_pay_as_you_go
+                FROM customer_support_status s
+                JOIN support_packages p ON s.package_id = p.id
+                WHERE s.id = ?
+            `).get(timer.support_status_id);
+
+            if (support && !support.is_pay_as_you_go) {
+                const newBalance = support.balance_hours - hours;
+                db.prepare('UPDATE customer_support_status SET balance_hours = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                    .run(newBalance, support.id);
+            }
+
+            // Remove timer
+            db.prepare('DELETE FROM active_timers WHERE id = ?').run(timer.id);
+        })();
+
+        res.json({ success: true, hours });
+    } catch (err) {
+        console.error('[API] /api/support/timer/stop error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/support/accounts/:id/trash', (req, res) => {
+    try {
+        db.prepare("UPDATE customer_support_status SET status = 'trashed', deleted_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/support/accounts/:id/restore', (req, res) => {
+    try {
+        db.prepare("UPDATE customer_support_status SET status = 'active', deleted_at = NULL WHERE id = ?").run(req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/customers/:id/support/hours', (req, res) => {
+    const { hours, description, date, project_id, support_status_id } = req.body;
+    const customerId = req.params.id;
+
+    try {
+        const transaction = db.transaction(() => {
+            // Log the entry
+            db.prepare(`
+                INSERT INTO support_time_entries (customer_id, hours, description, date, project_id, billing_status)
+                VALUES (?, ?, ?, ?, ?, 'unbilled')
+            `).run(customerId, hours, description, date || new Date().toISOString(), project_id || null);
+
+            // Update balance if not pay as you go
+            if (support_status_id) {
+                const support = db.prepare(`
+                    SELECT s.id, s.balance_hours, p.is_pay_as_you_go
+                    FROM customer_support_status s
+                    JOIN support_packages p ON s.package_id = p.id
+                    WHERE s.id = ?
+                `).get(support_status_id);
+
+                if (support && !support.is_pay_as_you_go) {
+                    // Apply strict 1-minute rounding upward for manual input too
+                    const hoursDecimal = hours;
+                    const roundedHours = Math.ceil(hoursDecimal * 60) / 60;
+
+                    const newBalance = (support.balance_hours || 0) - roundedHours;
+                    db.prepare('UPDATE customer_support_status SET balance_hours = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                        .run(newBalance, support.id);
+
+                    // Update entry to use rounded hours
+                    db.prepare('UPDATE support_time_entries SET hours = ? WHERE id = last_insert_rowid()').run(roundedHours);
+                }
+            }
+        })();
+
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/support/billing/mark-billed', (req, res) => {
+    const { customerId, billingPeriod } = req.body;
+    try {
+        const period = billingPeriod || new Date().toISOString().slice(0, 7);
+        db.prepare("UPDATE support_time_entries SET billing_status = 'billed', billing_period = ? WHERE customer_id = ? AND billing_status = 'unbilled'")
+            .run(period, customerId);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // --- ACTIVITY API ---
 app.get('/api/activities', (req, res) => {
@@ -379,6 +784,86 @@ app.get('/api/services', (req, res) => {
     }));
 
     res.json(servicesWithVariants);
+});
+
+// --- BUNDLES (PACKAGES) ---
+app.get('/api/bundles', (req, res) => {
+    try {
+        const bundles = db.prepare('SELECT * FROM packages WHERE deleted_at IS NULL').all();
+        const items = db.prepare(`
+            SELECT pi.*, s.name_de, s.name_fr 
+            FROM package_items pi
+            JOIN services s ON pi.service_id = s.id
+        `).all();
+
+        const bundlesWithItems = bundles.map(b => ({
+            ...b,
+            items: items.filter(i => i.package_id === b.id)
+        }));
+
+        res.json(bundlesWithItems);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/bundles', (req, res) => {
+    const { name, description, discount_type, discount_value, items } = req.body;
+    try {
+        const transaction = db.transaction(() => {
+            const result = db.prepare(`
+                INSERT INTO packages (name, description, discount_type, discount_value)
+                VALUES (?, ?, ?, ?)
+            `).run(name, description, discount_type || 'percent', discount_value || 0);
+
+            const bundleId = result.lastInsertRowid;
+            if (items && Array.isArray(items)) {
+                const insertItem = db.prepare(`
+                    INSERT INTO package_items (package_id, service_id, variant_name, discount_percent)
+                    VALUES (?, ?, ?, ?)
+                `);
+                for (const item of items) {
+                    insertItem.run(bundleId, item.service_id, item.variant_name, item.discount_percent || 0);
+                }
+            }
+            return bundleId;
+        });
+        const id = transaction();
+        res.json({ id });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- PRINT PRODUCTS ---
+app.get('/api/print-products', (req, res) => {
+    try {
+        const products = db.prepare('SELECT * FROM print_products WHERE deleted_at IS NULL').all();
+        const variants = db.prepare('SELECT * FROM print_product_variants WHERE deleted_at IS NULL').all();
+        const tiers = db.prepare('SELECT * FROM print_pricing_tiers').all();
+
+        const productsWithVariants = products.map(p => ({
+            ...p,
+            variants: variants.filter(v => v.print_product_id === p.id).map(v => ({
+                ...v,
+                specs: JSON.parse(v.specs_json || '{}'),
+                tiers: tiers.filter(t => t.print_product_variant_id === v.id)
+            }))
+        }));
+
+        res.json(productsWithVariants);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/print-parameters', (req, res) => {
+    try {
+        const params = db.prepare('SELECT * FROM print_parameters WHERE active = 1 ORDER BY sort_order ASC').all();
+        res.json(params);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.post('/api/services', (req, res) => {
@@ -639,6 +1124,12 @@ app.get('/api/portal/data/:customerId', (req, res) => {
             LIMIT 50
         `).all(customerId);
 
+        let trackingLinks = [];
+        if (projectIds.length > 0) {
+            const placeholders = projectIds.map(() => '?').join(',');
+            trackingLinks = db.prepare(`SELECT * FROM project_tracking_links WHERE project_id IN (${placeholders})`).all(...projectIds);
+        }
+
         const agreements = db.prepare(`
             SELECT id, offer_name, total, signed_at, created_at, status
             FROM offers 
@@ -646,13 +1137,58 @@ app.get('/api/portal/data/:customerId', (req, res) => {
             ORDER BY signed_at DESC
         `).all(customerId);
 
+        const currentMonthStart = new Date();
+        currentMonthStart.setUTCDate(1);
+        currentMonthStart.setUTCHours(0, 0, 0, 0);
+        const isoMonthStart = currentMonthStart.toISOString();
+
+        const settings = db.prepare('SELECT default_hourly_rate FROM settings WHERE id = 1').get();
+        const hourlyRate = settings?.default_hourly_rate || 0;
+
+        const supportAccounts = db.prepare(`
+            SELECT c.*, p.name as package_name, p.is_pay_as_you_go 
+            FROM customer_support_status c
+            JOIN support_packages p ON c.package_id = p.id
+            WHERE c.customer_id = ? AND c.status = 'active' AND c.deleted_at IS NULL
+            ORDER BY c.created_at DESC
+        `).all(customerId);
+
+        const supportWithStats = supportAccounts.map(acc => {
+            if (acc.is_pay_as_you_go) {
+                const stats = db.prepare(`
+                    SELECT SUM(hours) as monthly_hours
+                    FROM support_time_entries
+                    WHERE customer_id = ? AND date >= ? AND billing_status = 'unbilled'
+                `).get(customerId, isoMonthStart);
+                const monthlyHours = stats?.monthly_hours || 0;
+                return {
+                    ...acc,
+                    monthly_hours: monthlyHours,
+                    monthly_value_eur: Number((monthlyHours * hourlyRate).toFixed(2))
+                };
+            }
+            return acc;
+        });
+
+        const supportHistory = db.prepare(`
+            SELECT h.*, p.name as project_name
+            FROM support_time_entries h
+            LEFT JOIN projects p ON h.project_id = p.id
+            WHERE h.customer_id = ? 
+            ORDER BY h.date DESC
+            LIMIT 20
+        `).all(customerId);
+
         res.json({
             customer,
             profile: profile || null,
             projects,
             reviews,
+            trackingLinks,
             notifications,
-            agreements
+            agreements,
+            support: supportWithStats,
+            supportHistory
         });
     } catch (err) {
         console.error('[Portal API] GET /api/portal/data failed:', err);
@@ -661,7 +1197,7 @@ app.get('/api/portal/data/:customerId', (req, res) => {
 });
 
 app.post('/api/portal/profile/:customerId', (req, res) => {
-    console.log(`[Portal API] POST profile for customer ${req.params.customerId}`, req.body);
+    console.log(`[Portal API]POST profile for customer ${req.params.customerId}`, req.body);
     try {
         const { customerId } = req.params;
         const { first_name, last_name, email, company } = req.body;
@@ -676,8 +1212,8 @@ app.post('/api/portal/profile/:customerId', (req, res) => {
             `).run(first_name, last_name, email, company, customerId);
         } else {
             db.prepare(`
-                INSERT INTO portal_user_profiles (customer_id, first_name, last_name, email, company)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO portal_user_profiles(customer_id, first_name, last_name, email, company)
+        VALUES(?, ?, ?, ?, ?)
             `).run(customerId, first_name, last_name, email, company);
         }
 
@@ -695,13 +1231,13 @@ app.post('/api/audit/repair', (req, res) => {
             SELECT id, customer_id, offer_name, internal_notes 
             FROM offers 
             WHERE status = 'signed' 
-            AND id NOT IN (SELECT offer_id FROM projects WHERE offer_id IS NOT NULL AND deleted_at IS NULL)
-        `).all();
+            AND id NOT IN(SELECT offer_id FROM projects WHERE offer_id IS NOT NULL AND deleted_at IS NULL)
+            `).all();
 
         for (const off of orphaned) {
             db.prepare(`
-                INSERT INTO projects (offer_id, customer_id, name, status, review_limit)
-                VALUES (?, ?, ?, 'todo', 3)
+                INSERT INTO projects(offer_id, customer_id, name, status, review_limit)
+        VALUES(?, ?, ?, 'todo', 3)
             `).run(off.id, off.customer_id, off.offer_name);
             logActivity('project', off.id, 'auto_created_via_repair', { offer_id: off.id });
         }
@@ -720,11 +1256,11 @@ app.get('/api/customers/:id/dashboard', (req, res) => {
         if (!customer) return res.status(404).json({ error: 'Customer not found' });
 
         const offers = db.prepare(`
-            SELECT o.*, 
+            SELECT o.*,
             (SELECT COUNT(*) FROM offer_items WHERE offer_id = o.id) as item_count
             FROM offers o 
             WHERE o.customer_id = ?
-            ORDER BY o.created_at DESC
+    ORDER BY o.created_at DESC
         `).all(customerId);
 
         const projects = db.prepare(`
@@ -733,7 +1269,7 @@ app.get('/api/customers/:id/dashboard', (req, res) => {
             LEFT JOIN offers o ON p.offer_id = o.id
             WHERE p.customer_id = ? AND p.deleted_at IS NULL
             ORDER BY p.created_at DESC
-        `).all(customerId);
+    `).all(customerId);
 
         const openOffers = offers.filter(o => ['draft', 'sent'].includes(o.status));
         const activeProjects = projects.filter(p => !['done', 'completed', 'cancelled'].includes(p.status));
@@ -780,17 +1316,17 @@ app.get('/api/offers', (req, res) => {
 
 app.get('/api/offers/:id', (req, res) => {
     const offer = db.prepare(`
-        SELECT o.*, 
-               c.company_name as customer_name, 
-               c.first_name, 
-               c.last_name, 
-               c.email, 
-               c.phone, 
-               c.address, 
-               c.city, 
-               c.postal_code, 
-               c.country as customer_country,
-               c.vat_number 
+        SELECT o.*,
+    c.company_name as customer_name,
+    c.first_name,
+    c.last_name,
+    c.email,
+    c.phone,
+    c.address,
+    c.city,
+    c.postal_code,
+    c.country as customer_country,
+    c.vat_number 
         FROM offers o 
         LEFT JOIN customers c ON o.customer_id = c.id 
         WHERE o.id = ? AND o.deleted_at IS NULL
@@ -799,7 +1335,7 @@ app.get('/api/offers/:id', (req, res) => {
 
     const items = db.prepare(`
         SELECT oi.*, s.name_de, s.name_fr, s.description_de, s.description_fr, oi.billing_cycle,
-               ps.selections_json, ps.note as print_note, ps.option_set_id
+    ps.selections_json, ps.note as print_note, ps.option_set_id
         FROM offer_items oi 
         LEFT JOIN services s ON oi.service_id = s.id 
         LEFT JOIN offer_line_print_selections ps ON oi.id = ps.offer_line_id
@@ -815,17 +1351,17 @@ app.get('/api/offers/:id', (req, res) => {
 
 app.get('/api/offers/public/:token', (req, res) => {
     const offer = db.prepare(`
-        SELECT o.*, 
-               c.company_name as customer_name, 
-               c.first_name, 
-               c.last_name, 
-               c.email, 
-               c.phone, 
-               c.address, 
-               c.city, 
-               c.postal_code, 
-               c.country as customer_country,
-               c.vat_number 
+        SELECT o.*,
+    c.company_name as customer_name,
+    c.first_name,
+    c.last_name,
+    c.email,
+    c.phone,
+    c.address,
+    c.city,
+    c.postal_code,
+    c.country as customer_country,
+    c.vat_number 
         FROM offers o 
         JOIN customers c ON o.customer_id = c.id 
         WHERE o.token = ?
@@ -835,7 +1371,7 @@ app.get('/api/offers/public/:token', (req, res) => {
 
     const items = db.prepare(`
         SELECT oi.*, s.name_de, s.name_fr, s.description_de, s.description_fr, oi.billing_cycle,
-               ps.selections_json, ps.note as print_note, ps.option_set_id
+    ps.selections_json, ps.note as print_note, ps.option_set_id
         FROM offer_items oi 
         LEFT JOIN services s ON oi.service_id = s.id 
         LEFT JOIN offer_line_print_selections ps ON oi.id = ps.offer_line_id
@@ -850,7 +1386,7 @@ app.get('/api/offers/public/:token', (req, res) => {
 });
 
 const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNotes, customerId, internalNotes) => {
-    console.log(`[Sync] Starting sync for Offer ${offerId} (Status: ${status})`);
+    console.log(`[Sync] Starting sync for Offer ${offerId}(Status: ${status})`);
 
     // 1. Determine Target Project Status
     let targetStatus = null;
@@ -859,7 +1395,7 @@ const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNote
 
     // We only create projects when signed
     if (status !== 'signed' && status !== 'declined' && status !== 'sent') {
-        console.log(`[Sync] Skipping sync for non-final status: ${status}`);
+        console.log(`[Sync] Skipping sync for non - final status: ${status} `);
         return null;
     }
 
@@ -883,13 +1419,13 @@ const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNote
     if (!existingProject) {
         existingProject = db.prepare(`
             SELECT id, status, strategic_notes, offer_id FROM projects 
-            WHERE offer_id = ? 
-               OR offer_id IN (SELECT id FROM offers WHERE parent_id = ? OR id = ?)
+            WHERE offer_id = ?
+    OR offer_id IN(SELECT id FROM offers WHERE parent_id = ? OR id = ?)
         `).get(offerId, rootOfferId, rootOfferId);
     }
 
     if (existingProject) {
-        console.log(`[Sync] Found existing project ${existingProject.id}`);
+        console.log(`[Sync] Found existing project ${existingProject.id} `);
         let updateFields = [];
         let params = [];
 
@@ -921,7 +1457,7 @@ const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNote
         if (updateFields.length > 0) {
             const setClause = updateFields.join(', ');
             params.push(existingProject.id);
-            db.prepare(`UPDATE projects SET ${setClause} WHERE id = ?`).run(...params);
+            db.prepare(`UPDATE projects SET ${setClause} WHERE id = ? `).run(...params);
         }
 
         // Repair Offer -> Project link if missing
@@ -929,12 +1465,12 @@ const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNote
 
         return existingProject.id;
     } else if (status === 'signed' && finalCustomerId) {
-        console.log(`[Sync] Creating new project for signed Offer ${offerId}`);
+        console.log(`[Sync] Creating new project for signed Offer ${offerId} `);
 
         const result = db.prepare(`
-            INSERT INTO projects (offer_id, customer_id, name, status, strategic_notes, internal_notes, review_limit)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(offerId, finalCustomerId, finalOfferName || 'Untitled Project', targetStatus || 'in_progress', finalStrategicNotes || null, finalInternalNotes || null, 3);
+            INSERT INTO projects(offer_id, customer_id, name, status, strategic_notes, internal_notes, review_limit)
+VALUES(?, ?, ?, ?, ?, ?, ?)
+    `).run(offerId, finalCustomerId, finalOfferName || 'Untitled Project', targetStatus || 'in_progress', finalStrategicNotes || null, finalInternalNotes || null, 3);
 
         const newProjectId = result.lastInsertRowid;
 
@@ -950,13 +1486,13 @@ const syncProjectWithOffer = (offerId, status, offerName, dueDate, strategicNote
 // --- PDF GENERATION HELPER ---
 async function generateOfferPDF(offerId) {
     const offer = db.prepare(`
-        SELECT o.*, 
-               c.company_name as customer_name, 
-               c.address as customer_address,
-               c.city as customer_city, 
-               c.postal_code as customer_postal_code,
-               c.country as customer_country,
-               c.vat_number as customer_vat
+        SELECT o.*,
+    c.company_name as customer_name,
+    c.address as customer_address,
+    c.city as customer_city,
+    c.postal_code as customer_postal_code,
+    c.country as customer_country,
+    c.vat_number as customer_vat
         FROM offers o 
         JOIN customers c ON o.customer_id = c.id 
         WHERE o.id = ?
@@ -965,11 +1501,11 @@ async function generateOfferPDF(offerId) {
     if (!offer) throw new Error('Offer not found');
 
     const items = db.prepare(`
-        SELECT oi.*, 
-               s.name_de, s.name_fr, s.description_de, s.description_fr,
-               oi.group_id, oi.group_type, oi.price_mode, oi.is_selected, oi.specs,
-               olps.selections_json as print_selections_json,
-               olps.print_note
+        SELECT oi.*,
+    s.name_de, s.name_fr, s.description_de, s.description_fr,
+    oi.group_id, oi.group_type, oi.price_mode, oi.is_selected, oi.specs,
+    olps.selections_json as print_selections_json,
+    olps.print_note
         FROM offer_items oi 
         LEFT JOIN services s ON oi.service_id = s.id AND oi.type = 'service'
         LEFT JOIN offer_line_print_selections olps ON oi.id = olps.offer_line_id
@@ -1022,84 +1558,84 @@ async function generateOfferPDF(offerId) {
 
     // Construct HTML
     let html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <style>
-            :root {
-                --primary: #0F172A;
-                --text-main: #0F172A;
-                --text-secondary: #64748B;
-                --text-muted: #94A3B8;
-                --border: #E2E8F0;
-                --bg-main: #F8F9FA;
+    < !DOCTYPE html >
+        <html>
+            <head>
+                <meta charset="UTF-8">
+                    <style>
+                        :root {
+                            --primary: #0F172A;
+                        --text-main: #0F172A;
+                        --text-secondary: #64748B;
+                        --text-muted: #94A3B8;
+                        --border: #E2E8F0;
+                        --bg-main: #F8F9FA;
             }
-            body {
-                font-family: 'Inter', system-ui, sans-serif;
-                margin: 0;
-                padding: 40px;
-                color: var(--text-main);
-                font-size: 13px;
-                line-height: 1.5;
+                        body {
+                            font - family: 'Inter', system-ui, sans-serif;
+                        margin: 0;
+                        padding: 40px;
+                        color: var(--text-main);
+                        font-size: 13px;
+                        line-height: 1.5;
             }
-            .header { display: flex; justify-content: space-between; margin-bottom: 60px; padding-bottom: 40px; border-bottom: 1px solid var(--border); }
-            .logo { max-height: 60px; margin-bottom: 20px; }
-            .company-info h2 { font-size: 16px; margin: 0 0 10px 0; }
-            .company-details { color: var(--text-secondary); font-size: 11px; }
-            .recipient-box { text-align: right; min-width: 250px; }
-            .offer-badge { background: var(--bg-main); padding: 15px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 30px; }
-            .offer-badge h1 { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: #0F172A; margin: 0 0 5px 0; font-weight: 900; }
-            .offer-name { font-size: 18px; font-weight: 800; margin-bottom: 5px; }
-            .recipient-details h3 { font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; }
-            .recipient-name { font-size: 16px; font-weight: 800; margin-bottom: 5px; }
-            
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th { text-align: left; font-size: 10px; text-transform: uppercase; color: var(--text-muted); padding: 10px 0; border-bottom: 2px solid var(--text-main); }
-            td { padding: 15px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
-            .item-name { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
-            .item-desc { color: var(--text-secondary); font-size: 11px; }
-            
-            .totals-container { display: flex; justify-content: flex-end; margin-top: 30px; }
-            .totals-box { width: 250px; background: var(--bg-main); padding: 20px; border-radius: 8px; border: 1px solid var(--border); }
-            .total-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
-            .total-row.grand { margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border); font-weight: 800; font-size: 16px; color: #0F172A; }
-            
-            .signature-section { margin-top: 80px; display: flex; flex-direction: column; align-items: flex-end; }
-            .signature-img { height: 60px; max-width: 200px; object-fit: contain; margin-bottom: 10px; }
-            .signature-line { width: 200px; height: 1px; background: var(--text-main); margin-bottom: 10px; }
-            .signer-info { text-align: right; font-size: 10px; color: var(--text-secondary); }
-            .signer-name { font-weight: 800; color: var(--text-main); text-transform: uppercase; }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <div class="company-info">
-                ${settings.logo_url ? `<img src="${settings.logo_url}" class="logo">` : ''}
-                <h2>${settings.company_name}</h2>
-                <div class="company-details">
-                    ${settings.address || ''}<br>
-                    ${settings.email ? `@ ${settings.email}` : ''}
-                </div>
-            </div>
-            <div class="recipient-box">
-                <div class="offer-badge">
-                    <h1>${lang === 'de' ? 'Geschäftliches Angebot' : 'Proposition Commerciale'}</h1>
-                    <div class="offer-name">${offer.offer_name || `#${offer.id}`}</div>
-                    <div style="font-size: 11px; font-weight: 700;">${formatDate(offer.created_at)}</div>
-                </div>
-                <div class="recipient-details">
-                    <h3>Prepared for</h3>
-                    <div class="recipient-name">${offer.customer_name}</div>
-                    <div class="company-details">
-                        ${offer.customer_address || ''}<br>
-                        ${offer.customer_postal_code || ''} ${offer.customer_city || ''}
+                        .header {display: flex; justify-content: space-between; margin-bottom: 60px; padding-bottom: 40px; border-bottom: 1px solid var(--border); }
+                        .logo {max - height: 60px; margin-bottom: 20px; }
+                        .company-info h2 {font - size: 16px; margin: 0 0 10px 0; }
+                        .company-details {color: var(--text-secondary); font-size: 11px; }
+                        .recipient-box {text - align: right; min-width: 250px; }
+                        .offer-badge {background: var(--bg-main); padding: 15px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 30px; }
+                        .offer-badge h1 {font - size: 9px; text-transform: uppercase; letter-spacing: 1px; color: #0F172A; margin: 0 0 5px 0; font-weight: 900; }
+                        .offer-name {font - size: 18px; font-weight: 800; margin-bottom: 5px; }
+                        .recipient-details h3 {font - size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; }
+                        .recipient-name {font - size: 16px; font-weight: 800; margin-bottom: 5px; }
+
+                        table {width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                        th {text - align: left; font-size: 10px; text-transform: uppercase; color: var(--text-muted); padding: 10px 0; border-bottom: 2px solid var(--text-main); }
+                        td {padding: 15px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+                        .item-name {font - weight: 700; font-size: 13px; margin-bottom: 4px; }
+                        .item-desc {color: var(--text-secondary); font-size: 11px; }
+
+                        .totals-container {display: flex; justify-content: flex-end; margin-top: 30px; }
+                        .totals-box {width: 250px; background: var(--bg-main); padding: 20px; border-radius: 8px; border: 1px solid var(--border); }
+                        .total-row {display: flex; justify-content: space-between; margin-bottom: 8px; }
+                        .total-row.grand {margin - top: 15px; padding-top: 15px; border-top: 1px dashed var(--border); font-weight: 800; font-size: 16px; color: #0F172A; }
+
+                        .signature-section {margin - top: 80px; display: flex; flex-direction: column; align-items: flex-end; }
+                        .signature-img {height: 60px; max-width: 200px; object-fit: contain; margin-bottom: 10px; }
+                        .signature-line {width: 200px; height: 1px; background: var(--text-main); margin-bottom: 10px; }
+                        .signer-info {text - align: right; font-size: 10px; color: var(--text-secondary); }
+                        .signer-name {font - weight: 800; color: var(--text-main); text-transform: uppercase; }
+                    </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="company-info">
+                        ${settings.logo_url ? `<img src="${settings.logo_url}" class="logo">` : ''}
+                        <h2>${settings.company_name}</h2>
+                        <div class="company-details">
+                            ${settings.address || ''}<br>
+                                ${settings.email ? `@ ${settings.email}` : ''}
+                        </div>
+                    </div>
+                    <div class="recipient-box">
+                        <div class="offer-badge">
+                            <h1>${lang === 'de' ? 'Geschäftliches Angebot' : 'Proposition Commerciale'}</h1>
+                            <div class="offer-name">${offer.offer_name || `#${offer.id}`}</div>
+                            <div style="font-size: 11px; font-weight: 700;">${formatDate(offer.created_at)}</div>
+                        </div>
+                        <div class="recipient-details">
+                            <h3>Prepared for</h3>
+                            <div class="recipient-name">${offer.customer_name}</div>
+                            <div class="company-details">
+                                ${offer.customer_address || ''}<br>
+                                    ${offer.customer_postal_code || ''} ${offer.customer_city || ''}
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        ${['one_time', 'yearly', 'monthly'].map(cycle => {
+                ${['one_time', 'yearly', 'monthly'].map(cycle => {
         const groupItems = groups[cycle];
         if (!groupItems || groupItems.length === 0) return '';
         const totals = calculateTotals(groupItems);
@@ -1271,7 +1807,7 @@ async function generateOfferPDF(offerId) {
             `;
     }).join('')}
 
-        ${offer.status === 'signed' ? `
+                ${offer.status === 'signed' ? `
             <div class="signature-section" style="page-break-inside: avoid;">
                 <img src="${offer.signature_data}" class="signature-img">
                 <div class="signature-line"></div>
@@ -1282,9 +1818,9 @@ async function generateOfferPDF(offerId) {
                 </div>
             </div>
         ` : ''}
-    </body>
-    </html>
-    `;
+            </body>
+        </html>
+`;
 
     const browser = await puppeteer.launch({ headless: 'new' });
     const page = await browser.newPage();
@@ -1306,10 +1842,10 @@ app.get('/api/offers/:id/signed-pdf', async (req, res) => {
 
         const pdfBuffer = await generateOfferPDF(offerId);
 
-        const filename = `Offer_${offer.offer_name || offer.id}_Signed.pdf`.replace(/[^a-z0-9_\-.]/gi, '_');
+        const filename = `Offer_${offer.offer_name || offer.id} _Signed.pdf`.replace(/[^a-z0-9_\-.]/gi, '_');
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Disposition', `attachment; filename = "${filename}"`);
         res.send(pdfBuffer);
     } catch (err) {
         console.error('[PDF] Export failed:', err);
@@ -1322,7 +1858,7 @@ app.post('/api/offers/repair-links', (req, res) => {
         const signedOffers = db.prepare(`
             SELECT id, offer_name, customer_id, strategic_notes, internal_notes, project_id 
             FROM offers 
-            WHERE status = 'signed' AND (project_id IS NULL OR project_id NOT IN (SELECT id FROM projects))
+            WHERE status = 'signed' AND(project_id IS NULL OR project_id NOT IN(SELECT id FROM projects))
         `).all();
 
         const repairs = [];
@@ -1366,7 +1902,7 @@ app.post('/api/offers/public/:token/decline', (req, res) => {
         syncProjectWithOffer(offer.id, 'declined');
 
         // Notification
-        createNotification('offer', 'Offer Declined ❌', `Offer "${offer.offer_name}" has been declined by the client.`, `/offers`, `offer_declined_${offer.id}`);
+        createNotification('offer', 'Offer Declined ❌', `Offer "${offer.offer_name}" has been declined by the client.`, ` / offers`, `offer_declined_${offer.id} `);
 
         logActivity('offer', offer.id, 'declined', { comment });
     })();
@@ -1406,21 +1942,33 @@ app.post('/api/offers/public/:token/sign', (req, res) => {
             }
 
             db.prepare(`
-                UPDATE offers SET 
-                    status = 'signed', 
-                    signed_at = CURRENT_TIMESTAMP, 
-                    updated_at = CURRENT_TIMESTAMP,
-                    signed_by_name = ?,
-                    signed_by_email = ?,
-                    signature_data = ?,
-                    signed_ip = ?,
-                    signed_pdf_url = ?
-                WHERE id = ?
+                UPDATE offers SET
+status = 'signed',
+    signed_at = CURRENT_TIMESTAMP,
+    updated_at = CURRENT_TIMESTAMP,
+    signed_by_name = ?,
+    signed_by_email = ?,
+    signature_data = ?,
+    signed_ip = ?,
+    signed_pdf_url = ?
+        WHERE id = ?
             `).run(name, email, signatureData, ip, pdfUrl || null, offer.id);
 
             db.prepare("INSERT INTO offer_events (offer_id, event_type, ip_address) VALUES (?, 'signed', ?)").run(offer.id, ip);
+
+            // Web Support Module Logic
+            if (offer.web_package_id) {
+                const pkg = db.prepare('SELECT * FROM support_packages WHERE id = ?').get(offer.web_package_id);
+                if (pkg) {
+                    db.prepare(`
+                        INSERT INTO customer_support_status(customer_id, package_id, offer_id, balance_hours, status)
+VALUES(?, ?, ?, ?, ?)
+                    `).run(offer.customer_id, offer.web_package_id, offer.id, pkg.is_pay_as_you_go ? 0 : pkg.included_hours, 'active');
+                }
+            }
+
             syncProjectWithOffer(offer.id, 'signed');
-            createNotification('offer', 'Offer Signed! ✍️', `Offer "${offer.offer_name}" signed by ${name}`, `/offers/${offer.id}`, `offer_signed_${offer.id}`);
+            createNotification('offer', 'Offer Signed! ✍️', `Offer "${offer.offer_name}" signed by ${name} `, ` / offers / ${offer.id} `, `offer_signed_${offer.id} `);
             logActivity('offer', offer.id, 'signed', { signedBy: name });
         })();
 
@@ -1432,26 +1980,26 @@ app.post('/api/offers/public/:token/sign', (req, res) => {
 });
 
 app.post('/api/offers', (req, res) => {
-    const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date, internal_notes, strategic_notes, linked_project_id } = req.body;
+    const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date, internal_notes, strategic_notes, linked_project_id, web_package_id } = req.body;
     const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
     const transaction = db.transaction(() => {
         const offerResult = db.prepare(`
-            INSERT INTO offers (customer_id, offer_name, language, status, subtotal, vat, total, token, due_date, internal_notes, strategic_notes, created_by, updated_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(customer_id, offer_name, language, status || 'draft', subtotal, vat, total, token, due_date, internal_notes || null, strategic_notes || null, 'System', 'System');
+            INSERT INTO offers(customer_id, offer_name, language, status, subtotal, vat, total, token, due_date, internal_notes, strategic_notes, created_by, updated_by, web_package_id)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(customer_id, offer_name, language, status || 'draft', subtotal, vat, total, token, due_date, internal_notes || null, strategic_notes || null, 'System', 'System', web_package_id || null);
 
         const offerId = offerResult.lastInsertRowid;
 
         const insertItem = db.prepare(`
-            INSERT INTO offer_items (
-                offer_id, service_id, quantity, unit_price, total_price, 
-                billing_cycle, item_name, item_description, type, print_snapshot,
-                group_id, group_type, specs, price_mode, is_selected,
-                supplier_price, margin
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
+            INSERT INTO offer_items(
+        offer_id, service_id, quantity, unit_price, total_price,
+        billing_cycle, item_name, item_description, type, print_snapshot,
+        group_id, group_type, specs, price_mode, is_selected,
+        supplier_price, margin
+    )
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
         if (items && Array.isArray(items)) {
             for (const item of items) {
@@ -1479,9 +2027,9 @@ app.post('/api/offers', (req, res) => {
 
                 if (item.type === 'print' && item.print_selections) {
                     db.prepare(`
-                        INSERT INTO offer_line_print_selections (offer_line_id, print_product_id, option_set_id, selections_json, note)
-                        VALUES (?, ?, ?, ?, ?)
-                    `).run(
+                        INSERT INTO offer_line_print_selections(offer_line_id, print_product_id, option_set_id, selections_json, note)
+VALUES(?, ?, ?, ?, ?)
+    `).run(
                         offerLineId,
                         item.service_id, // For print items, service_id = print_product_id in this logic
                         item.option_set_id || null,
@@ -1517,7 +2065,7 @@ app.post('/api/offers', (req, res) => {
 // ... (duplicate endpoint remains similar, skipping for brevity but it creates 'draft' so less critical for sync) ...
 
 app.put('/api/offers/:id', (req, res) => {
-    const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date, internal_notes, strategic_notes, discount_percent } = req.body;
+    const { customer_id, offer_name, language, status, subtotal, vat, total, items, due_date, internal_notes, strategic_notes, discount_percent, web_package_id } = req.body;
     let offerId = req.params.id;
 
     // Versioning logic: if offer is already 'sent' or 'signed', creating a new update should forge a new version record
@@ -1531,12 +2079,12 @@ app.put('/api/offers/:id', (req, res) => {
             const newToken = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
 
             const result = db.prepare(`
-                    INSERT INTO offers (
-                        customer_id, offer_name, language, status, 
-                        subtotal, vat, total, due_date, internal_notes, strategic_notes,
-                        parent_id, version_number, token, created_by, updated_by, discount_percent
-                    ) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `).run(customer_id, offer_name, language, subtotal, vat, total, due_date, internal_notes || null, strategic_notes || null, parentId, newVersionNumber, newToken, 'System', 'System', discount_percent || 0);
+                    INSERT INTO offers(
+        customer_id, offer_name, language, status,
+        subtotal, vat, total, due_date, internal_notes, strategic_notes,
+        parent_id, version_number, token, created_by, updated_by, discount_percent, web_package_id
+    ) VALUES(?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).run(customer_id, offer_name, language, subtotal, vat, total, due_date, internal_notes || null, strategic_notes || null, parentId, newVersionNumber, newToken, 'System', 'System', discount_percent || 0, web_package_id || null);
 
             offerId = result.lastInsertRowid;
 
@@ -1553,7 +2101,7 @@ app.put('/api/offers/:id', (req, res) => {
             const updatableFields = [
                 'customer_id', 'offer_name', 'language', 'status',
                 'subtotal', 'vat', 'total', 'due_date',
-                'internal_notes', 'strategic_notes', 'discount_percent'
+                'internal_notes', 'strategic_notes', 'discount_percent', 'web_package_id'
             ];
 
             updatableFields.forEach(field => {
@@ -1572,7 +2120,7 @@ app.put('/api/offers/:id', (req, res) => {
                 db.prepare(`
                     UPDATE offers SET ${fields.join(', ')}
                     WHERE id = ?
-                `).run(...params);
+    `).run(...params);
             }
 
             logActivity('offer', offerId, 'updated', {
@@ -1587,14 +2135,14 @@ app.put('/api/offers/:id', (req, res) => {
             db.prepare('DELETE FROM offer_items WHERE offer_id = ?').run(offerId);
 
             const insertItem = db.prepare(`
-            INSERT INTO offer_items (
-                offer_id, service_id, quantity, unit_price, total_price, 
-                billing_cycle, item_name, item_description, type, print_snapshot,
-                group_id, group_type, specs, price_mode, is_selected,
-                supplier_price, margin
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
+            INSERT INTO offer_items(
+        offer_id, service_id, quantity, unit_price, total_price,
+        billing_cycle, item_name, item_description, type, print_snapshot,
+        group_id, group_type, specs, price_mode, is_selected,
+        supplier_price, margin
+    )
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
             for (const item of items) {
                 insertItem.run(
@@ -1645,7 +2193,7 @@ app.post('/api/offers/:id/send', (req, res) => {
         db.prepare(`
             UPDATE offers SET status = 'sent', sent_at = CURRENT_TIMESTAMP 
             WHERE id = ?
-                `).run(offerId);
+    `).run(offerId);
 
         // Smart Sync
         syncProjectWithOffer(offerId, 'sent', offerCheck.offer_name, null, offerCheck.strategic_notes, offerCheck.customer_id); // Pass null for dueDate
@@ -1706,7 +2254,7 @@ app.put('/api/offers/:id/status', (req, res) => {
 
                 // Only notify on signed status (meaningful trigger)
                 if (status === 'signed') {
-                    createNotification('offer', 'Offer Signed! ✍️', `Offer "${offer.offer_name}" has been signed.`, '/projects', `offer_signed_${offerId}`);
+                    createNotification('offer', 'Offer Signed! ✍️', `Offer "${offer.offer_name}" has been signed.`, '/projects', `offer_signed_${offerId} `);
                 }
 
                 if (oldStatus !== status) {
@@ -1726,9 +2274,9 @@ app.post('/api/projects', (req, res) => {
     try {
         // Insert project
         const result = db.prepare(`
-            INSERT INTO projects (customer_id, name, status, deadline, internal_notes, priority, strategic_notes, review_limit, created_by, updated_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
+            INSERT INTO projects(customer_id, name, status, deadline, internal_notes, priority, strategic_notes, review_limit, created_by, updated_by)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
             customer_id || null,
             name || 'New Project',
             status || 'todo',
@@ -1755,20 +2303,20 @@ app.get('/api/projects', (req, res) => {
     try {
         const projects = db.prepare(`
             SELECT p.*, c.company_name as customer_name, o.offer_name, o.total as offer_total, o.status as offer_status,
-                   r.status as latest_review_status, rv.version_number as latest_review_version, r.unread_count as latest_review_unread,
-                   r.id as latest_review_id, rv.token as latest_review_token, p.review_limit as project_review_limit, r.revisions_used
+    r.status as latest_review_status, rv.version_number as latest_review_version, r.unread_count as latest_review_unread,
+    r.id as latest_review_id, rv.token as latest_review_token, p.review_limit as project_review_limit, r.revisions_used
             FROM projects p
             LEFT JOIN customers c ON p.customer_id = c.id
             LEFT JOIN offers o ON p.offer_id = o.id
-            LEFT JOIN (
-                SELECT r1.* 
-                FROM reviews r1
-                WHERE r1.id IN (SELECT MAX(id) FROM reviews WHERE deleted_at IS NULL GROUP BY project_id)
-            ) r ON p.id = r.project_id
+            LEFT JOIN(
+        SELECT r1.*
+    FROM reviews r1
+                WHERE r1.id IN(SELECT MAX(id) FROM reviews WHERE deleted_at IS NULL GROUP BY project_id)
+    ) r ON p.id = r.project_id
             LEFT JOIN review_versions rv ON r.current_version_id = rv.id
             WHERE p.archived_at IS NULL AND p.deleted_at IS NULL
             ORDER BY p.created_at DESC
-        `).all();
+    `).all();
         res.json(projects);
     } catch (err) {
         console.error('[API] /api/projects failed:', err);
@@ -1780,8 +2328,8 @@ app.get('/api/projects/:id', (req, res) => {
     try {
         const project = db.prepare(`
             SELECT p.*, c.company_name as customer_name, o.offer_name, o.total as offer_total, o.status as offer_status, o.id as offer_id,
-                   r.status as latest_review_status, rv.version_number as latest_review_version, r.unread_count as latest_review_unread,
-                   r.id as latest_review_id, r.revisions_used
+    r.status as latest_review_status, rv.version_number as latest_review_version, r.unread_count as latest_review_unread,
+    r.id as latest_review_id, r.revisions_used
             FROM projects p
             LEFT JOIN customers c ON p.customer_id = c.id
             LEFT JOIN offers o ON p.offer_id = o.id
@@ -1792,7 +2340,28 @@ app.get('/api/projects/:id', (req, res) => {
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
         const tasks = db.prepare('SELECT * FROM tasks WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC').all(req.params.id);
-        res.json({ ...project, tasks });
+        const trackingLinks = db.prepare('SELECT * FROM project_tracking_links WHERE project_id = ? ORDER BY created_at ASC').all(req.params.id);
+        res.json({ ...project, tasks, trackingLinks });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/projects/:id/tracking-links', (req, res) => {
+    const { label, url } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+    try {
+        const result = db.prepare('INSERT INTO project_tracking_links (project_id, label, url) VALUES (?, ?, ?)').run(req.params.id, label || null, url);
+        res.json({ id: result.lastInsertRowid, project_id: parseInt(req.params.id), label, url });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/tracking-links/:id', (req, res) => {
+    try {
+        db.prepare('DELETE FROM project_tracking_links WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -1853,7 +2422,7 @@ app.put('/api/projects/:id', (req, res) => {
                 params.push('System');
                 params.push(projectId);
 
-                db.prepare(`UPDATE projects SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+                db.prepare(`UPDATE projects SET ${updates.join(', ')} WHERE id = ? `).run(...params);
             }
 
             // Sync Offer Name if Project Name changed
@@ -1866,13 +2435,13 @@ app.put('/api/projects/:id', (req, res) => {
 
             // Log events for changes
             if (status !== undefined && status !== currentProject.status) {
-                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'status_change', `Status changed from ${currentProject.status} to ${status}`);
+                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'status_change', `Status changed from ${currentProject.status} to ${status} `);
             }
             if (deadline !== undefined && deadline !== currentProject.deadline) {
-                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'deadline_update', `Deadline updated to ${deadline}`);
+                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'deadline_update', `Deadline updated to ${deadline} `);
             }
             if (priority !== undefined && priority !== currentProject.priority) {
-                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'priority_change', `Priority updated to ${priority}`);
+                db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'priority_change', `Priority updated to ${priority} `);
             }
             if (strategic_notes !== undefined && strategic_notes !== currentProject.strategic_notes) {
                 db.prepare('INSERT INTO project_events (project_id, event_type, comment) VALUES (?, ?, ?)').run(projectId, 'notes_update', `Strategic notes updated`);
@@ -1894,22 +2463,22 @@ app.put('/api/projects/:id', (req, res) => {
 
         // Return the updated project object for frontend sync
         const updatedProject = db.prepare(`
-            SELECT 
-                p.*, 
-                c.company_name as customer_name, 
-                o.offer_name, o.total as offer_total, o.status as offer_status, o.id as offer_id,
-                r.status as latest_review_status, 
-                rv.version_number as latest_review_version, 
-                r.unread_count as latest_review_unread,
-                r.id as latest_review_id, 
-                r.revisions_used
+SELECT
+p.*,
+    c.company_name as customer_name,
+    o.offer_name, o.total as offer_total, o.status as offer_status, o.id as offer_id,
+    r.status as latest_review_status,
+    rv.version_number as latest_review_version,
+    r.unread_count as latest_review_unread,
+    r.id as latest_review_id,
+    r.revisions_used
             FROM projects p
             LEFT JOIN customers c ON p.customer_id = c.id
             LEFT JOIN offers o ON p.offer_id = o.id
             LEFT JOIN reviews r ON p.id = r.project_id AND r.deleted_at IS NULL
             LEFT JOIN review_versions rv ON r.current_version_id = rv.id
             WHERE p.id = ? AND p.deleted_at IS NULL
-        `).get(projectId);
+    `).get(projectId);
 
         res.json({ success: true, project: updatedProject });
     } catch (err) {
@@ -1958,19 +2527,19 @@ app.get('/api/viewer-test', (req, res) => {
 app.get('/api/reviews', (req, res) => {
     try {
         const reviews = db.prepare(`
-            SELECT 
-                r.id, r.project_id, r.title, r.status, r.review_limit, r.review_policy, 
-                r.created_by, r.token as token, r.created_at, r.updated_at, 
-                r.revisions_used, r.current_version_id, r.is_token_active,
-                p.name as project_name, 
-                rv.status as current_status, rv.version_number, 
-                rv.token as version_token
+SELECT
+r.id, r.project_id, r.title, r.status, r.review_limit, r.review_policy,
+    r.created_by, r.token as token, r.created_at, r.updated_at,
+    r.revisions_used, r.current_version_id, r.is_token_active,
+    p.name as project_name,
+    rv.status as current_status, rv.version_number,
+    rv.token as version_token
             FROM reviews r
             JOIN projects p ON r.project_id = p.id
             LEFT JOIN review_versions rv ON r.current_version_id = rv.id
             WHERE p.deleted_at IS NULL AND r.deleted_at IS NULL
             ORDER BY r.updated_at DESC
-        `).all();
+    `).all();
         res.json(reviews);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1985,7 +2554,7 @@ app.get('/api/reviews/:id', (req, res) => {
             JOIN projects p ON r.project_id = p.id
             LEFT JOIN review_versions rv ON r.current_version_id = rv.id
             WHERE r.id = ?
-        `).get(req.params.id);
+    `).get(req.params.id);
 
         if (!review) return res.status(404).json({ error: 'Review not found' });
 
@@ -1993,8 +2562,8 @@ app.get('/api/reviews/:id', (req, res) => {
         const versions = db.prepare(`
             SELECT id, version_number, status, token, created_at 
             FROM review_versions 
-            WHERE review_id = ? 
-            ORDER BY version_number DESC
+            WHERE review_id = ?
+    ORDER BY version_number DESC
         `).all(req.params.id);
 
         res.json({ ...review, versions });
@@ -2008,8 +2577,8 @@ app.get('/api/reviews/:id/versions', (req, res) => {
         const versions = db.prepare(`
             SELECT id, version_number, status, token, created_at, created_by, file_url
             FROM review_versions 
-            WHERE review_id = ? 
-            ORDER BY version_number DESC
+            WHERE review_id = ?
+    ORDER BY version_number DESC
         `).all(req.params.id);
         res.json(versions);
     } catch (err) {
@@ -2027,7 +2596,7 @@ app.get('/api/review-by-token/:token', (req, res) => {
             FROM reviews r
             JOIN projects p ON r.project_id = p.id
             WHERE r.token = ?
-        `).get(req.params.token);
+    `).get(req.params.token);
 
         if (!container) {
             return res.status(404).json({ error: 'Review not found' });
@@ -2053,7 +2622,7 @@ app.get('/api/review-by-token/:token', (req, res) => {
         const allVersions = db.prepare(`
             SELECT id, version_number, status, token FROM review_versions
             WHERE review_id = ?
-            ORDER BY version_number DESC
+    ORDER BY version_number DESC
         `).all(container.id);
 
         // Alias version token to avoid collision with container token
@@ -2095,7 +2664,7 @@ app.post('/api/reviews/:id/action', (req, res) => {
         console.log('[DEBUG] Version found:', version ? 'YES' : 'NO');
 
         if (!version) {
-            console.error(`[ReviewAction] Version mismatch: review ${reviewId} target ${versionId}`);
+            console.error(`[ReviewAction] Version mismatch: review ${reviewId} target ${versionId} `);
             return res.status(404).json({ error: 'Version not found for this review' });
         }
 
@@ -2112,8 +2681,8 @@ app.post('/api/reviews/:id/action', (req, res) => {
         db.transaction(() => {
             console.log('[DEBUG] Starting transaction');
             db.prepare(`
-                INSERT INTO review_actions (review_id, version_id, action_type, first_name, last_name, email)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO review_actions(review_id, version_id, action_type, first_name, last_name, email)
+VALUES(?, ?, ?, ?, ?, ?)
             `).run(reviewId, actualVersionId, action === 'approve' ? 'approve' : 'request-changes', firstName || null, lastName || null, email || null);
 
             db.prepare('UPDATE review_versions SET status = ? WHERE id = ?').run(newStatus, actualVersionId);
@@ -2131,14 +2700,14 @@ app.post('/api/reviews/:id/action', (req, res) => {
                 db.prepare("UPDATE reviews SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(reviewId);
             }
 
-            const clientName = `${firstName || ''} ${lastName || ''}`.trim() || email || 'Client';
+            const clientName = `${firstName || ''} ${lastName || ''} `.trim() || email || 'Client';
             const msg = `${clientName} ${action === 'approve' ? 'approved' : 'requested changes for'} "${review.title || 'Review'}" v${version.version_number}.`;
 
             db.prepare('INSERT INTO notifications (type, title, message, link) VALUES (?, ?, ?, ?)').run(
                 'review_action',
                 action === 'approve' ? 'Review Approved' : 'Changes Requested',
                 msg,
-                `/projects/${review.project_id}`
+                `/ projects / ${review.project_id} `
             );
         })();
 
@@ -2157,7 +2726,7 @@ app.get('/api/reviews/version/:id', (req, res) => {
             JOIN reviews r ON rv.review_id = r.id
             JOIN projects p ON r.project_id = p.id
             WHERE rv.id = ?
-        `).get(req.params.id);
+    `).get(req.params.id);
 
         if (!version) {
             return res.status(404).json({ error: 'Version not found' });
@@ -2190,12 +2759,12 @@ app.delete('/api/reviews/:id', (req, res) => {
 app.get('/api/projects/:id/reviews', (req, res) => {
     try {
         const reviews = db.prepare(`
-            SELECT 
-                r.id, r.project_id, r.title, r.status, r.review_limit, r.review_policy, 
-                r.created_by, r.token as token, r.created_at, r.updated_at, 
-                r.revisions_used, r.current_version_id, r.is_token_active,
-                rv.status as current_status, rv.version_number, 
-                rv.token as version_token, rv.is_token_active as is_version_token_active
+            SELECT
+r.id, r.project_id, r.title, r.status, r.review_limit, r.review_policy,
+    r.created_by, r.token as token, r.created_at, r.updated_at,
+    r.revisions_used, r.current_version_id, r.is_token_active,
+    rv.status as current_status, rv.version_number,
+    rv.token as version_token, rv.is_token_active as is_version_token_active
             FROM reviews r
             LEFT JOIN review_versions rv ON r.current_version_id = rv.id
             WHERE r.project_id = ? AND r.deleted_at IS NULL
@@ -2217,9 +2786,9 @@ app.post('/api/reviews/upload', upload.single('file'), async (req, res) => {
 
     const uploadsDir = path.join(__dirname, '..', 'uploads');
     const fullOriginalPath = path.join(uploadsDir, file.filename);
-    const compressedFilename = `comp-${file.filename}`;
+    const compressedFilename = `comp - ${file.filename} `;
     const fullCompressedPath = path.join(uploadsDir, compressedFilename);
-    const compressedUrl = `/uploads/${compressedFilename}`;
+    const compressedUrl = `/ uploads / ${compressedFilename} `;
 
     try {
         console.log('[Upload] Processing:', file.filename);
@@ -2281,10 +2850,10 @@ app.post('/api/reviews/upload', upload.single('file'), async (req, res) => {
         db.prepare(`
             UPDATE review_versions 
             SET is_active = 0,
-            status = 'superseded',
-            retention_expires_at = ?
-                WHERE review_id = ? AND is_active = 1
-                    `).run(ninetyDaysOut.toISOString(), review.id);
+    status = 'superseded',
+    retention_expires_at = ?
+        WHERE review_id = ? AND is_active = 1
+            `).run(ninetyDaysOut.toISOString(), review.id);
 
         // 5. Insert New Version
         const lastVer = db.prepare('SELECT MAX(version_number) as last FROM review_versions WHERE review_id = ?').get(review.id);
@@ -2293,11 +2862,11 @@ app.post('/api/reviews/upload', upload.single('file'), async (req, res) => {
 
         const versionResult = db.prepare(`
             INSERT INTO review_versions(
-                        review_id, project_id, file_url, compressed_file_url, version_number,
-                        status, token, is_token_active, created_by,
-                        original_size_bytes, compressed_size_bytes, compression_ratio,
-                        is_active, last_accessed_at
-                    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+                review_id, project_id, file_url, compressed_file_url, version_number,
+                status, token, is_token_active, created_by,
+                original_size_bytes, compressed_size_bytes, compression_ratio,
+                is_active, last_accessed_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
             `).run(
             review.id, project_id, compressedUrl, compressedUrl, nextVer,
             'active', token, 1, created_by || 'System',
@@ -2326,9 +2895,9 @@ app.post('/api/reviews/upload', upload.single('file'), async (req, res) => {
 app.get('/api/public/reviews/versions/:id/comments', (req, res) => {
     try {
         const comments = db.prepare(`
-            SELECT * FROM review_comments 
+SELECT * FROM review_comments 
             WHERE version_id = ?
-            ORDER BY page_number ASC, created_at ASC
+    ORDER BY page_number ASC, created_at ASC
         `).all(req.params.id);
         res.json(comments);
     } catch (err) {
@@ -2747,7 +3316,7 @@ app.get('/api/dashboard/stats', (req, res) => {
 
         // Debug Logging Helper
         const logDebug = (msg, data) => {
-            console.log(`[Dashboard Stats Debug] ${msg}:`, JSON.stringify(data, null, 2));
+            console.log(`[Dashboard Stats Debug] ${msg}: `, JSON.stringify(data, null, 2));
         };
 
         // Basic stats
@@ -2882,12 +3451,12 @@ app.get('/api/dashboard/stats', (req, res) => {
         const ninetyDaysAgo = new Date();
         ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
         const winRateStats = db.prepare(`
-            SELECT
-                COUNT(*) as total,
-                SUM(CASE WHEN status = 'signed' THEN 1 ELSE 0 END) as signed
+SELECT
+COUNT(*) as total,
+    SUM(CASE WHEN status = 'signed' THEN 1 ELSE 0 END) as signed
             FROM offers 
-            WHERE status IN ('signed', 'declined')
-            AND (COALESCE(signed_at, updated_at) >= ?)
+            WHERE status IN('signed', 'declined')
+AND(COALESCE(signed_at, updated_at) >= ?)
             AND archived_at IS NULL AND deleted_at IS NULL
     `).get(ninetyDaysAgo.toISOString());
 
@@ -2901,9 +3470,9 @@ app.get('/api/dashboard/stats', (req, res) => {
         // Top Services by Revenue
         // Rule: Group by service_id AND item_name as fallback
         const topServicesByRevenue = db.prepare(`
-            SELECT 
-                COALESCE(s.name_de, oi.item_name, 'Unknown Service') as name, 
-                SUM(oi.total_price) as revenue
+SELECT
+COALESCE(s.name_de, oi.item_name, 'Unknown Service') as name,
+    SUM(oi.total_price) as revenue
             FROM offer_items oi
             JOIN offers o ON oi.offer_id = o.id
             LEFT JOIN services s ON oi.service_id = s.id
@@ -2911,14 +3480,14 @@ app.get('/api/dashboard/stats', (req, res) => {
             GROUP BY name
             ORDER BY revenue DESC
             LIMIT 5
-        `).all();
+    `).all();
 
         // Top Services by Count
         // Rule: Use SUM(quantity) as requested
         const topServicesByCount = db.prepare(`
-            SELECT 
-                COALESCE(s.name_de, oi.item_name, 'Unknown Service') as name, 
-                SUM(oi.quantity) as count
+SELECT
+COALESCE(s.name_de, oi.item_name, 'Unknown Service') as name,
+    SUM(oi.quantity) as count
             FROM offer_items oi
             JOIN offers o ON oi.offer_id = o.id
             LEFT JOIN services s ON oi.service_id = s.id
@@ -2926,7 +3495,7 @@ app.get('/api/dashboard/stats', (req, res) => {
             GROUP BY name
             ORDER BY count DESC
             LIMIT 5
-        `).all();
+    `).all();
 
         // Total Signed Services Count (for KPI)
         // Rule: Count of all service line items in signed offers
@@ -2935,7 +3504,7 @@ app.get('/api/dashboard/stats', (req, res) => {
             FROM offer_items oi
             JOIN offers o ON oi.offer_id = o.id
             WHERE o.status = 'signed' AND o.archived_at IS NULL AND o.deleted_at IS NULL
-        `).get().count;
+    `).get().count;
 
         // Debug Logging for Validation
         if (signedCount > 0) {
@@ -3035,9 +3604,9 @@ app.post('/api/print-parameters', (req, res) => {
     const { spec_key, value, sort_order } = req.body;
     try {
         const result = db.prepare(`
-            INSERT INTO print_parameters (spec_key, value, sort_order)
-            VALUES (?, ?, ?)
-        `).run(spec_key, value, sort_order || 0);
+            INSERT INTO print_parameters(spec_key, value, sort_order)
+VALUES(?, ?, ?)
+    `).run(spec_key, value, sort_order || 0);
         res.json({ id: result.lastInsertRowid, success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -3051,7 +3620,7 @@ app.put('/api/print-parameters/:id', (req, res) => {
         db.prepare(`
             UPDATE print_parameters 
             SET spec_key = ?, value = ?, sort_order = ?, active = ?
-            WHERE id = ?
+    WHERE id = ?
         `).run(spec_key, value, sort_order, active !== undefined ? active : 1, id);
         res.json({ success: true });
     } catch (err) {
@@ -3088,7 +3657,7 @@ app.get('/api/print-products', (req, res) => {
 
         if (search) {
             query += ' AND (name LIKE ? OR category LIKE ?)';
-            params.push(`%${search}%`, `%${search}%`);
+            params.push(`% ${search}% `, ` % ${search}% `);
         }
 
         const products = db.prepare(query).all(...params);
@@ -3164,9 +3733,9 @@ app.post('/api/print-products', (req, res) => {
 
     try {
         const productRes = db.prepare(`
-            INSERT INTO print_products (name, category, description, unit_label, active, default_specs_json, allowed_specs_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(
+            INSERT INTO print_products(name, category, description, unit_label, active, default_specs_json, allowed_specs_json)
+VALUES(?, ?, ?, ?, ?, ?, ?)
+    `).run(
             name,
             category || null,
             description || null,
@@ -3192,7 +3761,7 @@ app.put('/api/print-products/:id', (req, res) => {
             UPDATE print_products 
             SET name = ?, category = ?, description = ?, unit_label = ?, active = ?, default_specs_json = ?, allowed_specs_json = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-        `).run(
+    `).run(
             name,
             category || null,
             description || null,
@@ -3438,8 +4007,9 @@ app.get('/api/trash', (req, res) => {
         const services = db.prepare("SELECT 'services' as type, id, name_de as name, deleted_at FROM services WHERE deleted_at IS NOT NULL").all();
         const packages = db.prepare("SELECT 'packages' as type, id, name, deleted_at FROM packages WHERE deleted_at IS NOT NULL").all();
         const reviews = db.prepare("SELECT 'reviews' as type, id, (SELECT title FROM reviews r2 WHERE r2.id = reviews.id) as name, deleted_at FROM reviews WHERE deleted_at IS NOT NULL").all();
+        const support = db.prepare("SELECT 'support' as type, s.id, c.company_name as name, s.deleted_at FROM customer_support_status s JOIN customers c ON s.customer_id = c.id WHERE s.deleted_at IS NOT NULL").all();
 
-        const allTrash = [...customers, ...offers, ...projects, ...services, ...packages, ...reviews]
+        const allTrash = [...customers, ...offers, ...projects, ...services, ...packages, ...reviews, ...support]
             .sort((a, b) => new Date(b.deleted_at) - new Date(a.deleted_at));
 
         res.json(allTrash);
@@ -3450,12 +4020,18 @@ app.get('/api/trash', (req, res) => {
 
 app.post('/api/:resource/:id/restore', (req, res) => {
     const { resource, id } = req.params;
-    const allowed = ['customers', 'offers', 'projects', 'services', 'packages', 'reviews'];
+    const allowed = ['customers', 'offers', 'projects', 'services', 'packages', 'reviews', 'support', 'customer_support_status'];
     if (!allowed.includes(resource)) return res.status(400).json({ error: 'Invalid resource' });
+
+    const table = resource === 'support' ? 'customer_support_status' : resource;
 
     try {
         db.transaction(() => {
-            db.prepare(`UPDATE ${resource} SET deleted_at = NULL WHERE id = ? `).run(id);
+            db.prepare(`UPDATE ${table} SET deleted_at = NULL WHERE id = ? `).run(id);
+
+            if (resource === 'support') {
+                db.prepare("UPDATE customer_support_status SET status = 'active' WHERE id = ?").run(id);
+            }
 
             if (resource === 'customers') {
                 db.prepare('UPDATE projects SET deleted_at = NULL WHERE customer_id = ?').run(id);
@@ -3474,8 +4050,10 @@ app.post('/api/:resource/:id/restore', (req, res) => {
 
 app.delete('/api/:resource/:id/permanent', (req, res) => {
     const { resource, id } = req.params;
-    const allowed = ['customers', 'offers', 'projects', 'services', 'packages', 'reviews'];
+    const allowed = ['customers', 'offers', 'projects', 'services', 'packages', 'reviews', 'support', 'customer_support_status'];
     if (!allowed.includes(resource)) return res.status(400).json({ error: 'Invalid resource' });
+
+    const table = resource === 'support' ? 'customer_support_status' : resource;
 
     try {
         const trans = db.transaction(() => {
@@ -3491,7 +4069,7 @@ app.delete('/api/:resource/:id/permanent', (req, res) => {
                 db.prepare('DELETE FROM offer_items WHERE service_id = ?').run(id);
             }
 
-            db.prepare(`DELETE FROM ${resource} WHERE id = ? `).run(id);
+            db.prepare(`DELETE FROM ${table} WHERE id = ? `).run(id);
         });
         trans();
         res.json({ success: true });
@@ -3520,7 +4098,7 @@ app.delete('/api/trash/empty', (req, res) => {
                 db.prepare('UPDATE projects SET customer_id = NULL WHERE customer_id > 0 AND customer_id NOT IN (SELECT id FROM customers)').run();
 
                 // 3. Purge everything in trash
-                const tables = ['projects', 'offers', 'customers', 'services', 'packages', 'reviews'];
+                const tables = ['projects', 'offers', 'customers', 'services', 'packages', 'reviews', 'customer_support_status'];
                 for (const table of tables) {
                     db.prepare(`DELETE FROM ${table} WHERE deleted_at IS NOT NULL`).run();
                 }
@@ -3782,8 +4360,41 @@ function trackAccess(versionId) {
     }
 }
 
+// --- STABILITY LAYER: GLOBAL ERROR MIDDLEWARE ---
+app.use((err, req, res, next) => {
+    console.error('🚨 [API ERROR]:', err.stack);
+    if (!res.headersSent) {
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: process.env.NODE_ENV === 'production'
+                ? 'An unexpected error occurred. Please contact support.'
+                : err.message,
+            stack: process.env.NODE_ENV === 'production' ? null : err.stack
+        });
+    }
+});
+
 app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
+    // Collect stats for Startup Report
+    let startupStats = { services: 0, offers: 0, projects: 0, params: 0 };
+    try {
+        startupStats.services = db.prepare('SELECT COUNT(*) as count FROM services WHERE deleted_at IS NULL').get().count;
+        startupStats.offers = db.prepare('SELECT COUNT(*) as count FROM offers WHERE deleted_at IS NULL').get().count;
+        startupStats.projects = db.prepare('SELECT COUNT(*) as count FROM projects WHERE deleted_at IS NULL').get().count;
+        startupStats.params = db.prepare('SELECT COUNT(*) as count FROM print_parameters').get().count;
+    } catch (e) {
+        console.error('⚠️ Could not fetch startup stats:', e.message);
+    }
+
+    console.log('\n–––––––– START STATUS ––––––––');
+    console.log(`Environment: ${process.env.NODE_ENV || 'LOCAL (development)'} `);
+    console.log(`Database: Connected`);
+    console.log(`Services loaded: ${startupStats.services} `);
+    console.log(`Print parameters: ${startupStats.params} `);
+    console.log(`Offers: ${startupStats.offers} `);
+    console.log(`Projects: ${startupStats.projects} `);
+    console.log(`Server ready on: http://localhost:${port}`);
+    console.log('–––––––––––––––––––––––––––––\n');
 
     // Initial reminder check
     setTimeout(checkReminders, 5000);

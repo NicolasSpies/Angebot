@@ -9,6 +9,8 @@ import Badge from '../ui/Badge';
 import ConfirmationDialog from '../ui/ConfirmationDialog';
 import { toast } from 'react-hot-toast';
 
+import ActiveTimerHeader from '../support/ActiveTimerHeader';
+
 const TopBar = () => {
     const { locale, setLocale } = useI18n();
     const navigate = useNavigate();
@@ -27,7 +29,7 @@ const TopBar = () => {
     const auditMenuRef = useRef(null);
 
     useEffect(() => {
-        loadNotifications();
+        loadNotifications(); // This should only be the fetch, not the trigger check if possible
         loadAuditIssues();
         const interval = setInterval(() => {
             loadNotifications();
@@ -74,8 +76,6 @@ const TopBar = () => {
 
     const loadNotifications = async () => {
         try {
-            // Trigger check for expiring offers & urgent projects
-            await dataService.checkExpiringNotifications();
             const data = await dataService.getNotifications();
             setNotifications(data.notifications);
             setUnreadCount(data.unreadCount);
@@ -172,8 +172,10 @@ const TopBar = () => {
 
     return (
         <div className="flex items-center justify-between w-full h-full">
-            {/* Title / Breadcrumb Area */}
-            <div className="flex-1" />
+            {/* Active Timer (Global) */}
+            <div className="flex-1 flex justify-center">
+                <ActiveTimerHeader />
+            </div>
 
             {/* Right Actions */}
             <div className="flex items-center gap-4">

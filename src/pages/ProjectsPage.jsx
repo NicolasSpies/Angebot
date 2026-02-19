@@ -51,7 +51,8 @@ const ProjectsPage = () => {
     };
 
     const loadProjects = async () => {
-        setLoading(true);
+        // Only show loading if we have no projects at all
+        if (projects.length === 0) setLoading(true);
         setError(null);
         try {
             const fetchedProjects = await dataService.getProjects();
@@ -292,7 +293,7 @@ const ProjectsPage = () => {
                                                     if (!project.deadline) return <DueStatusIndicator dueDate={null} />;
                                                     const daysDiff = (new Date(project.deadline) - new Date()) / (1000 * 60 * 60 * 24);
                                                     let colorClass = "bg-[var(--success-bg)] text-[var(--success)] shadow-[0_0_10px_rgba(16,185,129,0.1)]";
-                                                    if (daysDiff < 0) colorClass = "bg-[var(--danger-bg)] text-[var(--danger)] shadow-[0_0_10px_rgba(239,68,68,0.1)] animate-pulse";
+                                                    if (daysDiff < 0) colorClass = "bg-[var(--danger-bg)] text-[var(--danger)] shadow-[0_0_10px_rgba(239,68,68,0.1)]";
                                                     else if (daysDiff < 7) colorClass = "bg-[var(--warning-bg)] text-[var(--warning)] shadow-[0_0_10px_rgba(245,158,11,0.1)]";
 
                                                     return (

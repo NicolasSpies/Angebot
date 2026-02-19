@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -23,7 +23,9 @@ const PageShell = () => {
                 {/* Scrollable Page Content */}
                 <main className="flex-1 overflow-y-auto custom-scrollbar">
                     <div className="min-h-full">
-                        <Outlet />
+                        <Suspense fallback={<div className="p-8 text-[var(--text-muted)]">Loading page...</div>}>
+                            <Outlet />
+                        </Suspense>
                     </div>
                 </main>
             </div>

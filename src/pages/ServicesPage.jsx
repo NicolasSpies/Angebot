@@ -5,12 +5,14 @@ import Modal from '../components/ui/Modal';
 import ServiceForm from '../components/services/ServiceForm';
 import BundleForm from '../components/services/BundleForm';
 import PrintProductForm from '../components/services/PrintProductForm';
+import WebSupportPackageForm from '../components/services/SupportPackageForm';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import EmptyState from '../components/common/EmptyState';
-import { Plus, Edit2, Trash2, Zap, Box, Layers } from 'lucide-react';
+import { Plus, Edit2, Trash2, Zap, Box, Layers, AlertTriangle, RefreshCw, Pencil, Cloud, Monitor, Code, Clock, Settings, Search, Globe } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 const ServicesPage = () => {
     const locale = 'en'; // Admin is English-only
@@ -28,6 +30,9 @@ const ServicesPage = () => {
     const [printParameters, setPrintParameters] = useState([]);
     const [isParamModalOpen, setIsParamModalOpen] = useState(false);
     const [editingParam, setEditingParam] = useState(null);
+    const [error, setError] = useState(null);
+    const [settings, setSettings] = useState(null);
+    const [supportPackages, setSupportPackages] = useState([]);
 
     const loadData = useCallback(async () => {
         setIsLoading(true);
@@ -36,22 +41,45 @@ const ServicesPage = () => {
             if (searchTerm) params.search = searchTerm;
             if (statusFilter !== 'all') params.status = statusFilter;
 
-            const [servicesData, bundlesData, printData, paramsData] = await Promise.all([
+            const [servicesData, bundlesData, printData, paramsData, settingsData, supportData] = await Promise.all([
                 dataService.getServices(),
-                dataService.getPackages(),
+                dataService.getBundles(),
                 dataService.getPrintProducts(params),
-                dataService.getPrintParameters()
+                dataService.getPrintParameters(),
+                dataService.getSettings(),
+                dataService.getSupportPackages()
             ]);
             setServices(servicesData || []);
             setBundles(bundlesData || []);
             setPrintProducts(printData || []);
             setPrintParameters(paramsData || []);
+            setSupportPackages(supportData || []);
+            setSettings(settingsData);
+            setError(null);
+
+            // Auto-seed packages if empty
+            if ((supportData || []).length === 0 && activeTab === 'support') {
+                console.log('Seeding default support packages...');
+                const defaults = [
+                    { name: '5 Stunden Paket', included_hours: 5, price: 300, is_pay_as_you_go: 0, description: 'Basic support package', category: 'Web', variant_name: 'Standard' },
+                    { name: '10 Stunden Paket', included_hours: 10, price: 550, is_pay_as_you_go: 0, description: 'Standard support package', category: 'Web', variant_name: 'Premium' },
+                    { name: '20 Stunden Paket', included_hours: 20, price: 1000, is_pay_as_you_go: 0, description: 'Professional support package', category: 'Web', variant_name: 'Enterprise' },
+                    { name: '40 Stunden Paket', included_hours: 40, price: 1600, is_pay_as_you_go: 0, description: 'Enterprise support package', category: 'Web', variant_name: 'Ultimate' },
+                    { name: 'Pay as you go', is_pay_as_you_go: 1, description: 'Abrechnung nach hinterlegtem Stundenlohn', category: 'Web', variant_name: 'Flex' }
+                ];
+                for (const pkg of defaults) {
+                    await dataService.saveSupportPackage(pkg);
+                }
+                const freshSupportData = await dataService.getSupportPackages();
+                setSupportPackages(freshSupportData);
+            }
         } catch (err) {
             console.error("Failed to load data", err);
+            setError(err.message || "Failed to load services from the server.");
         } finally {
             setIsLoading(false);
         }
-    }, [searchTerm, statusFilter]);
+    }, [searchTerm, statusFilter, activeTab]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -62,8 +90,11 @@ const ServicesPage = () => {
             loadData();
             setIsModalOpen(false);
             setEditingItem(null);
+            toast.success('Service saved successfully!');
         } catch (error) {
             console.error('Failed to save service', error);
+            toast.error('Failed to save service.');
+        } finally {
             setIsLoading(false);
         }
     };
@@ -71,12 +102,15 @@ const ServicesPage = () => {
     const handleSaveBundle = async (bundleData) => {
         setIsLoading(true);
         try {
-            await dataService.savePackage(bundleData);
+            await dataService.saveBundle(bundleData);
             loadData();
             setIsModalOpen(false);
             setEditingItem(null);
+            toast.success('Bundle saved successfully!');
         } catch (error) {
             console.error('Failed to save bundle', error);
+            toast.error('Failed to save bundle.');
+        } finally {
             setIsLoading(false);
         }
     };
@@ -88,8 +122,11 @@ const ServicesPage = () => {
             await loadData();
             setIsModalOpen(false);
             setEditingItem(null);
+            toast.success('Print product saved successfully!');
         } catch (error) {
             console.error('Failed to save print product', error);
+            toast.error('Failed to save print product.');
+        } finally {
             setIsLoading(false);
         }
     };
@@ -101,10 +138,59 @@ const ServicesPage = () => {
             await loadData();
             setIsParamModalOpen(false);
             setEditingParam(null);
+            toast.success('Parameter saved successfully!');
         } catch (error) {
             console.error('Failed to save parameter', error);
+            toast.error('Failed to save parameter.');
+        } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleSaveSupportPackage = async (pkgData) => {
+        setIsLoading(true);
+        try {
+            await dataService.saveSupportPackage(pkgData);
+            await loadData();
+            setIsModalOpen(false);
+            setEditingItem(null);
+            toast.success('Package saved successfully!');
+        } catch (error) {
+            console.error('Failed to save support package', error);
+            toast.error('Failed to save support package.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleDeleteClick = (item, type) => {
+        setDeleteTarget({ ...item, type });
+        setIsDeleteDialogOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteTarget) return;
+        setIsLoading(true);
+        try {
+            if (deleteTarget.type === 'service') {
+                await dataService.deleteService(deleteTarget.id);
+            } else if (deleteTarget.type === 'bundle') {
+                await dataService.deleteBundle(deleteTarget.id);
+            } else if (deleteTarget.type === 'print') {
+                await dataService.deletePrintProduct(deleteTarget.id);
+            } else if (deleteTarget.type === 'support') {
+                await dataService.deleteSupportPackage(deleteTarget.id);
+            }
+            setDeleteTarget(null);
+            await loadData();
+            toast.success('Item deleted successfully!');
+        } catch (error) {
+            console.error('Failed to delete item', error);
+            toast.error('Failed to delete item.');
+        } finally {
+            setIsLoading(false);
+        }
+        setIsDeleteDialogOpen(false);
     };
 
     const handleDeleteParameter = async (id) => {
@@ -112,10 +198,18 @@ const ServicesPage = () => {
         try {
             await dataService.deletePrintParameter(id);
             await loadData();
+            toast.success('Parameter deleted successfully!');
         } catch (error) {
             console.error('Failed to delete parameter', error);
+            toast.error('Failed to delete parameter.');
+        } finally {
             setIsLoading(false);
         }
+    };
+
+    const openModal = (item = null) => {
+        setEditingItem(item);
+        setIsModalOpen(true);
     };
 
     const renderPrintParameters = () => {
@@ -195,36 +289,6 @@ const ServicesPage = () => {
         });
     };
 
-    const handleDeleteClick = (item, type) => {
-        setDeleteTarget({ ...item, type });
-        setIsDeleteDialogOpen(true);
-    };
-
-    const confirmDelete = async () => {
-        if (!deleteTarget) return;
-        setIsLoading(true);
-        try {
-            if (deleteTarget.type === 'service') {
-                await dataService.deleteService(deleteTarget.id);
-            } else if (deleteTarget.type === 'bundle') {
-                await dataService.deletePackage(deleteTarget.id);
-            } else if (deleteTarget.type === 'print') {
-                await dataService.deletePrintProduct(deleteTarget.id);
-            }
-            setDeleteTarget(null);
-            loadData();
-        } catch (error) {
-            console.error('Failed to delete item', error);
-            setIsLoading(false);
-        }
-        setIsDeleteDialogOpen(false);
-    };
-
-    const openModal = (item = null) => {
-        setEditingItem(item);
-        setIsModalOpen(true);
-    };
-
     const renderServices = () => {
         if (services.length === 0) {
             return (
@@ -237,45 +301,76 @@ const ServicesPage = () => {
                 </div>
             );
         }
-        return services.map(service => (
-            <Card key={service.id} className="flex flex-col h-full hover:shadow-[var(--shadow-lg)] transition-all group border-[var(--border-subtle)] hover:border-[var(--border-medium)]">
-                <div className="flex justify-between items-start mb-5">
-                    <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--bg-app)] text-[var(--primary)] flex items-center justify-center shadow-sm border border-[var(--border-subtle)]">
-                        <Zap size={20} />
+
+        const categories = settings?.work_categories ? JSON.parse(settings.work_categories) : ["Web Development", "Design", "Marketing", "Hosting"];
+
+        const groupedServices = categories.reduce((acc, cat) => {
+            acc[cat] = services.filter(s => s.category === cat);
+            return acc;
+        }, {});
+
+        const uncategorized = services.filter(s => !categories.includes(s.category));
+        if (uncategorized.length > 0) groupedServices['Other'] = uncategorized;
+
+        const categoryIcons = {
+            "Web Development": Globe,
+            "Design": Pencil,
+            "Marketing": Zap,
+            "Hosting": Cloud,
+            "Other": Layers
+        };
+
+        return Object.entries(groupedServices).map(([category, items]) => {
+            if (items.length === 0) return null;
+            const Icon = categoryIcons[category] || categoryIcons.Other;
+
+            return (
+                <div key={category} className="col-span-3 space-y-6 mb-10">
+                    <div className="flex items-center gap-3 pb-3 border-b border-[var(--border-subtle)]">
+                        <div className="w-8 h-8 rounded-lg bg-[var(--primary-bg)] text-[var(--primary)] flex items-center justify-center">
+                            <Icon size={18} />
+                        </div>
+                        <h2 className="text-[13px] font-black uppercase tracking-[0.2em] text-[var(--text-main)]">
+                            {category}
+                        </h2>
+                        <Badge variant="neutral" className="text-[10px] py-0">{items.length}</Badge>
                     </div>
-                    <div className="flex gap-2">
-                        {!service.active && <Badge variant="danger" className="text-[10px]">Inactive</Badge>}
-                        <Badge variant="neutral" className="bg-[var(--bg-app)] border-[var(--border-subtle)] text-[10px] text-[var(--text-secondary)]">
-                            {service.category}
-                        </Badge>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {items.map(service => (
+                            <Card key={service.id} className="flex flex-col h-full hover:shadow-[var(--shadow-lg)] transition-all group border-[var(--border-subtle)] hover:border-[var(--border-medium)]">
+                                <div className="flex justify-between items-start mb-5">
+                                    <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--bg-app)] text-[var(--primary)] flex items-center justify-center shadow-sm border border-[var(--border-subtle)]">
+                                        <Icon size={20} />
+                                    </div>
+                                    <div className="flex gap-2">
+                                        {!service.active && <Badge variant="danger" className="text-[10px]">Inactive</Badge>}
+                                    </div>
+                                </div>
+                                <h3 className="text-[15px] font-bold text-[var(--text-main)] mb-1">{locale === 'de' ? service.name_de : service.name_fr || service.name_de}</h3>
+                                <p className="text-[12px] text-[var(--text-secondary)] line-clamp-2 mb-4 leading-relaxed">
+                                    {locale === 'de' ? service.description_de : service.description_fr || service.description_de}
+                                </p>
+                                <div className="mt-auto pt-4 flex justify-between items-center border-t border-[var(--border-subtle)] border-dashed">
+                                    <div className="font-extrabold text-[var(--text-main)] text-[14px]">
+                                        {formatCurrency(service.price)}
+                                        <span className="text-[10px] text-[var(--text-muted)] font-bold ml-1 uppercase">/ {service.unit_type === 'hourly' ? 'hr' : 'flat'}</span>
+                                    </div>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Button variant="ghost" size="xs" onClick={() => openModal(service)} className="text-[var(--primary)] hover:bg-[var(--bg-app)]">
+                                            <Edit2 size={14} />
+                                        </Button>
+                                        <Button variant="ghost" size="xs" onClick={() => handleDeleteClick(service, 'service')} className="text-[var(--danger)] hover:bg-[var(--danger-bg)]">
+                                            <Trash2 size={14} />
+                                        </Button>
+                                    </div>
+                                </div>
+                            </Card>
+                        ))}
                     </div>
                 </div>
-
-                <h3 className="text-[15px] font-bold text-[var(--text-main)] mb-2">
-                    {locale === 'de' ? service.name_de : service.name_fr}
-                </h3>
-                <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed mb-6 line-clamp-3">
-                    {locale === 'de' ? service.description_de : service.description_fr}
-                </p>
-
-                <div className="mt-auto pt-5 flex justify-between items-center border-t border-[var(--border-subtle)] border-dashed">
-                    <div className="flex items-baseline gap-1">
-                        <span className="text-[18px] font-extrabold text-[var(--text-main)]">{service.price}€</span>
-                        {service.billing_cycle && service.billing_cycle !== 'one_time' && (
-                            <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">/ {service.billing_cycle}</span>
-                        )}
-                    </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="xs" onClick={() => openModal(service)} className="text-[var(--primary)] hover:bg-[var(--bg-app)]">
-                            <Edit2 size={14} />
-                        </Button>
-                        <Button variant="ghost" size="xs" onClick={() => handleDeleteClick(service, 'service')} className="text-[var(--danger)] hover:bg-[var(--danger-bg)]">
-                            <Trash2 size={14} />
-                        </Button>
-                    </div>
-                </div>
-            </Card>
-        ));
+            );
+        });
     };
 
     const renderBundles = () => {
@@ -381,6 +476,53 @@ const ServicesPage = () => {
         ));
     };
 
+    const renderSupport = () => {
+        if ((supportPackages || []).length === 0) {
+            return (
+                <div className="col-span-3">
+                    <EmptyState
+                        icon={Globe}
+                        title="No support packages found"
+                        description="Configure web support packages to offer dedicated maintenance plans."
+                    />
+                </div>
+            );
+        }
+
+        return supportPackages.map(pkg => (
+            <Card key={pkg.id} className="flex flex-col h-full hover:shadow-[var(--shadow-lg)] transition-all group border-[var(--border-subtle)] hover:border-[var(--border-medium)]">
+                <div className="flex justify-between items-start mb-5">
+                    <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--primary-bg)] text-[var(--primary)] flex items-center justify-center shadow-sm border border-[var(--primary)]/10">
+                        <Globe size={20} />
+                    </div>
+                    <div className="flex gap-2">
+                        {!pkg.active && <Badge variant="danger" className="text-[10px]">Inactive</Badge>}
+                        {pkg.is_pay_as_you_go ? <Badge variant="primary" className="text-[10px]">Pay As You Go</Badge> : <Badge variant="neutral" className="text-[10px]">{pkg.included_hours} Hours</Badge>}
+                    </div>
+                </div>
+
+                <h3 className="text-[15px] font-bold text-[var(--text-main)] mb-2">{pkg.name}</h3>
+                <p className="text-[12px] text-[var(--text-secondary)] line-clamp-3 mb-6 leading-relaxed">
+                    {pkg.description || 'No description provided for this package.'}
+                </p>
+
+                <div className="mt-auto pt-5 flex justify-between items-center border-t border-[var(--border-subtle)] border-dashed">
+                    <div className="font-extrabold text-[var(--text-main)] text-[18px]">
+                        {pkg.is_pay_as_you_go ? 'On request' : formatCurrency(pkg.price)}
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="xs" onClick={() => openModal(pkg)} className="text-[var(--primary)] hover:bg-[var(--bg-app)]">
+                            <Edit2 size={14} />
+                        </Button>
+                        <Button variant="ghost" size="xs" onClick={() => handleDeleteClick(pkg, 'web-support')} className="text-[var(--danger)] hover:bg-[var(--danger-bg)]">
+                            <Trash2 size={14} />
+                        </Button>
+                    </div>
+                </div>
+            </Card>
+        ));
+    };
+
     return (
         <div className="page-container">
             {/* Block 1: Standardized Top Bar */}
@@ -412,6 +554,12 @@ const ServicesPage = () => {
                             className={`flex items-center gap-2.5 px-6 h-9 rounded-lg text-[13px] font-bold transition-all ${activeTab === 'print' ? 'bg-white shadow-sm text-[var(--primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
                         >
                             <Box size={16} /> Print Products
+                        </button>
+                        <button
+                            onClick={() => { setActiveTab('support'); setSearchTerm(''); setStatusFilter('all'); }}
+                            className={`flex items-center gap-2.5 px-6 h-9 rounded-lg text-[13px] font-bold transition-all ${activeTab === 'support' ? 'bg-white shadow-sm text-[var(--primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
+                        >
+                            <Clock size={16} /> Support Packages
                         </button>
                         <button
                             onClick={() => { setActiveTab('parameters'); setSearchTerm(''); setStatusFilter('all'); }}
@@ -450,12 +598,31 @@ const ServicesPage = () => {
             </div>
 
             {/* Content */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className={activeTab === 'services' ? "" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"}>
                 {isLoading ? (
                     <div className="col-span-3 py-20 text-center text-[var(--text-muted)] font-medium">
                         Loading catalog...
                     </div>
-                ) : activeTab === 'services' ? renderServices() : activeTab === 'bundles' ? renderBundles() : activeTab === 'print' ? renderPrintProducts() : renderPrintParameters()}
+                ) : error ? (
+                    <div className="col-span-3 py-20 px-6 max-w-md mx-auto text-center">
+                        <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                            <AlertTriangle size={32} />
+                        </div>
+                        <h3 className="text-lg font-bold text-[var(--text-main)] mb-2">Failed to load services</h3>
+                        <p className="text-[13px] text-[var(--text-secondary)] mb-6 leading-relaxed">{error}</p>
+                        <Button onClick={loadData} variant="primary" className="w-full">
+                            <RefreshCw size={16} className="mr-2" /> Retry Connection
+                        </Button>
+                    </div>
+                ) : (
+                    <>
+                        {activeTab === 'services' && renderServices()}
+                        {activeTab === 'bundles' && renderBundles()}
+                        {activeTab === 'print' && renderPrintProducts()}
+                        {activeTab === 'support' && renderSupport()}
+                        {activeTab === 'parameters' && renderPrintParameters()}
+                    </>
+                )}
             </div>
 
             {/* Parameter Modal (Mini modal for adding values) */}
@@ -494,7 +661,9 @@ const ServicesPage = () => {
                     setIsModalOpen(false);
                     setEditingItem(null);
                 }}
-                title={editingItem ? (activeTab === 'services' ? 'Edit Service' : activeTab === 'bundles' ? 'Edit Bundle' : 'Edit Print Product') : (activeTab === 'services' ? 'Add New Service' : activeTab === 'bundles' ? 'Add New Bundle' : 'Add New Print Product')}
+                title={editingItem ?
+                    (activeTab === 'services' ? 'Edit Service' : activeTab === 'bundles' ? 'Edit Bundle' : activeTab === 'print' ? 'Edit Print Product' : 'Edit Support Package') :
+                    (activeTab === 'services' ? 'Add New Service' : activeTab === 'bundles' ? 'Add New Bundle' : activeTab === 'print' ? 'Add New Print Product' : 'Add Support Package')}
             >
                 {activeTab === 'services' ? (
                     <ServiceForm
@@ -509,6 +678,15 @@ const ServicesPage = () => {
                     <BundleForm
                         initialData={editingItem}
                         onSave={handleSaveBundle}
+                        onCancel={() => {
+                            setIsModalOpen(false);
+                            setEditingItem(null);
+                        }}
+                    />
+                ) : activeTab === 'support' ? (
+                    <WebSupportPackageForm
+                        initialData={editingItem}
+                        onSave={handleSaveSupportPackage}
                         onCancel={() => {
                             setIsModalOpen(false);
                             setEditingItem(null);

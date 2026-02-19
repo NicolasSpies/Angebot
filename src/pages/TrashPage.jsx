@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { dataService } from '../data/dataService';
-import { Trash2, RotateCcw, AlertCircle, FileText, Briefcase, Users, Zap, Box } from 'lucide-react';
+import { Trash2, RotateCcw, AlertCircle, FileText, Briefcase, Users, Zap, Box, Clock } from 'lucide-react';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
@@ -71,6 +71,7 @@ const TrashPage = () => {
             case 'services': return <Zap size={16} />;
             case 'packages': return <Box size={16} />;
             case 'reviews': return <FileText size={16} />;
+            case 'support': return <Clock size={16} />;
             default: return <Trash2 size={16} />;
         }
     };
@@ -83,6 +84,7 @@ const TrashPage = () => {
             case 'services': return 'Services';
             case 'packages': return 'Bundle';
             case 'reviews': return 'Review';
+            case 'support': return 'Support';
             default: return type;
         }
     };

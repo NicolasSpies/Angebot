@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { dataService } from '../data/dataService';
+import logger from '../utils/logger';
+import { getStatusColor } from '../utils/statusColors';
 import { formatCurrency } from '../utils/pricingEngine';
 import {
     ArrowLeft, Plus, Trash2, CheckCircle,
     ExternalLink, Clock, FileText, Pencil, Globe,
-    Link as LinkIcon, CheckSquare
+    Link as LinkIcon, CheckSquare, AlertTriangle, Truck
 } from 'lucide-react';
 import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 import Button from '../components/ui/Button';
@@ -46,6 +48,7 @@ const ProjectDetailPage = () => {
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isMismatchDialogOpen, setIsMismatchDialogOpen] = useState(false);
     const [pendingOffer, setPendingOffer] = useState(null);
+    const [newLink, setNewLink] = useState({ label: '', url: '' });
 
     // Notes State
     const [notes, setNotes] = useState('');
@@ -139,6 +142,7 @@ const ProjectDetailPage = () => {
             return true;
         } catch (error) {
             console.error('Update failed', error);
+            toast.error(error.message || 'Failed to update project');
             loadProject(); // Revert on error
             return false;
         }
@@ -300,6 +304,34 @@ const ProjectDetailPage = () => {
         }
     };
 
+    const handleAddTrackingLink = async () => {
+        if (!newLink.url) return;
+        try {
+            const added = await dataService.addProjectTrackingLink(id, newLink);
+            setProject(prev => ({
+                ...prev,
+                trackingLinks: [...(prev.trackingLinks || []), added]
+            }));
+            setNewLink({ label: '', url: '' });
+            toast.success('Tracking link added');
+        } catch (err) {
+            toast.error('Failed to add tracking link');
+        }
+    };
+
+    const handleDeleteTrackingLink = async (linkId) => {
+        try {
+            await dataService.deleteProjectTrackingLink(linkId);
+            setProject(prev => ({
+                ...prev,
+                trackingLinks: (prev.trackingLinks || []).filter(l => l.id !== linkId)
+            }));
+            toast.success('Tracking link removed');
+        } catch (err) {
+            toast.error('Failed to remove tracking link');
+        }
+    };
+
     if (isLoading) {
         return (
             <div className="page-container animate-pulse" style={{ maxWidth: '1400px', margin: '0 auto' }}>
@@ -318,7 +350,7 @@ const ProjectDetailPage = () => {
 
     if (error || !project) {
         return (
-            <div className="page-container flex flex-col items-center justify-center min-h-[500px] text-center">
+            <div className="page-container flex flex-col items-center justify-center min-h-[500px] text-center" style={{ maxWidth: '1400px', margin: '0 auto' }}>
                 <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-3xl flex items-center justify-center mb-6">
                     <AlertTriangle size={40} />
                 </div>
@@ -627,6 +659,65 @@ const ProjectDetailPage = () => {
 
 
 
+                        </div>
+                    </Card>
+
+                    {/* Deliveries / Tracking Links */}
+                    <Card padding="1.5rem" className="border-[var(--border)] shadow-md">
+                        <div className="flex items-center justify-between mb-4 border-b border-[var(--border)] pb-2">
+                            <h3 className="text-[11px] font-black uppercase text-[var(--text-muted)] tracking-widest flex items-center gap-2">
+                                <Truck size={14} className="text-[var(--primary)]" />
+                                Delivery Tracking
+                            </h3>
+                            <Badge variant="neutral" className="text-[9px]">{project.trackingLinks?.length || 0}</Badge>
+                        </div>
+
+                        <div className="space-y-2 mb-4">
+                            {(project.trackingLinks || []).length === 0 ? (
+                                <p className="text-[11px] text-[var(--text-muted)] italic py-2">No tracking links added.</p>
+                            ) : (
+                                project.trackingLinks.map(link => (
+                                    <div key={link.id} className="group flex items-center justify-between p-2 hover:bg-[var(--bg-app)] rounded-lg transition-all border border-transparent hover:border-[var(--border-subtle)]">
+                                        <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 flex-1 min-w-0">
+                                            <div className="p-2 bg-[var(--bg-active)] rounded-lg text-[var(--primary)]">
+                                                <ExternalLink size={14} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-[12px] font-bold text-[var(--text-main)] truncate leading-tight">{link.label || 'Direct Link'}</p>
+                                                <p className="text-[10px] text-[var(--text-muted)] truncate">{link.url}</p>
+                                            </div>
+                                        </a>
+                                        <button
+                                            onClick={() => handleDeleteTrackingLink(link.id)}
+                                            className="opacity-0 group-hover:opacity-100 p-1.5 text-[var(--text-muted)] hover:text-[var(--danger)] transition-all"
+                                        >
+                                            <Trash2 size={12} />
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        <div className="space-y-2 pt-4 border-t border-[var(--border)] border-dashed">
+                            <Input
+                                placeholder="Label (Optional)"
+                                value={newLink.label}
+                                onChange={e => setNewLink({ ...newLink, label: e.target.value })}
+                                size="sm"
+                                className="h-8 text-[12px]"
+                            />
+                            <div className="flex gap-2">
+                                <Input
+                                    placeholder="Tracking URL..."
+                                    value={newLink.url}
+                                    onChange={e => setNewLink({ ...newLink, url: e.target.value })}
+                                    size="sm"
+                                    className="flex-1 h-8 text-[12px]"
+                                />
+                                <Button size="sm" onClick={handleAddTrackingLink} disabled={!newLink.url} className="h-8 px-2">
+                                    <Plus size={14} />
+                                </Button>
+                            </div>
                         </div>
                     </Card>
 

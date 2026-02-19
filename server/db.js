@@ -6,7 +6,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const dbPath = join(__dirname, '..', 'database.sqlite');
 
-const db = new Database(dbPath, { verbose: console.log });
+console.log('----------------------------------------------------');
+console.log('📂 DATABASE INITIALIZATION');
+console.log(`Path: ${dbPath}`);
+console.log('----------------------------------------------------');
+
+const db = new Database(dbPath, { verbose: null }); // Reduced verbosity for cleaner startup
 
 // Enable performance and stability optimizations
 db.pragma('journal_mode = WAL');
@@ -247,6 +252,16 @@ const migrations = [
         FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
     );`,
     'CREATE INDEX IF NOT EXISTS idx_project_events_project_id ON project_events(project_id);',
+    // Tracking Links
+    `CREATE TABLE IF NOT EXISTS project_tracking_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL,
+        label TEXT,
+        url TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );`,
+    'CREATE INDEX IF NOT EXISTS idx_project_tracking_links_project_id ON project_tracking_links(project_id);',
     // Global Activity Log
     `CREATE TABLE IF NOT EXISTS global_activities (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -488,6 +503,70 @@ const migrations = [
     'ALTER TABLE offers ADD COLUMN discount_percent REAL DEFAULT 0;',
     'ALTER TABLE offer_items ADD COLUMN supplier_price REAL DEFAULT 0;',
     'ALTER TABLE offer_items ADD COLUMN margin REAL DEFAULT 0;',
+    'ALTER TABLE settings ADD COLUMN default_hourly_rate REAL DEFAULT 0;',
+    'ALTER TABLE offers ADD COLUMN web_package_id INTEGER;',
+    `CREATE TABLE IF NOT EXISTS web_support_packages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        included_hours REAL,
+        price REAL,
+        is_pay_as_you_go INTEGER DEFAULT 0,
+        description TEXT,
+        active INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deleted_at DATETIME
+    );`,
+    `CREATE TABLE IF NOT EXISTS customer_web_support (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL,
+        package_id INTEGER NOT NULL,
+        offer_id INTEGER,
+        balance_hours REAL DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+        FOREIGN KEY (package_id) REFERENCES web_support_packages(id),
+        FOREIGN KEY (offer_id) REFERENCES offers(id)
+    );`,
+    `CREATE TABLE IF NOT EXISTS web_support_time_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL,
+        date DATETIME DEFAULT CURRENT_TIMESTAMP,
+        hours REAL NOT NULL,
+        description TEXT,
+        invoiced INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+    );`,
+    // --- SUPPORT MODULE EXPANSION (Phase 1 C) ---
+    `ALTER TABLE web_support_packages RENAME TO support_packages;`,
+    `ALTER TABLE customer_web_support RENAME TO customer_support_status;`,
+    `ALTER TABLE web_support_time_entries RENAME TO support_time_entries;`,
+
+    // Add columns to the renamed tables
+    `ALTER TABLE support_time_entries ADD COLUMN project_id INTEGER;`,
+    `ALTER TABLE support_time_entries ADD COLUMN billing_period TEXT;`,
+    `ALTER TABLE support_time_entries ADD COLUMN billing_status TEXT DEFAULT 'unbilled';`,
+    `ALTER TABLE support_time_entries ADD COLUMN billing_id INTEGER;`,
+    `ALTER TABLE support_time_entries ADD COLUMN duration_seconds INTEGER;`,
+
+    `ALTER TABLE support_packages ADD COLUMN category TEXT DEFAULT 'Standard';`,
+    `ALTER TABLE support_packages ADD COLUMN variant_name TEXT;`,
+
+    `ALTER TABLE customer_support_status ADD COLUMN deleted_at DATETIME;`,
+
+    `CREATE TABLE IF NOT EXISTS active_timers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL,
+        support_status_id INTEGER NOT NULL,
+        project_id INTEGER,
+        start_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+        description TEXT,
+        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+        FOREIGN KEY (support_status_id) REFERENCES customer_support_status(id) ON DELETE CASCADE
+    );`,
+    `ALTER TABLE settings ADD COLUMN support_rounding INTEGER DEFAULT 5;`,
 ];
 
 migrations.forEach(sql => {
@@ -608,4 +687,34 @@ db.exec(`
 `);
 
 console.log('Database initialized with indices');
+
+// --- STABILITY LAYER: AUTO-REPAIR SYSTEM ---
+export const repairDatabase = () => {
+    console.log('[Repair] Running Integrity Audit...');
+    try {
+        // 1. Check if Print Parameters exist
+        const paramCount = db.prepare('SELECT COUNT(*) as count FROM print_parameters').get().count;
+        if (paramCount === 0) {
+            console.warn('[Repair] Print parameters missing. Restoring defaults...');
+            // Add basic defaults if missing
+            const defaults = [
+                { key: 'format', val: '85x55mm' },
+                { key: 'paper_type', val: 'Standard' },
+                { key: 'weight', val: '350gr' }
+            ];
+            const insert = db.prepare('INSERT INTO print_parameters (spec_key, value) VALUES (?, ?)');
+            defaults.forEach(d => insert.run(d.key, d.val));
+        }
+
+        // 2. Check for orphaned items or broken links (Placeholder for complex logic)
+        // ... Could add more logic here if needed ...
+
+        console.log('[Repair] Audit Complete.');
+    } catch (err) {
+        console.error('[Repair] System failed to audit:', err);
+    }
+};
+
+repairDatabase();
+
 export default db;

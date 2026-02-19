@@ -1,4 +1,6 @@
 #!/bin/bash
+set -e
+set -o pipefail
 
 # Configuration
 PORT=5173
@@ -10,122 +12,130 @@ cd "$(dirname "$0")"
 ROOT_DIR=$(pwd)
 
 echo "----------------------------------------------------"
-echo "🚀 Initializing Angebot Workspace..."
+echo "🚀 Initializing Angebot Workspace (Stable Mode)..."
 echo "----------------------------------------------------"
 
 # 1. Kill any existing processes on the ports
 kill_port() {
     local port=$1
-    # Get all PIDs on the port and kill them one by one
+    # Check if lsof exists
+    if ! command -v lsof >/dev/null 2>&1; then
+        echo "⚠️  'lsof' not found. Skipping port cleanup."
+        return
+    fi
+
     local pids=$(lsof -ti :$port)
     if [ ! -z "$pids" ]; then
         echo "⚡ Port $port in use. Cleaning up previous processes..."
         for pid in $pids; do
             echo "🔪 Killing PID $pid..."
-            kill -9 $pid 2>/dev/null
+            kill -9 $pid 2>/dev/null || true
         done
+        sleep 2
     fi
 }
 
+echo "🧹 Cleaning up work area..."
 kill_port $PORT
 kill_port $BACKEND_PORT
 
-# 2. Check Node environment
-if ! command -v node &> /dev/null; then
-    echo "❌ Error: Node.js is not installed. Please install it to continue."
-    exit 1
-fi
-
-# Use .nvmrc if it exists (assuming nvm is installed and sourced)
-if [ -f ".nvmrc" ] && command -v nvm &> /dev/null; then
-    echo "🌿 Using Node version from .nvmrc..."
-    nvm use
-fi
-
-# 3. Check dependencies
+# 2. Check Dependencies
 if [ ! -d "node_modules" ]; then
-    echo "📦 Dependencies missing. Installing... (this may take a minute)"
-    npm install || { echo "❌ npm install failed!"; exit 1; }
-else
-    echo "✅ Dependencies found."
+    echo "📦 Dependencies missing. Installing..."
+    npm install
 fi
 
-# 4. Pre-flight Stability Checks
-echo "🔍 Performing Stability Checks..."
+# 3. Pre-flight Stability Checks
+echo "🔍 Performing System Audit..."
 
-# Verify Backend Syntax
-if node --check server/index.js; then
-    echo "✅ Backend Syntax: OK"
-else
-    echo "❌ Error: Backend syntax check failed (server/index.js). Please fix errors before launching."
+if ! node --check server/index.js; then
+    echo "❌ Error: Backend syntax check failed."
     exit 1
 fi
 
-# Explicit Database Integrity Check
-if [ -f "$DB_FILE" ]; then
-    echo "✅ Database File Found: OK"
-    # Basic check - can we read the tables?
-    TABLES=$(sqlite3 "$DB_FILE" ".tables")
-    if [[ $TABLES == *"reviews"* ]]; then
-        echo "✅ Database Integrity: OK (Core tables found)"
-    else
-        echo "⚠️  Database Warning: Core tables missing. Server will attempt initialization."
-    fi
-else
-    echo "ℹ️  Database File Not Found. It will be created on first start."
+if [ ! -f "$DB_FILE" ]; then
+    echo "❌ Error: Database file '$DB_FILE' missing."
+    exit 1
 fi
 
-# 5. Open Database Viewer
-echo "📂 Opening Database Viewer ($DB_FILE)..."
-open "$DB_FILE"
+# Validation Layer
+echo "💾 Validating Database Integrity..."
+# Ensure we use local sqlite3
+SERVICES_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM services WHERE deleted_at IS NULL;" 2>/dev/null || echo "ERROR")
+if [ "$SERVICES_COUNT" = "ERROR" ]; then
+    echo "❌ Error: Database is corrupted or schema is invalid."
+    exit 1
+fi
+echo "✅ Database Connection: LOCAL OK ($SERVICES_COUNT services found)"
 
-# 6. Start Services in Terminal tabs
-echo "🖥️  Opening Terminal tabs..."
-osascript <<EOF
+# 4. Starting Backend
+echo "📦 Launching Backend Server (localhost:$BACKEND_PORT)..."
+# Start backend in a persistent terminal tab
+osascript <<EOF || echo "⚠️  Warning: Failed to open Backend tab. Running in background..."
 tell application "Terminal"
     activate
-    
-    -- Backend Tab
-    set newWin to (do script "cd '$ROOT_DIR' && echo '📦 Starting Backend...' && npm run server")
-    
-    -- Delay slightly to ensure tabs are created in order
-    delay 1
-    
-    -- Frontend Tab
-    tell application "System Events" to keystroke "t" using command down
-    delay 0.5
-    do script "cd '$ROOT_DIR' && echo '🌐 Starting Frontend...' && npm run dev" in front window
+    do script "cd '$ROOT_DIR' && TITLE='Angebot Backend' npm run server"
 end tell
 EOF
 
-echo "⌛ Waiting for services to initialize..."
+# 5. Wait for Backend Health (Deterministic)
+echo "⌛ Waiting for Backend Health Check (http://127.0.0.1:$BACKEND_PORT/api/health)..."
+MAX_RETRIES=30
+COUNT=0
+HEALTH_OK=false
 
-# 6. Wait for BOTH backend and frontend
-for i in {1..30}; do
-    FE_UP=false
-    BE_UP=false
-    
-    if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null ; then FE_UP=true; fi
-    if lsof -Pi :$BACKEND_PORT -sTCP:LISTEN -t >/dev/null ; then BE_UP=true; fi
-    
-    if [ "$FE_UP" = true ] && [ "$BE_UP" = true ]; then
-        echo "✨ Both services are responsive! Opening browser..."
-        open "http://localhost:$PORT"
-        
-        echo ""
-        echo "===================================================="
-        echo "✅ SUCCESS: Workspace is UP at http://localhost:$PORT"
-        echo "💾 Database: $DB_FILE (opened in viewer)"
-        echo "🛑 To stop: run 'Stop Angebot Workspace.command'"
-        echo "===================================================="
-        exit 0
+while [ $COUNT -lt $MAX_RETRIES ]; do
+    # Use 127.0.0.1 to avoid DNS resolution issues for localhost
+    RESPONSE=$(curl -sf -m 2 http://127.0.0.1:$BACKEND_PORT/api/health || echo "failure")
+    if echo "$RESPONSE" | grep -q '"database":"connected"'; then
+        HEALTH_OK=true
+        break
     fi
-    echo "   ...waiting for ports :$PORT and :$BACKEND_PORT ($i/30)"
+    printf "."
+    COUNT=$((COUNT+1))
     sleep 1
 done
 
-echo "⚠️  Timeout: Services starting slowly. Please check Terminal tabs for errors."
-echo "URL: http://localhost:$PORT"
-exit 1
+if [ "$HEALTH_OK" = false ]; then
+    echo -e "\n❌ Error: Backend failed to stabilize."
+    echo "Possible causes: Port conflict, syntax error, or DB lock."
+    exit 1
+fi
+echo " OK"
+
+# 6. Starting Frontend
+echo "🌐 Launching Frontend Dev Server (localhost:$PORT)..."
+osascript <<EOF || echo "⚠️  Warning: Failed to open Frontend tab. Running in background..."
+tell application "Terminal"
+    activate
+    tell application "System Events" to keystroke "t" using command down
+    delay 1
+    do script "cd '$ROOT_DIR' && TITLE='Angebot Frontend' npm run dev" in front window
+end tell
+EOF
+
+# 7. Final Readiness Wait
+echo "⌛ Waiting for Frontend UI..."
+COUNT=0
+until $(curl -sf -m 2 http://127.0.0.1:$PORT > /dev/null); do
+    COUNT=$((COUNT+1))
+    if [ $COUNT -gt $MAX_RETRIES ]; then
+        echo -e "\n❌ Error: Frontend failed to start."
+        exit 1
+    fi
+    printf "."
+    sleep 1
+done
+echo " OK"
+
+echo "----------------------------------------------------"
+echo "✨ WORKSPACE STABILIZED (Strict Local Mode)"
+echo "Database: $ROOT_DIR/$DB_FILE"
+echo "Backend:  http://localhost:$BACKEND_PORT"
+echo "Frontend: http://localhost:$PORT"
+echo "----------------------------------------------------"
+
+open "http://localhost:$PORT/dashboard"
+exit 0
 
 

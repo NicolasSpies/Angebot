@@ -23,9 +23,14 @@ const PortalReviewsPage = () => {
 
     return (
         <div className="max-w-4xl mx-auto space-y-10 animate-in fade-in slide-in-from-right-4 duration-500">
-            <div>
-                <h1 className="text-3xl font-black text-[var(--text-main)] tracking-tight">{t('portal.reviews.title')} & Feedback</h1>
-                <p className="text-[var(--text-secondary)] mt-1 font-medium text-lg">Review your deliverables and provide feedback for your projects.</p>
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-3xl font-black text-[var(--text-main)] tracking-tight">{t('portal.reviews.title')} & Feedback</h1>
+                    <p className="text-[var(--text-secondary)] mt-1 font-medium text-lg">Review your deliverables and provide feedback for your projects.</p>
+                </div>
+                <Button variant="ghost" className="gap-2 text-[var(--text-muted)] hover:text-[var(--text-main)]" onClick={() => navigate(-1)}>
+                    Back to Dashboard
+                </Button>
             </div>
 
             {Object.keys(groupedReviews).length > 0 ? Object.entries(groupedReviews).map(([projectName, projectReviews]) => (
@@ -50,8 +55,8 @@ const PortalReviewsPage = () => {
                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                                         <div className="flex items-center gap-6">
                                             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${review.status === 'approved' ? 'bg-green-50 text-green-500' :
-                                                    review.status === 'changes_requested' ? 'bg-amber-50 text-amber-500' :
-                                                        'bg-blue-50 text-blue-500'
+                                                review.status === 'changes_requested' ? 'bg-amber-50 text-amber-500' :
+                                                    'bg-blue-50 text-blue-500'
                                                 }`}>
                                                 <FileCheck size={28} />
                                             </div>
@@ -61,8 +66,8 @@ const PortalReviewsPage = () => {
                                                 </h3>
                                                 <div className="flex items-center gap-4">
                                                     <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${review.status === 'approved' ? 'bg-green-100 text-green-700' :
-                                                            review.status === 'changes_requested' ? 'bg-amber-100 text-amber-700' :
-                                                                'bg-blue-100 text-blue-700'
+                                                        review.status === 'changes_requested' ? 'bg-amber-100 text-amber-700' :
+                                                            'bg-blue-100 text-blue-700'
                                                         }`}>
                                                         {review.status === 'approved' ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
                                                         {t(`portal.reviews.status.${review.status}`)}
@@ -87,7 +92,7 @@ const PortalReviewsPage = () => {
                                                 variant="primary"
                                                 size="sm"
                                                 className="gap-2 rounded-full font-black px-6 py-2.5 shadow-lg shadow-[var(--primary)]/20"
-                                                onClick={() => navigate(`${review.token}`)}
+                                                onClick={() => navigate(`/review/${review.token}`)}
                                             >
                                                 Open Review
                                                 <ExternalLink size={14} />

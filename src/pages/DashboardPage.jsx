@@ -23,33 +23,33 @@ const DashboardPage = () => {
 
     useEffect(() => {
         const loadDashboard = async () => {
+            if (!stats.summary.draftCount && !stats.analytics.recentActivity.length) {
+                // Optimization: Only show loading if we have absolutely no data
+                // But since we have defaults, we can often just show those
+            }
             try {
-                // Auto-repair orphaned signed offers
-                await dataService.repairLinks();
-
                 const data = await dataService.getDashboardStats();
-
                 if (data && !data.error) {
-                    setStats(prev => ({
-                        ...prev,
-                        ...data,
-                        summary: { ...prev.summary, ...data.summary },
-                        financials: { ...prev.financials, ...data.financials },
-                        performance: { ...prev.performance, ...data.performance },
-                        alerts: { ...prev.alerts, ...data.alerts },
-                        analytics: { ...prev.analytics, ...data.analytics },
-                        projects: { ...prev.projects, ...data.projects }
-                    }));
+                    setStats(prev => ({ ...prev, ...data }));
                 }
             } catch (err) {
                 console.error('Failed to load dashboard stats', err);
+            } finally {
+                setIsLoading(false);
             }
-            setIsLoading(false);
         };
+
         loadDashboard();
+
+        // Perform non-blocking repair in background after first render
+        // This prevents the "DB change -> Vite reload" storm at startup
+        setTimeout(() => {
+            dataService.repairLinks().catch(err => console.warn('Background repair failed', err));
+        }, 5000);
     }, []);
 
-    if (isLoading) return <div className="page-container flex items-center justify-center min-h-[400px]">Loading dashboard...</div>;
+    // Non-blocking loading
+    // if (isLoading) return <div className="page-container flex items-center justify-center min-h-[400px]">Loading dashboard...</div>;
 
     const { summary, financials, performance, alerts, analytics, projects } = stats;
 
@@ -74,7 +74,7 @@ const DashboardPage = () => {
                         <TrendingUp size={20} />
                     </div>
                     <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums leading-none mb-2">
-                        {formatCurrency(performance.revenueThisMonth || 0)}
+                        {performance ? formatCurrency(performance.revenueThisMonth || 0) : '...'}
                     </p>
                     <p className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Revenue This Month</p>
                 </Card>
@@ -83,7 +83,7 @@ const DashboardPage = () => {
                     <div className="p-2 rounded-lg bg-[var(--warning-bg)]/30 text-[var(--warning)] w-fit mb-4">
                         <Clock size={20} />
                     </div>
-                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums leading-none mb-2">{summary.pendingCount}</p>
+                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums leading-none mb-2">{summary ? summary.pendingCount : '...'}</p>
                     <p className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Sent</p>
                 </Card>
 
@@ -91,7 +91,7 @@ const DashboardPage = () => {
                     <div className="p-2 rounded-lg bg-[var(--primary-light)]/30 text-[var(--primary)] w-fit mb-4">
                         <Briefcase size={20} />
                     </div>
-                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums leading-none mb-2">{projects.activeProjectCount}</p>
+                    <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums leading-none mb-2">{projects ? projects.activeProjectCount : '...'}</p>
                     <p className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Projects in Progress</p>
                 </Card>
 
@@ -100,7 +100,7 @@ const DashboardPage = () => {
                         <AlertTriangle size={20} />
                     </div>
                     <p className={`text-[28px] font-black tabular-nums leading-none mb-2 ${projects?.overdueProjectCount > 0 ? 'text-red-600' : 'text-[var(--text-main)]'}`}>
-                        {projects?.overdueProjectCount || 0}
+                        {projects ? projects.overdueProjectCount : '...'}
                     </p>
                     <p className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Overdue Projects</p>
                 </Card>
@@ -110,7 +110,7 @@ const DashboardPage = () => {
                         <CheckCircle size={20} />
                     </div>
                     <p className="text-[28px] font-black text-[var(--text-main)] tabular-nums leading-none mb-2">
-                        {summary.totalSignedServicesCount || 0}
+                        {summary ? summary.totalSignedServicesCount : '...'}
                     </p>
                     <p className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Signed Services Total</p>
                 </Card>

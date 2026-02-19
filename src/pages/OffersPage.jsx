@@ -26,11 +26,11 @@ const OffersPage = () => {
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
     const loadOffers = useCallback(async () => {
-        setIsLoading(true);
+        if (offers.length === 0) setIsLoading(true);
         const data = await dataService.getOffers();
         setOffers(data);
         setIsLoading(false);
-    }, []);
+    }, [offers.length]);
 
     useEffect(() => { loadOffers(); }, [loadOffers]);
 

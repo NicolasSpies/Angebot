@@ -26,54 +26,8 @@ const PortalDashboard = () => {
 
     const agreements = portalData?.agreements || [];
 
-    // Derive Recent Activity (Max 3 items)
-    const recentActivity = useMemo(() => {
-        const activities = [];
-
-        // Signed Agreements
-        agreements.forEach(a => {
-            activities.push({
-                id: `offer-${a.id}`,
-                type: 'signed',
-                icon: Star,
-                iconColor: 'text-green-500',
-                text: `${t('portal.activity.you_signed') || 'You signed'}: ${a.offer_name}`,
-                date: new Date(a.signed_at || a.created_at)
-            });
-        });
-
-        // Reviews with comments/updates
-        portalData?.reviews?.forEach(r => {
-            if (r.status === 'changes_requested') {
-                activities.push({
-                    id: `review-${r.id}`,
-                    type: 'comment',
-                    icon: MessageSquare,
-                    iconColor: 'text-amber-500',
-                    text: `${t('portal.activity.you_commented') || 'You commented on'}: ${r.title || r.project_name}`,
-                    date: new Date(r.updated_at || r.created_at)
-                });
-            }
-        });
-
-        // Projects
-        activeProjects.forEach(p => {
-            if (p.status === 'in_progress') {
-                activities.push({
-                    id: `project-${p.id}`,
-                    type: 'project',
-                    icon: Briefcase,
-                    iconColor: 'text-[var(--primary)]',
-                    text: `Project moved to In Progress: ${p.name}`,
-                    date: new Date(p.updated_at || p.created_at)
-                });
-            }
-        });
-
-        return activities
-            .sort((a, b) => b.date - a.date)
-            .slice(0, 3);
-    }, [portalData, agreements, activeProjects, t]);
+    // Simplified Portal Dashboard: No Recent Activity
+    // Removed according to requirements
 
     const handleDownload = (offerId) => {
         window.open(`/api/offers/${offerId}/download`, '_blank');
@@ -126,89 +80,144 @@ const PortalDashboard = () => {
                 )}
             </section>
 
-            {/* B. Optional: Recent Activity (Small Section) */}
-            {recentActivity.length > 0 && (
+            {/* B. Support Overview (Refined Full-Width Design) */}
+            {portalData?.support?.length > 0 && (
                 <section className="space-y-4">
-                    <h3 className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] px-1">Recent Activity</h3>
-                    <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)] overflow-hidden">
-                        {recentActivity.map(activity => (
-                            <div key={activity.id} className="p-4 flex items-center justify-between group">
-                                <div className="flex items-center gap-4">
-                                    <div className={`p-2 rounded-lg bg-[var(--bg-app)] ${activity.iconColor}`}>
-                                        <activity.icon size={16} />
+                    {portalData.support.map(acc => (
+                        <Card
+                            key={acc.id}
+                            className="p-8 bg-gradient-to-br from-[#6366f1] to-[#4338ca] text-white border-none shadow-xl shadow-indigo-500/10"
+                        >
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+                                <div className="space-y-3">
+                                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-widest">
+                                        <Clock size={14} />
+                                        Live Status: {acc.package_name}
                                     </div>
-                                    <span className="text-[14px] font-bold text-[var(--text-secondary)] group-hover:text-[var(--text-main)] transition-colors">
-                                        {activity.text}
-                                    </span>
+                                    <h2 className="text-3xl font-black">
+                                        Your Support Account
+                                    </h2>
+                                    <p className="text-white/80 font-medium">Reliable assistance whenever you need it.</p>
                                 </div>
-                                <span className="text-[11px] font-medium text-[var(--text-muted)]">
-                                    {activity.date.toLocaleDateString()}
-                                </span>
+
+                                <div className="flex gap-8 md:gap-12">
+                                    <div className="space-y-1">
+                                        <div className="text-[10px] font-black text-white/60 uppercase tracking-widest leading-tight">
+                                            {acc.is_pay_as_you_go ? "Month's Usage" : "Remaining Balance"}
+                                        </div>
+                                        <div className="flex items-baseline gap-1.5">
+                                            <div className="text-4xl font-black tabular-nums">
+                                                {acc.is_pay_as_you_go ?
+                                                    `${String(Math.floor((acc.monthly_hours || 0))).padStart(2, '0')}:${String(Math.round(((acc.monthly_hours || 0) % 1) * 60)).padStart(2, '0')}` :
+                                                    `${String(Math.floor(acc.balance_hours || 0)).padStart(2, '0')}:${String(Math.round(((acc.balance_hours || 0) % 1) * 60)).padStart(2, '0')}`
+                                                }
+                                            </div>
+                                            <span className="text-sm font-black text-white/40 uppercase tracking-tighter">hh:mm</span>
+                                        </div>
+                                    </div>
+
+                                    {acc.is_pay_as_you_go === 1 && acc.monthly_value_eur !== undefined && acc.monthly_value_eur > 0 && (
+                                        <div className="space-y-1">
+                                            <div className="text-[10px] font-black text-white/60 uppercase tracking-widest leading-tight">
+                                                Estimated Value
+                                            </div>
+                                            <div className="text-4xl font-black tabular-nums">
+                                                {formatCurrency(acc.monthly_value_eur)}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        ))}
-                    </div>
+                        </Card>
+                    ))}
                 </section>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                {/* C. Active Projects Section */}
-                <section className="space-y-5">
+            <div className="grid grid-cols-1 gap-12">
+                {/* C. Active Projects Section - Full Width List Layout */}
+                <section className="space-y-6">
                     <div className="flex justify-between items-center px-1">
-                        <h3 className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em]">Active Projects</h3>
+                        <div className="flex items-center gap-2">
+                            <Briefcase size={16} className="text-[var(--text-muted)]" />
+                            <h3 className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em]">Active Projects</h3>
+                        </div>
                         <button onClick={() => navigate('projects')} className="text-[11px] font-black text-[var(--primary)] uppercase hover:underline">View All</button>
                     </div>
-                    <div className="space-y-3">
-                        {activeProjects.length > 0 ? activeProjects.map(project => (
+
+                    <div className="space-y-4">
+                        {activeProjects.length > 0 ? activeProjects.map((project, idx) => (
                             <Card
                                 key={project.id}
-                                className="p-5 hover:border-[var(--primary)]/30 hover:scale-[1.02] transition-all cursor-pointer group shadow-sm bg-white"
+                                className={`group overflow-hidden border-[var(--border-subtle)] hover:border-[var(--primary)]/30 hover:scale-[1.005] transition-all cursor-pointer shadow-sm bg-white ${idx === 0 ? 'p-8' : 'p-6'}`}
                                 onClick={() => navigate(`projects/${project.id}`)}
                             >
-                                <div className="flex justify-between items-start">
-                                    <h4 className="font-black text-[17px] text-[var(--text-main)] leading-tight group-hover:text-[var(--primary)] transition-colors">
-                                        {project.name}
-                                    </h4>
-                                    <StatusPill status={project.status || 'todo'} />
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-3">
+                                            <h4 className={`font-black text-[var(--text-main)] group-hover:text-[var(--primary)] transition-colors ${idx === 0 ? 'text-2xl' : 'text-xl'}`}>
+                                                {project.name}
+                                            </h4>
+                                            <StatusPill status={project.status || 'todo'} />
+                                        </div>
+                                        {idx === 0 && project.offer_name && (
+                                            <div className="text-sm font-bold text-[var(--text-muted)] flex items-center gap-2">
+                                                <FileCheck size={14} />
+                                                Based on: {project.offer_name}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <div className="hidden sm:block text-right">
+                                            <div className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Status</div>
+                                            <div className="text-sm font-bold text-[var(--text-main)] capitalize">{(project.status || 'todo').replace('_', ' ')}</div>
+                                        </div>
+                                        <div className="w-10 h-10 rounded-full bg-[var(--bg-app)] flex items-center justify-center group-hover:bg-[var(--primary)] group-hover:text-white transition-all">
+                                            <ArrowRight size={18} />
+                                        </div>
+                                    </div>
                                 </div>
                             </Card>
                         )) : (
-                            <div className="p-10 text-center bg-[var(--bg-app)]/30 rounded-2xl border border-dashed border-[var(--border-subtle)] text-[var(--text-muted)] font-bold text-sm">
-                                No active projects.
-                            </div>
+                            <Card className="p-12 text-center bg-[var(--bg-app)]/30 border-dashed border-[var(--border-subtle)] text-[var(--text-muted)] font-bold">
+                                No active projects at the moment.
+                            </Card>
                         )}
                     </div>
                 </section>
 
-                {/* D. Signed Agreements Section */}
-                <section className="space-y-5">
+                {/* D. Signed Agreements Section - Simplified List */}
+                <section className="space-y-6">
                     <div className="flex justify-between items-center px-1">
-                        <h3 className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em]">Your Agreements</h3>
+                        <div className="flex items-center gap-2">
+                            <FileCheck size={16} className="text-[var(--text-muted)]" />
+                            <h3 className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em]">Your Agreements</h3>
+                        </div>
                     </div>
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         {agreements.length > 0 ? agreements.map(offer => (
-                            <Card key={offer.id} className="p-5 shadow-sm bg-white border-[var(--border-subtle)] flex items-center justify-between group">
+                            <Card key={offer.id} className="p-5 shadow-sm bg-white border-[var(--border-subtle)] flex items-center justify-between group hover:border-[var(--primary)]/20 transition-all">
                                 <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <FileText size={16} className="text-green-500" />
-                                        <h4 className="font-black text-[15px] text-[var(--text-main)]">{offer.offer_name}</h4>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-[11px] font-bold text-[var(--text-muted)]">
+                                    <h4 className="font-black text-[15px] text-[var(--text-main)] truncate max-w-[150px]">{offer.offer_name}</h4>
+                                    <div className="flex items-center gap-2 text-[11px] font-bold text-[var(--text-muted)]">
                                         <span>{formatCurrency(offer.total || 0)}</span>
-                                        <div className="w-1 h-1 bg-[var(--border)] rounded-full" />
-                                        <span>Signed {new Date(offer.signed_at || offer.created_at).toLocaleDateString()}</span>
+                                        <span>•</span>
+                                        <span>{new Date(offer.signed_at || offer.created_at).toLocaleDateString()}</span>
                                     </div>
                                 </div>
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="rounded-full w-10 h-10 p-0 text-[var(--text-muted)] hover:text-[var(--primary)] hover:bg-[var(--primary-bg)]"
-                                    onClick={() => handleDownload(offer.id)}
+                                    className="rounded-full w-9 h-9 p-0 text-[var(--text-muted)] hover:text-[var(--primary)] hover:bg-[var(--primary-bg)]"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDownload(offer.id);
+                                    }}
                                 >
-                                    <Download size={18} />
+                                    <Download size={16} />
                                 </Button>
                             </Card>
                         )) : (
-                            <div className="p-10 text-center bg-[var(--bg-app)]/30 rounded-2xl border border-dashed border-[var(--border-subtle)] text-[var(--text-muted)] font-bold text-sm">
+                            <div className="col-span-full p-8 text-center bg-[var(--bg-app)]/30 rounded-2xl border border-dashed border-[var(--border-subtle)] text-[var(--text-muted)] font-bold text-sm">
                                 No signed agreements yet.
                             </div>
                         )}

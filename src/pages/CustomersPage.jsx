@@ -37,7 +37,7 @@ const CustomersPage = () => {
     }, []);
 
     const loadCustomers = async () => {
-        setIsLoading(true);
+        if (customers.length === 0) setIsLoading(true);
         const data = await dataService.getCustomers();
         setCustomers(data);
         setIsLoading(false);

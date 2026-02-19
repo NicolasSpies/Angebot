@@ -4,8 +4,8 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import {
     Briefcase, Clock, FileText, ChevronLeft,
-    ExternalLink, Download, FileCheck,
-    ChevronRight, Star
+    ExternalLink, Download, FileCheck, Truck,
+    ChevronRight, Star, History, Info
 } from 'lucide-react';
 import StatusPill from '../../components/ui/StatusPill';
 import { formatCurrency } from '../../utils/pricingEngine';
@@ -18,6 +18,7 @@ const PortalProjectDetailPage = () => {
 
     const project = portalData?.projects.find(p => p.id === parseInt(projectId));
     const projectReviews = portalData?.reviews.filter(r => r.project_id === parseInt(projectId)) || [];
+    const projectTrackingLinks = portalData?.trackingLinks?.filter(l => l.project_id === parseInt(projectId)) || [];
 
     if (!project) {
         return (
@@ -159,16 +160,96 @@ const PortalProjectDetailPage = () => {
                         )}
                     </section>
 
-                    <section className="space-y-4 bg-[var(--primary-bg)]/30 p-6 rounded-3xl border border-[var(--primary)]/10">
-                        <h3 className="text-[11px] font-black text-[var(--primary)] uppercase tracking-[0.2em] flex items-center gap-2">
-                            <Clock size={14} />
-                            Project Insight
-                        </h3>
-                        <p className="text-[13px] text-[var(--text-secondary)] font-medium leading-relaxed">
-                            This project is currently in the <span className="font-black text-[var(--text-main)] underline decoration-[var(--primary)] decoration-2 underline-offset-4">{project.status?.toUpperCase()}</span> stage.
-                            We prioritize quality above all else and look forward to your feedback on the latest deliverables.
-                        </p>
-                    </section>
+                    {projectTrackingLinks.length > 0 && (
+                        <section className="space-y-4">
+                            <h3 className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] px-1 flex items-center gap-2">
+                                <Truck size={14} className="text-[var(--primary)]" />
+                                Delivery Tracking
+                            </h3>
+                            <Card className="p-4 bg-white border-[var(--border-subtle)] shadow-sm space-y-3">
+                                {projectTrackingLinks.map(link => (
+                                    <a
+                                        key={link.id}
+                                        href={link.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center justify-between p-3 rounded-xl hover:bg-[var(--bg-app)] border border-transparent hover:border-[var(--border-subtle)] transition-all group"
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className="p-2 bg-[var(--bg-active)] rounded-lg text-[var(--primary)] group-hover:scale-110 transition-transform">
+                                                <ExternalLink size={16} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-[13px] font-black text-[var(--text-main)] truncate leading-tight">
+                                                    {link.label || 'Direct Tracking Link'}
+                                                </p>
+                                                <p className="text-[10px] text-[var(--text-muted)] truncate font-medium">Click to track delivery</p>
+                                            </div>
+                                        </div>
+                                        <ChevronRight size={16} className="text-[var(--text-muted)] group-hover:text-[var(--primary)] transition-colors" />
+                                    </a>
+                                ))}
+                            </Card>
+                        </section>
+                    )}
+
+
+                    {portalData?.webSupport && (
+                        <section className="space-y-4">
+                            <h3 className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] px-1 flex items-center gap-2">
+                                <Clock size={14} className="text-[var(--primary)]" />
+                                Support & Maintenance
+                            </h3>
+                            <Card className="p-6 bg-white border-[var(--border-subtle)] shadow-sm space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1">Active Package</div>
+                                        <div className="text-[16px] font-black text-[var(--text-main)]">{portalData.webSupport.package_name}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1">Status</div>
+                                        <StatusPill status={portalData.webSupport.status || 'Active'} />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="p-4 bg-[var(--bg-app)] rounded-2xl border border-[var(--border-subtle)]">
+                                        <div className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2">Hours Remaining</div>
+                                        {portalData.webSupport.is_pay_as_you_go ? (
+                                            <div className="text-2xl font-black text-[var(--primary)]">Pay as you go</div>
+                                        ) : (
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-3xl font-black text-[var(--primary)]">{portalData.webSupport.balance_hours}</span>
+                                                <span className="text-[12px] font-bold text-[var(--text-muted)] uppercase">HOURS</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="p-4 bg-white rounded-2xl border border-[var(--border-subtle)]">
+                                        <div className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 border-b border-[var(--border-subtle)] pb-2 flex items-center justify-between">
+                                            <span>Recent Activity</span>
+                                            <History size={12} />
+                                        </div>
+                                        <div className="space-y-2 mt-3">
+                                            {(portalData.supportHistory || []).length === 0 ? (
+                                                <p className="text-[11px] text-[var(--text-muted)] italic">No recent support entries.</p>
+                                            ) : (
+                                                portalData.supportHistory.slice(0, 3).map(entry => (
+                                                    <div key={entry.id} className="flex justify-between items-center text-[12px]">
+                                                        <span className="text-[var(--text-secondary)] font-medium">{new Date(entry.date).toLocaleDateString()}</span>
+                                                        <span className="font-bold text-[var(--text-main)]">- {entry.hours}h</span>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="pt-2 flex items-start gap-2 text-[10px] text-[var(--text-muted)] italic bg-[var(--bg-app)]/50 p-3 rounded-xl">
+                                    <Info size={12} className="shrink-0 mt-0.5" />
+                                    <span>Support hours are tracked and deducted automatically based on your service agreement. Contact us if you need more details.</span>
+                                </div>
+                            </Card>
+                        </section>
+                    )}
                 </div>
             </div>
         </div>

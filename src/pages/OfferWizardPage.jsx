@@ -1,3 +1,4 @@
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
 import logger from '../utils/logger';
 import { dataService } from '../data/dataService';
@@ -280,6 +281,8 @@ const OfferWizardPage = () => {
     const [printList, setPrintList] = useState([]);
     const [packagesList, setPackagesList] = useState([]);
     const [printParameters, setPrintParameters] = useState([]);
+    const [supportPackages, setSupportPackages] = useState([]);
+    const [selectedSupportPackage, setSelectedSupportPackage] = useState(null);
 
     // Form State
     const [offerName, setOfferName] = useState('');
@@ -301,19 +304,21 @@ const OfferWizardPage = () => {
 
     const loadData = useCallback(async () => {
         try {
-            const [cData, sData, settingsData, pData, printData, paramsData] = await Promise.all([
+            const [cData, sData, settingsData, pData, printData, paramsData, suppData] = await Promise.all([
                 dataService.getCustomers(),
                 dataService.getServices(),
                 dataService.getSettings(),
                 dataService.getPackages(),
                 dataService.getPrintProducts(),
-                dataService.getPrintParameters()
+                dataService.getPrintParameters(),
+                dataService.getSupportPackages()
             ]);
             setCustomers(cData);
             setServicesList(sData);
             setPackagesList(pData || []);
             setPrintList(printData || []);
             setPrintParameters(paramsData || []);
+            setSupportPackages(suppData || []);
 
             if (id) {
                 logger.data('Loading existing offer', { offerId: id });
@@ -354,8 +359,13 @@ const OfferWizardPage = () => {
                         strategic_notes: offer.strategic_notes,
                         language: offer.language,
                         discount_total: offer.discount_total,
-                        items: mappedItems
+                        items: mappedItems,
+                        web_package_id: offer.web_package_id
                     });
+
+                    if (offer.web_package_id) {
+                        setSelectedWebPackage(offer.web_package_id);
+                    }
                 } else {
                     logger.error('DATA', 'Offer not found', { offerId: id });
                     toast.error('Offer not found');
@@ -394,7 +404,8 @@ const OfferWizardPage = () => {
         if (!editId && isAutosave) return; // Don't autosave' new offers until first manual save
         if (isSaving) return;
 
-        const currentTotals = calculateTotals(selectedServices, discountPercent, selectedCustomer?.country || 'DE');
+        const supportPkg = supportPackages.find(p => p.id === selectedSupportPackage);
+        const currentTotals = calculateTotals(selectedServices, discountPercent, selectedCustomer?.country || 'BE', supportPkg);
 
         const offerData = {
             customer_id: selectedCustomer?.id || null,
@@ -435,7 +446,8 @@ const OfferWizardPage = () => {
                 }
 
                 return base;
-            })
+            }),
+            web_package_id: selectedSupportPackage
         };
 
         // Deep check to avoid redundant saves
@@ -678,7 +690,11 @@ const OfferWizardPage = () => {
         }));
     };
 
-    const totals = calculateTotals(selectedServices, discountPercent, selectedCustomer?.country || 'DE');
+    const activeSupportPackage = useMemo(() => {
+        return supportPackages.find(p => p.id === selectedSupportPackage);
+    }, [supportPackages, selectedSupportPackage]);
+
+    const totals = calculateTotals(selectedServices, discountPercent, selectedCustomer?.country || 'BE', activeSupportPackage);
 
     const groupedServices = useMemo(() => {
         const sections = {
@@ -739,6 +755,14 @@ const OfferWizardPage = () => {
             individualItems: individualItems.sort((a, b) => (a.id < b.id ? -1 : 1))
         };
     }, [selectedServices]);
+
+    const isSupportActive = useMemo(() => {
+        return selectedServices.some(s => {
+            const service = (servicesList || []).find(sl => sl.id === s.id);
+            const cat = (service?.category || '').toLowerCase();
+            return cat === 'maintenance' || cat === 'support';
+        });
+    }, [selectedServices, servicesList]);
 
     if (isLoading) {
         return (
@@ -1007,121 +1031,196 @@ const OfferWizardPage = () => {
                                 })}
 
 
-                                {/* Configured Deliverables Section */}
-                                {(groupedPrintItems.individualItems?.length > 0 || groupedPrintItems.groups?.length > 0) && (
-                                    <div className="space-y-10 mt-16 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                        <div className="flex items-center gap-2 mb-8 mt-16 scroll-mt-24">
-                                            <div className="w-1.5 h-6 bg-[var(--primary)] rounded-full" />
-                                            <h4 id="print-deliverables-header" className="text-[14px] font-black text-[var(--text-main)] uppercase tracking-[0.1em]">Print Deliverables</h4>
-                                            <div className="h-[1px] flex-1 bg-[var(--border)] ml-2" />
+                                {/* Support Package Selection */}
+                                {isSupportActive && (
+                                    <div className="mt-12 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-1.5 h-6 bg-[var(--primary)] rounded-full" />
+                                                <h4 className="text-[14px] font-black text-[var(--text-main)] uppercase tracking-[0.1em]">Service Support Configuration</h4>
+                                                <Badge variant="warning" className="ml-3 text-[10px] font-black uppercase py-0.5 px-2">Required</Badge>
+                                            </div>
+                                            {selectedSupportPackage && (
+                                                <button
+                                                    onClick={() => setSelectedSupportPackage(null)}
+                                                    className="text-[11px] font-black text-[var(--danger)] uppercase tracking-wider hover:underline"
+                                                >
+                                                    Clear Selection
+                                                </button>
+                                            )}
                                         </div>
 
-                                        <div className="space-y-6">
-                                            {/* Individual Items */}
-                                            {groupedPrintItems.individualItems?.map(item => (
-                                                <PrintItemCard
-                                                    key={item.id}
-                                                    item={item}
-                                                    product={printList.find(p => p.id === item.print_id)}
-                                                    globalParams={printParameters}
-                                                    onRefreshParams={loadData}
-                                                    onUpdateSpec={(key, val) => updatePrintSpec(item.id, key, val)}
-                                                    onUpdateQuantity={(val) => updateQuantity(item.id, val)}
-                                                    onUpdateItem={(updates) => setSelectedServices(prev => prev.map(s => s.id === item.id ? { ...s, ...updates } : s))}
-                                                    onRemove={() => removePrintItem(item.id)}
-                                                    onDuplicate={duplicatePrintItem}
-                                                    onCompare={comparePrintItem}
-                                                />
-                                            ))}
-
-                                            {/* Groups (Variants) */}
-                                            {groupedPrintItems.groups?.map(group => (
-                                                <div key={group.id} className="p-8 rounded-[calc(var(--radius-lg)*2)] border-2 border-[var(--primary)]/10 bg-[var(--primary-light)]/5 shadow-xl space-y-8 animate-in fade-in zoom-in-95 duration-500">
-                                                    <div className="flex items-center justify-between border-b-2 border-dashed border-[var(--primary)]/10 pb-6">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="w-10 h-10 rounded-xl bg-[var(--primary)] text-white flex items-center justify-center">
-                                                                <GitCompare size={20} />
-                                                            </div>
-                                                            <div>
-                                                                <h4 className="text-[16px] font-black text-[var(--text-main)] uppercase tracking-widest">Variant Group</h4>
-                                                                <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-tight">Client will be forced to select one option</p>
+                                        {Object.entries(supportPackages.reduce((acc, pkg) => {
+                                            const cat = pkg.category || 'Standard';
+                                            if (!acc[cat]) acc[cat] = [];
+                                            acc[cat].push(pkg);
+                                            return acc;
+                                        }, {})).map(([category, pkgs]) => (
+                                            <div key={category} className="space-y-4">
+                                                <div className="flex items-center gap-2 px-1">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" />
+                                                    <span className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em]">{category}</span>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                    {pkgs.map(pkg => (
+                                                        <div
+                                                            key={pkg.id}
+                                                            onClick={() => setSelectedSupportPackage(pkg.id)}
+                                                            className={`relative p-5 rounded-2xl border-2 transition-all cursor-pointer group ${selectedSupportPackage === pkg.id ? 'bg-white border-[var(--primary)] shadow-md' : 'bg-[var(--bg-surface)] border-[var(--border-medium)] hover:border-[var(--primary)]/40 hover:bg-white'}`}
+                                                        >
+                                                            <div className="flex items-start gap-4">
+                                                                <div className={`mt-1 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${selectedSupportPackage === pkg.id ? 'border-[var(--primary)]' : 'border-[var(--border)] group-hover:border-[var(--primary)]/40'}`}>
+                                                                    {selectedSupportPackage === pkg.id && <div className="w-2.5 h-2.5 rounded-full bg-[var(--primary)]" />}
+                                                                </div>
+                                                                <div className="flex-1">
+                                                                    <div className="flex justify-between items-start">
+                                                                        <h5 className="font-black text-[var(--text-main)] text-sm mb-1">{pkg.name}</h5>
+                                                                    </div>
+                                                                    {pkg.variant_name && (
+                                                                        <p className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-wider mb-2">{pkg.variant_name}</p>
+                                                                    )}
+                                                                    <div className="flex items-baseline gap-1 mt-2">
+                                                                        <span className="text-[16px] font-black text-[var(--text-main)]">
+                                                                            {pkg.is_pay_as_you_go ? 'On Request' : formatCurrency(pkg.price)}
+                                                                        </span>
+                                                                        {!pkg.is_pay_as_you_go && (
+                                                                            <span className="text-[10px] text-[var(--text-muted)] font-bold">/ {pkg.included_hours}h</span>
+                                                                        )}
+                                                                    </div>
+                                                                    {pkg.is_pay_as_you_go && (
+                                                                        <p className="text-[10px] text-amber-600 font-bold mt-1 uppercase tracking-tighter">Pay as you go billing</p>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                        <Button
-                                                            variant="primary"
-                                                            size="sm"
-                                                            className="h-10 px-6 text-[11px] font-black uppercase tracking-widest"
-                                                            onClick={() => {
-                                                                const firstItem = group.items[0];
-                                                                const product = printList.find(p => p.id === firstItem.print_id);
-                                                                addPrintItem(product, group.type, group.id);
-                                                            }}
-                                                        >
-                                                            <Plus size={14} className="mr-2" /> Add Variation
-                                                        </Button>
-                                                    </div>
-
-                                                    <div className="space-y-8">
-                                                        {group.items.map((item, idx) => (
-                                                            <div key={item.id} className="relative">
-                                                                {idx > 0 && (
-                                                                    <div className="flex items-center gap-4 py-4 opacity-50">
-                                                                        <div className="h-[1px] flex-1 bg-[var(--primary)]/20" />
-                                                                        <span className="text-[10px] font-black text-[var(--primary)] uppercase tracking-[0.3em]">OR Variation</span>
-                                                                        <div className="h-[1px] flex-1 bg-[var(--primary)]/20" />
-                                                                    </div>
-                                                                )}
-                                                                <PrintItemCard
-                                                                    item={item}
-                                                                    product={printList.find(p => p.id === item.print_id)}
-                                                                    globalParams={printParameters}
-                                                                    onRefreshParams={loadData}
-                                                                    onUpdateSpec={(key, val) => updatePrintSpec(item.id, key, val)}
-                                                                    onUpdateQuantity={(val) => updateQuantity(item.id, val)}
-                                                                    onUpdateItem={(updates) => setSelectedServices(prev => prev.map(s => s.id === item.id ? { ...s, ...updates } : s))}
-                                                                    onRemove={() => removePrintItem(item.id)}
-                                                                    onDuplicate={duplicatePrintItem}
-                                                                    onCompare={comparePrintItem}
-                                                                    compact={true}
-                                                                />
-                                                            </div>
-                                                        ))}
-                                                    </div>
+                                                    ))}
                                                 </div>
-                                            ))}
-                                        </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
-                            </div>
+
+
+
+                                {/* Configured Deliverables Section */}
+                                {
+                                    (groupedPrintItems.individualItems?.length > 0 || groupedPrintItems.groups?.length > 0) && (
+                                        <div className="space-y-10 mt-16 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                            <div className="flex items-center gap-2 mb-8 mt-16 scroll-mt-24">
+                                                <div className="w-1.5 h-6 bg-[var(--primary)] rounded-full" />
+                                                <h4 id="print-deliverables-header" className="text-[14px] font-black text-[var(--text-main)] uppercase tracking-[0.1em]">Print Deliverables</h4>
+                                                <div className="h-[1px] flex-1 bg-[var(--border)] ml-2" />
+                                            </div>
+
+                                            <div className="space-y-6">
+                                                {/* Individual Items */}
+                                                {groupedPrintItems.individualItems?.map(item => (
+                                                    <PrintItemCard
+                                                        key={item.id}
+                                                        item={item}
+                                                        product={printList.find(p => p.id === item.print_id)}
+                                                        globalParams={printParameters}
+                                                        onRefreshParams={loadData}
+                                                        onUpdateSpec={(key, val) => updatePrintSpec(item.id, key, val)}
+                                                        onUpdateQuantity={(val) => updateQuantity(item.id, val)}
+                                                        onUpdateItem={(updates) => setSelectedServices(prev => prev.map(s => s.id === item.id ? { ...s, ...updates } : s))}
+                                                        onRemove={() => removePrintItem(item.id)}
+                                                        onDuplicate={duplicatePrintItem}
+                                                        onCompare={comparePrintItem}
+                                                    />
+                                                ))}
+
+                                                {/* Groups (Variants) */}
+                                                {groupedPrintItems.groups?.map(group => (
+                                                    <div key={group.id} className="p-8 rounded-[calc(var(--radius-lg)*2)] border-2 border-[var(--primary)]/10 bg-[var(--primary-light)]/5 shadow-xl space-y-8 animate-in fade-in zoom-in-95 duration-500">
+                                                        <div className="flex items-center justify-between border-b-2 border-dashed border-[var(--primary)]/10 pb-6">
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="w-10 h-10 rounded-xl bg-[var(--primary)] text-white flex items-center justify-center">
+                                                                    <GitCompare size={20} />
+                                                                </div>
+                                                                <div>
+                                                                    <h4 className="text-[16px] font-black text-[var(--text-main)] uppercase tracking-widest">Variant Group</h4>
+                                                                    <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-tight">Client will be forced to select one option</p>
+                                                                </div>
+                                                            </div>
+                                                            <Button
+                                                                variant="primary"
+                                                                size="sm"
+                                                                className="h-10 px-6 text-[11px] font-black uppercase tracking-widest"
+                                                                onClick={() => {
+                                                                    const firstItem = group.items[0];
+                                                                    const product = printList.find(p => p.id === firstItem.print_id);
+                                                                    addPrintItem(product, group.type, group.id);
+                                                                }}
+                                                            >
+                                                                <Plus size={14} className="mr-2" /> Add Variation
+                                                            </Button>
+                                                        </div>
+
+                                                        <div className="space-y-8">
+                                                            {group.items.map((item, idx) => (
+                                                                <div key={item.id} className="relative">
+                                                                    {idx > 0 && (
+                                                                        <div className="flex items-center gap-4 py-4 opacity-50">
+                                                                            <div className="h-[1px] flex-1 bg-[var(--primary)]/20" />
+                                                                            <span className="text-[10px] font-black text-[var(--primary)] uppercase tracking-[0.3em]">OR Variation</span>
+                                                                            <div className="h-[1px] flex-1 bg-[var(--primary)]/20" />
+                                                                        </div>
+                                                                    )}
+                                                                    <PrintItemCard
+                                                                        item={item}
+                                                                        product={printList.find(p => p.id === item.print_id)}
+                                                                        globalParams={printParameters}
+                                                                        onRefreshParams={loadData}
+                                                                        onUpdateSpec={(key, val) => updatePrintSpec(item.id, key, val)}
+                                                                        onUpdateQuantity={(val) => updateQuantity(item.id, val)}
+                                                                        onUpdateItem={(updates) => setSelectedServices(prev => prev.map(s => s.id === item.id ? { ...s, ...updates } : s))}
+                                                                        onRemove={() => removePrintItem(item.id)}
+                                                                        onDuplicate={duplicatePrintItem}
+                                                                        onCompare={comparePrintItem}
+                                                                        compact={true}
+                                                                    />
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )
+                                }
+                            </div >
                         )}
 
-                        {step === 4 && (
-                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <div className="mb-8">
-                                    <h2 className="text-3xl font-extrabold text-[var(--text-main)] mb-2">Finalization & Logic</h2>
-                                    <p className="text-[var(--text-secondary)] font-medium">Apply strategic adjustments and document internal considerations.</p>
-                                </div>
-                                <Card className="border-[var(--border)] shadow-sm space-y-12 p-8">
-                                    <div className="space-y-6">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2.5 rounded-xl bg-[var(--danger-bg)] text-[var(--danger)] shadow-sm">
-                                                <Zap size={22} />
-                                            </div>
-                                            <h4 className="text-[14px] font-black text-[var(--text-main)] uppercase tracking-[0.15em]">Strategic Incentive Engagement</h4>
-                                        </div>
-                                        <Input
-                                            type="number"
-                                            value={discountPercent}
-                                            onChange={(e) => setDiscountPercent(parseFloat(e.target.value) || 0)}
-                                            placeholder="0.00"
-                                            className="max-w-[320px]"
-                                            label="Adjustment Magnitude (%)"
-                                        />
-                                        <p className="text-[13px] text-[var(--text-muted)] font-medium leading-relaxed max-w-[480px]">Apply a competitive discount to incentivize signing. This will be visible on the final contract as a 'Strategic Rebate'.</p>
+                        {
+                            step === 4 && (
+                                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    <div className="mb-8">
+                                        <h2 className="text-3xl font-extrabold text-[var(--text-main)] mb-2">Finalization & Logic</h2>
+                                        <p className="text-[var(--text-secondary)] font-medium">Apply strategic adjustments and document internal considerations.</p>
                                     </div>
-                                </Card>
-                            </div>
-                        )}
+                                    <Card className="border-[var(--border)] shadow-sm space-y-12 p-8">
+                                        <div className="space-y-6">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2.5 rounded-xl bg-[var(--danger-bg)] text-[var(--danger)] shadow-sm">
+                                                    <Zap size={22} />
+                                                </div>
+                                                <h4 className="text-[14px] font-black text-[var(--text-main)] uppercase tracking-[0.15em]">Strategic Incentive Engagement</h4>
+                                            </div>
+                                            <Input
+                                                type="number"
+                                                value={discountPercent}
+                                                onChange={(e) => setDiscountPercent(parseFloat(e.target.value) || 0)}
+                                                placeholder="0.00"
+                                                className="max-w-[320px]"
+                                                label="Adjustment Magnitude (%)"
+                                            />
+                                            <p className="text-[13px] text-[var(--text-muted)] font-medium leading-relaxed max-w-[480px]">Apply a competitive discount to incentivize signing. This will be visible on the final contract as a 'Strategic Rebate'.</p>
+                                        </div>
+                                    </Card>
+                                </div>
+                            )
+                        }
 
                         <div className="pt-10 border-t border-[var(--border)] flex items-center justify-between">
                             {step > 1 ? (
@@ -1131,7 +1230,12 @@ const OfferWizardPage = () => {
                             ) : <div />}
 
                             {step < 4 ? (
-                                <Button size="lg" className="px-10 font-extrabold shadow-lg" onClick={() => setStep(step + 1)} disabled={step === 1 && !offerName}>
+                                <Button
+                                    size="lg"
+                                    className="px-10 font-extrabold shadow-lg"
+                                    onClick={() => setStep(step + 1)}
+                                    disabled={(step === 1 && !offerName) || (step === 3 && isSupportActive && !selectedSupportPackage)}
+                                >
                                     Next Phase <ArrowRight size={18} className="ml-2" />
                                 </Button>
                             ) : (
@@ -1149,8 +1253,8 @@ const OfferWizardPage = () => {
                                 </div>
                             )}
                         </div>
-                    </div>
-                </main>
+                    </div >
+                </main >
 
                 <aside className="w-[400px] shrink-0">
                     <div className="sticky top-[100px] space-y-8">
@@ -1239,7 +1343,7 @@ const OfferWizardPage = () => {
                         </div>
                     </div>
                 </aside>
-            </div>
+            </div >
             <ConfirmationDialog
                 isOpen={showVersionModal}
                 onClose={() => setShowVersionModal(false)}
@@ -1265,7 +1369,7 @@ const OfferWizardPage = () => {
                 cancelText="Adjust Prices"
                 type="warning"
             />
-        </div>
+        </div >
     );
 };
 

@@ -1,6 +1,14 @@
 import logger from '../utils/logger';
-
 const API_URL = '/api';
+
+const _cache = {
+    settings: null,
+    dashboardStats: null,
+    offers: null,
+    customers: null,
+    projects: null,
+    lastFetch: {}
+};
 
 const handleResponse = async (response, context) => {
     if (!response.ok) {
@@ -85,10 +93,20 @@ export const dataService = {
     },
 
     // --- OFFERS ---
-    getOffers: async () => {
+    getOffers: async (forceRefresh = false) => {
+        if (!forceRefresh && _cache.offers) {
+            // Background refresh
+            fetch(`${API_URL}/offers`)
+                .then(res => handleResponse(res, 'getOffers'))
+                .then(data => { _cache.offers = data; })
+                .catch(() => { });
+            return _cache.offers;
+        }
         try {
             const res = await fetch(`${API_URL}/offers`);
-            return await handleResponse(res, 'getOffers');
+            const data = await handleResponse(res, 'getOffers');
+            _cache.offers = data;
+            return data;
         } catch (err) {
             logger.error('DATA', 'getOffers failed', err);
             throw err;
@@ -180,10 +198,19 @@ export const dataService = {
     },
 
     // --- CUSTOMERS ---
-    getCustomers: async () => {
+    getCustomers: async (forceRefresh = false) => {
+        if (!forceRefresh && _cache.customers) {
+            fetch(`${API_URL}/customers`)
+                .then(res => handleResponse(res, 'getCustomers'))
+                .then(data => { _cache.customers = data; })
+                .catch(() => { });
+            return _cache.customers;
+        }
         try {
             const res = await fetch(`${API_URL}/customers`);
-            return await handleResponse(res, 'getCustomers');
+            const data = await handleResponse(res, 'getCustomers');
+            _cache.customers = data;
+            return data;
         } catch (err) {
             logger.error('DATA', 'getCustomers failed', err);
             throw err;
@@ -253,14 +280,105 @@ export const dataService = {
         }
     },
 
+    getBundles: async () => {
+        try {
+            const res = await fetch(`${API_URL}/bundles`);
+            return await handleResponse(res, 'getBundles');
+        } catch (err) {
+            logger.error('DATA', 'getBundles failed', err);
+            throw err;
+        }
+    },
+
+    saveBundle: async (bundle) => {
+        try {
+            const method = bundle.id ? 'PUT' : 'POST';
+            const url = bundle.id ? `${API_URL}/bundles/${bundle.id}` : `${API_URL}/bundles`;
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(bundle)
+            });
+            return await handleResponse(res, 'saveBundle');
+        } catch (err) {
+            logger.error('DATA', 'saveBundle failed', err);
+            throw err;
+        }
+    },
+
+    deleteBundle: async (id) => {
+        try {
+            const res = await fetch(`${API_URL}/bundles/${id}`, { method: 'DELETE' });
+            return await handleResponse(res, 'deleteBundle');
+        } catch (err) {
+            logger.error('DATA', 'deleteBundle failed', { id, err });
+            throw err;
+        }
+    },
+
+    getPrintProducts: async (params = {}) => {
+        try {
+            const query = new URLSearchParams(params).toString();
+            const res = await fetch(`${API_URL}/print-products${query ? '?' + query : ''}`);
+            return await handleResponse(res, 'getPrintProducts');
+        } catch (err) {
+            logger.error('DATA', 'getPrintProducts failed', err);
+            throw err;
+        }
+    },
+
+    savePrintProduct: async (product) => {
+        try {
+            const method = product.id ? 'PUT' : 'POST';
+            const url = product.id ? `${API_URL}/print-products/${product.id}` : `${API_URL}/print-products`;
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(product)
+            });
+            return await handleResponse(res, 'savePrintProduct');
+        } catch (err) {
+            logger.error('DATA', 'savePrintProduct failed', err);
+            throw err;
+        }
+    },
+
+    deletePrintProduct: async (id) => {
+        try {
+            const res = await fetch(`${API_URL}/print-products/${id}`, { method: 'DELETE' });
+            return await handleResponse(res, 'deletePrintProduct');
+        } catch (err) {
+            logger.error('DATA', 'deletePrintProduct failed', { id, err });
+            throw err;
+        }
+    },
+
     // --- PROJECTS ---
-    getProjects: async () => {
+    getProjects: async (forceRefresh = false) => {
+        if (!forceRefresh && _cache.projects) {
+            fetch(`${API_URL}/projects`)
+                .then(res => handleResponse(res, 'getProjects'))
+                .then(data => { _cache.projects = data; })
+                .catch(() => { });
+            return _cache.projects;
+        }
         try {
             const res = await fetch(`${API_URL}/projects`);
-            return await handleResponse(res, 'getProjects');
+            const data = await handleResponse(res, 'getProjects');
+            _cache.projects = data;
+            return data;
         } catch (err) {
             logger.error('DATA', 'getProjects failed', err);
             throw err;
+        }
+    },
+
+    clearCache: (key) => {
+        if (key) _cache[key] = null;
+        else {
+            _cache.offers = null;
+            _cache.customers = null;
+            _cache.projects = null;
         }
     },
 
@@ -351,6 +469,30 @@ export const dataService = {
         }
     },
 
+    addProjectTrackingLink: async (projectId, link) => {
+        try {
+            const res = await fetch(`${API_URL}/projects/${projectId}/tracking-links`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(link)
+            });
+            return await handleResponse(res, 'addProjectTrackingLink');
+        } catch (err) {
+            logger.error('DATA', 'addProjectTrackingLink failed', { projectId, err });
+            throw err;
+        }
+    },
+
+    deleteProjectTrackingLink: async (id) => {
+        try {
+            const res = await fetch(`${API_URL}/tracking-links/${id}`, { method: 'DELETE' });
+            return await handleResponse(res, 'deleteProjectTrackingLink');
+        } catch (err) {
+            logger.error('DATA', 'deleteProjectTrackingLink failed', { id, err });
+            throw err;
+        }
+    },
+
     // --- REVIEWS ---
     getReviews: async () => {
         try {
@@ -358,6 +500,16 @@ export const dataService = {
             return await handleResponse(res, 'getReviews');
         } catch (err) {
             logger.error('DATA', 'getReviews failed', err);
+            throw err;
+        }
+    },
+
+    getProjectReviews: async (projectId) => {
+        try {
+            const res = await fetch(`${API_URL}/projects/${projectId}/reviews`);
+            return await handleResponse(res, 'getProjectReviews');
+        } catch (err) {
+            logger.error('DATA', 'getProjectReviews failed', { projectId, err });
             throw err;
         }
     },
@@ -391,6 +543,92 @@ export const dataService = {
             return await handleResponse(res, 'uploadReview');
         } catch (err) {
             logger.error('DATA', 'uploadReview failed', { projectId, err });
+            throw err;
+        }
+    },
+
+    deleteReview: async (id) => {
+        try {
+            const res = await fetch(`${API_URL}/reviews/${id}`, { method: 'DELETE' });
+            return await handleResponse(res, 'deleteReview');
+        } catch (err) {
+            logger.error('DATA', 'deleteReview failed', { id, err });
+            throw err;
+        }
+    },
+
+    getReviewComments: async (versionId) => {
+        try {
+            const res = await fetch(`${API_URL}/reviews/versions/${versionId}/comments`);
+            return await handleResponse(res, 'getReviewComments');
+        } catch (err) {
+            logger.error('DATA', 'getReviewComments failed', { versionId, err });
+            throw err;
+        }
+    },
+
+    createReviewComment: async (versionId, commentData) => {
+        try {
+            const res = await fetch(`${API_URL}/reviews/versions/${versionId}/comments`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(commentData)
+            });
+            return await handleResponse(res, 'createReviewComment');
+        } catch (err) {
+            logger.error('DATA', 'createReviewComment failed', { versionId, err });
+            throw err;
+        }
+    },
+
+    updateReviewComment: async (id, commentData) => {
+        try {
+            const res = await fetch(`${API_URL}/review-comments/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(commentData)
+            });
+            return await handleResponse(res, 'updateReviewComment');
+        } catch (err) {
+            logger.error('DATA', 'updateReviewComment failed', { id, err });
+            throw err;
+        }
+    },
+
+    deleteReviewComment: async (id) => {
+        try {
+            const res = await fetch(`${API_URL}/review-comments/${id}`, { method: 'DELETE' });
+            return await handleResponse(res, 'deleteReviewComment');
+        } catch (err) {
+            logger.error('DATA', 'deleteReviewComment failed', { id, err });
+            throw err;
+        }
+    },
+
+    approveReview: async (reviewId, versionId, identity) => {
+        try {
+            const res = await fetch(`${API_URL}/reviews/${reviewId}/action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'approve', versionId, ...identity })
+            });
+            return await handleResponse(res, 'approveReview');
+        } catch (err) {
+            logger.error('DATA', 'approveReview failed', { reviewId, err });
+            throw err;
+        }
+    },
+
+    requestChanges: async (reviewId, versionId, identity) => {
+        try {
+            const res = await fetch(`${API_URL}/reviews/${reviewId}/action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'request-changes', versionId, ...identity })
+            });
+            return await handleResponse(res, 'requestChanges');
+        } catch (err) {
+            logger.error('DATA', 'requestChanges failed', { reviewId, err });
             throw err;
         }
     },
@@ -481,6 +719,26 @@ export const dataService = {
         }
     },
 
+    deletePermanentItem: async (type, id) => {
+        try {
+            const res = await fetch(`${API_URL}/${type}/${id}/permanent`, { method: 'DELETE' });
+            return await handleResponse(res, 'deletePermanentItem');
+        } catch (err) {
+            logger.error('DATA', 'deletePermanentItem failed', { type, id, err });
+            throw err;
+        }
+    },
+
+    emptyTrash: async () => {
+        try {
+            const res = await fetch(`${API_URL}/trash/empty`, { method: 'DELETE' });
+            return await handleResponse(res, 'emptyTrash');
+        } catch (err) {
+            logger.error('DATA', 'emptyTrash failed', err);
+            throw err;
+        }
+    },
+
     // Notifications
     getNotifications: async () => {
         try {
@@ -489,6 +747,54 @@ export const dataService = {
         } catch (err) {
             logger.error('DATA', 'getNotifications failed', err);
             return []; // Fail gracefully for notifications
+        }
+    },
+
+    markNotificationAsRead: async (id) => {
+        try {
+            const res = await fetch(`${API_URL}/notifications/${id}/read`, {
+                method: 'PUT'
+            });
+            return await handleResponse(res, 'markNotificationAsRead');
+        } catch (err) {
+            logger.error('DATA', 'markNotificationAsRead failed', err);
+            throw err;
+        }
+    },
+
+    markAllNotificationsRead: async () => {
+        try {
+            const res = await fetch(`${API_URL}/notifications/read-all`, {
+                method: 'PUT'
+            });
+            return await handleResponse(res, 'markAllNotificationsRead');
+        } catch (err) {
+            logger.error('DATA', 'markAllNotificationsRead failed', err);
+            throw err;
+        }
+    },
+
+    deleteNotification: async (id) => {
+        try {
+            const res = await fetch(`${API_URL}/notifications/${id}`, {
+                method: 'DELETE'
+            });
+            return await handleResponse(res, 'deleteNotification');
+        } catch (err) {
+            logger.error('DATA', 'deleteNotification failed', err);
+            throw err;
+        }
+    },
+
+    clearAllNotifications: async () => {
+        try {
+            const res = await fetch(`${API_URL}/notifications/clear-all`, {
+                method: 'DELETE'
+            });
+            return await handleResponse(res, 'clearAllNotifications');
+        } catch (err) {
+            logger.error('DATA', 'clearAllNotifications failed', err);
+            throw err;
         }
     },
 
@@ -548,7 +854,223 @@ export const dataService = {
             logger.error('DATA', 'getPortalData failed', { customerId, err });
             throw err;
         }
-    }
+    },
+
+    // Aliases for component compatibility
+    getPackages: async () => dataService.getProjects(), // If bundles are projects
+    savePackage: async (bundle) => dataService.saveOffer(bundle), // Or whatever bundle logic was
+    checkExpiringNotifications: async () => {
+        try {
+            const res = await fetch(`${API_URL}/notifications/check-expiring`);
+            return await handleResponse(res, 'checkExpiringNotifications');
+        } catch (err) {
+            logger.error('DATA', 'checkExpiringNotifications failed', err);
+            return { checked: 0 };
+        }
+    },
+
+    // --- SUPPORT ---
+    getSupportPackages: async () => {
+        try {
+            const res = await fetch(`${API_URL}/support/packages`);
+            return await handleResponse(res, 'getSupportPackages');
+        } catch (err) {
+            logger.error('DATA', 'getSupportPackages failed', err);
+            throw err;
+        }
+    },
+
+    saveSupportPackage: async (pkg) => {
+        try {
+            const method = pkg.id ? 'PUT' : 'POST';
+            const url = pkg.id ? `${API_URL}/support/packages/${pkg.id}` : `${API_URL}/support/packages`;
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pkg)
+            });
+            return await handleResponse(res, 'saveSupportPackage');
+        } catch (err) {
+            logger.error('DATA', 'saveSupportPackage failed', err);
+            throw err;
+        }
+    },
+
+    trashSupportPackage: async (id) => {
+        try {
+            const res = await fetch(`${API_URL}/support/accounts/${id}/trash`, { method: 'POST' });
+            return await handleResponse(res, 'trashSupportPackage');
+        } catch (err) {
+            logger.error('DATA', 'trashSupportPackage failed', err);
+            throw err;
+        }
+    },
+
+    restoreSupportPackage: async (id) => {
+        try {
+            const res = await fetch(`${API_URL}/support/accounts/${id}/restore`, { method: 'POST' });
+            return await handleResponse(res, 'restoreSupportPackage');
+        } catch (err) {
+            logger.error('DATA', 'restoreSupportPackage failed', err);
+            throw err;
+        }
+    },
+
+    deleteSupportPackage: async (id) => {
+        try {
+            const res = await fetch(`${API_URL}/support/accounts/${id}`, { method: 'DELETE' });
+            return await handleResponse(res, 'deleteSupportPackage');
+        } catch (err) {
+            logger.error('DATA', 'deleteSupportPackage failed', err);
+            throw err;
+        }
+    },
+
+    getSupportAccounts: async () => {
+        try {
+            const res = await fetch(`${API_URL}/support/accounts`);
+            return await handleResponse(res, 'getSupportAccounts');
+        } catch (err) {
+            logger.error('DATA', 'getSupportAccounts failed', err);
+            throw err;
+        }
+    },
+
+    assignSupportPackage: async (customerId, packageId) => {
+        try {
+            const res = await fetch(`${API_URL}/support/accounts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customer_id: customerId, package_id: packageId })
+            });
+            return await handleResponse(res, 'assignSupportPackage');
+        } catch (err) {
+            logger.error('DATA', 'assignSupportPackage failed', err);
+            throw err;
+        }
+    },
+
+    getSupportTimeEntries: async (accountId) => {
+        try {
+            const res = await fetch(`${API_URL}/support/accounts/${accountId}/time-entries`);
+            return await handleResponse(res, 'getSupportTimeEntries');
+        } catch (err) {
+            logger.error('DATA', 'getSupportTimeEntries failed', err);
+            throw err;
+        }
+    },
+
+    updateSupportTimeEntry: async (id, data) => {
+        try {
+            const res = await fetch(`${API_URL}/support/time-entries/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            return await handleResponse(res, 'updateSupportTimeEntry');
+        } catch (err) {
+            logger.error('DATA', 'updateSupportTimeEntry failed', err);
+            throw err;
+        }
+    },
+
+    deleteSupportTimeEntry: async (id) => {
+        try {
+            const res = await fetch(`${API_URL}/support/time-entries/${id}`, {
+                method: 'DELETE'
+            });
+            return await handleResponse(res, 'deleteSupportTimeEntry');
+        } catch (err) {
+            logger.error('DATA', 'deleteSupportTimeEntry failed', err);
+            throw err;
+        }
+    },
+
+    getActiveTimer: async () => {
+        try {
+            const res = await fetch(`${API_URL}/support/timer/active`);
+            return await handleResponse(res, 'getActiveTimer');
+        } catch (err) {
+            logger.error('DATA', 'getActiveTimer failed', err);
+            return null;
+        }
+    },
+
+    startTimer: async (data) => {
+        try {
+            const res = await fetch(`${API_URL}/support/timer/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            return await handleResponse(res, 'startTimer');
+        } catch (err) {
+            logger.error('DATA', 'startTimer failed', err);
+            throw err;
+        }
+    },
+
+    stopTimer: async (description) => {
+        try {
+            const res = await fetch(`${API_URL}/support/timer/stop`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ description })
+            });
+            return await handleResponse(res, 'stopTimer');
+        } catch (err) {
+            logger.error('DATA', 'stopTimer failed', err);
+            throw err;
+        }
+    },
+
+    getCustomerSupport: async (customerId) => {
+        try {
+            const res = await fetch(`${API_URL}/customers/${customerId}/support`);
+            return await handleResponse(res, 'getCustomerSupport');
+        } catch (err) {
+            logger.error('DATA', 'getCustomerSupport failed', { customerId, err });
+            throw err;
+        }
+    },
+
+    logSupportHours: async (customerId, data) => {
+        try {
+            const res = await fetch(`${API_URL}/customers/${customerId}/support/hours`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            return await handleResponse(res, 'logSupportHours');
+        } catch (err) {
+            logger.error('DATA', 'logSupportHours failed', { customerId, err });
+            throw err;
+        }
+    },
+
+    getSupportBilling: async () => {
+        try {
+            const res = await fetch(`${API_URL}/support/billing`);
+            return await handleResponse(res, 'getSupportBilling');
+        } catch (err) {
+            logger.error('DATA', 'getSupportBilling failed', err);
+            throw err;
+        }
+    },
+
+    markSupportAsBilled: async (customerId, billingPeriod) => {
+        try {
+            const res = await fetch(`${API_URL}/support/billing/mark-billed`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId, billingPeriod })
+            });
+            return await handleResponse(res, 'markSupportAsBilled');
+        } catch (err) {
+            logger.error('DATA', 'markSupportAsBilled failed', err);
+            throw err;
+        }
+    },
 };
 
 const originalUpdateOfferStatus = dataService.updateOfferStatus;
